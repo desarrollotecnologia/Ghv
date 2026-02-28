@@ -32,8 +32,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Fetch data ──────────────────────────────────────────
     async function fetchData(year, month) {
-        const res = await fetch(`${API_URL}?year=${year}&month=${month}`);
-        calendarData = await res.json();
+        try {
+            const res = await fetch(`${API_URL}?year=${year}&month=${month}`);
+            if (res.status === 401) {
+                window.location.href = '/login';
+                return;
+            }
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            calendarData = await res.json();
+        } catch(e) {
+            console.error('Error cargando calendario:', e);
+            calendarData = [];
+        }
         render();
     }
 
@@ -204,6 +214,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const editModal = document.getElementById('editModal');
     const editForm = document.getElementById('editForm');
 
+    function normalizeDisplayValue(val) {
+        if (val == null || val === '') return '';
+        const s = String(val).trim();
+        if (s.endsWith('.0') && /^\d+\.0$/.test(s)) return s.slice(0, -2);
+        return s;
+    }
+
     if (btnEdit && editModal && EDIT_ENABLED) {
         btnEdit.addEventListener('click', () => {
             if (!selectedPerson) return;
@@ -215,7 +232,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 editDepto: p.departamento,
                 editArea: p.area,
                 editSexo: p.sexo,
-                editCelular: p.celular,
+                editCelular: normalizeDisplayValue(p.celular),
                 editCorreo: p.correo,
                 editFechaNac: p.fecha_nacimiento || '',
                 editEstado: p.estado,
@@ -223,7 +240,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 editNivelEdu: p.nivel_educativo,
                 editProfesion: p.profesion,
                 editContacto: p.contacto_emergencia || '',
-                editTelContacto: p.telefono_contacto || '',
+                editTelContacto: normalizeDisplayValue(p.telefono_contacto),
                 editParentezco: p.parentezco || '',
             };
             Object.entries(fields).forEach(([id, val]) => {
@@ -238,19 +255,39 @@ document.addEventListener('DOMContentLoaded', () => {
         editForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const id = document.getElementById('editId').value;
+            const saveBtn = editForm.querySelector('button[type="submit"]');
             const formData = {};
             editForm.querySelectorAll('input[name], select[name]').forEach(el => {
                 formData[el.name] = el.value;
             });
-            const res = await fetch(`/api/empleado/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData),
-            });
-            if (res.ok) {
-                editModal.classList.remove('active');
-                detailOverlay.classList.remove('active');
-                fetchData(currentDate.getFullYear(), currentDate.getMonth() + 1);
+
+            // Loading state
+            if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Guardando...'; }
+
+            try {
+                const res = await fetch(`/api/empleado/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData),
+                });
+
+                if (res.ok) {
+                    editModal.classList.remove('active');
+                    detailOverlay.classList.remove('active');
+                    fetchData(currentDate.getFullYear(), currentDate.getMonth() + 1);
+                    if (window.toast) window.toast('Empleado actualizado correctamente', 'success');
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    const msg = err.error || `Error al guardar (${res.status})`;
+                    if (window.toast) window.toast(msg, 'error');
+                    else alert(msg);
+                }
+            } catch (err) {
+                const msg = 'Error de conexión al guardar';
+                if (window.toast) window.toast(msg, 'error');
+                else alert(msg);
+            } finally {
+                if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Guardar'; }
             }
         });
     }

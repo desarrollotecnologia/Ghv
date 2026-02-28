@@ -7,7 +7,7 @@
         Exportar
     </a>
     {% if can_write %}
-    <a href="#" class="btn btn-primary btn-sm">+ Add</a>
+    <a href="{{ url_for('crear_empleado') }}" class="btn btn-primary btn-sm">+ Nuevo Empleado</a>
     {% endif %}
 </div>
 {% endblock %}
@@ -50,9 +50,7 @@
                     </td>
                     {% endfor %}
                     <td>
-                        {% set dk = detail_kwargs.copy() %}
-                        {% if dk.update({"cedula": emp.id_cedula}) %}{% endif %}
-                        <a href="{{ url_for(detail_route, **dk) }}" class="btn-icon" title="Ver detalle">
+                        <a href="{{ url_for(detail_route, cedula=emp.id_cedula, **detail_kwargs) }}" class="btn-icon" title="Ver detalle">
                             <span class="material-symbols-outlined">chevron_right</span>
                         </a>
                     </td>

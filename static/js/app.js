@@ -226,8 +226,10 @@ const RT = {
     },
 
     async _autoRefresh() {
-        // Skip if a modal is open or already refreshing
-        if (document.querySelector('.modal-overlay.active') || this._refreshing) return;
+        // Skip if a modal or calendar detail panel is open, or already refreshing
+        if (document.querySelector('.modal-overlay.active') ||
+            document.querySelector('.cal-detail-overlay.active') ||
+            this._refreshing) return;
         this._refreshing = true;
         this._setLiveState('syncing');
         try {
@@ -324,3 +326,6 @@ const RT = {
         }, durationMs);
     },
 };
+
+// Expose toast globally so calendar.js and other scripts can use it
+window.toast = (msg, type, ms) => RT.toast(msg, type, ms);

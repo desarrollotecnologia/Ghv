@@ -4,6 +4,7 @@ from flask import (
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
+import re
 import mysql.connector
 import io
 from datetime import datetime, date
@@ -49,16 +50,52 @@ def execute(sql, params=None):
     return lid
 
 
-# ── Auth helpers ──────────────────────────────────────────────
+# ── Auth helpers (carga desde BD: rol_permiso, rol_modulo) ───
 
-ROLE_PERMISSIONS = {
-    "ADMIN":                 "ALL",
-    "COORD. GH":             "ALL",
-    "GESTOR DE CONTRATACION":"WRITE",
-    "BIENESTAR SOCIAL":      "WRITE",
-    "GESTOR DE NOMINA":      "WRITE",
-    "GESTOR SST":            "READ",
+# Fallback si no existen tablas o están vacías
+_ROLE_PERMISSIONS_FALLBACK = {
+    "ADMIN": "ALL", "COORD. GH": "ALL", "GESTOR DE CONTRATACION": "WRITE",
+    "BIENESTAR SOCIAL": "WRITE", "GESTOR DE NOMINA": "WRITE", "GESTOR SST": "READ",
 }
+
+
+def _load_role_permissions_from_db():
+    """Devuelve dict rol -> nivel (READ/WRITE/ALL) desde rol_permiso, o None si no existe tabla."""
+    try:
+        rows = query("SELECT rol_nombre, nivel FROM rol_permiso")
+        if rows:
+            return {r["rol_nombre"]: r["nivel"] for r in rows}
+    except Exception:
+        pass
+    return None
+
+
+def _load_role_modules_from_db():
+    """Devuelve dict rol -> { modulo_key: bool } desde rol_modulo, o None si no existe tabla."""
+    try:
+        rows = query("SELECT rol_nombre, modulo_key, visible FROM rol_modulo")
+        if not rows:
+            return None
+        by_rol = {}
+        for r in rows:
+            by_rol.setdefault(r["rol_nombre"], {})[r["modulo_key"]] = bool(r["visible"])
+        return by_rol
+    except Exception:
+        pass
+    return None
+
+
+def get_role_permission(rol):
+    """Nivel de permiso del rol (READ/WRITE/ALL). Desde BD o fallback."""
+    if not hasattr(g, "_role_permissions"):
+        g._role_permissions = _load_role_permissions_from_db() or _ROLE_PERMISSIONS_FALLBACK
+    return g._role_permissions.get(rol, "READ")
+
+
+def get_acciones_for_rol(rol):
+    """Texto de acciones para usuario según permiso del rol. Se guarda en BD en usuario.acciones."""
+    perm = get_role_permission(rol)
+    return {"ALL": "TODOS LOS CAMBIOS", "WRITE": "AGREGAR Y MODIFICAR", "READ": "VISTA"}.get(perm, "VISTA")
 
 
 def get_current_user():
@@ -72,10 +109,17 @@ def get_current_user():
     return g._user
 
 
+def _is_api_request():
+    """True si la petición espera JSON (rutas /api/ o Accept: application/json)."""
+    return request.path.startswith("/api/") or "application/json" in request.accept_mimetypes
+
+
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if get_current_user() is None:
+            if _is_api_request():
+                return jsonify({"error": "No autenticado"}), 401
             flash("Debes iniciar sesión", "error")
             return redirect(url_for("login"))
         return f(*args, **kwargs)
@@ -89,35 +133,20 @@ def role_required(*allowed):
         def decorated(*args, **kwargs):
             user = get_current_user()
             if user is None:
+                if _is_api_request():
+                    return jsonify({"error": "No autenticado"}), 401
                 return redirect(url_for("login"))
-            perm = ROLE_PERMISSIONS.get(user["rol"], "READ")
+            perm = get_role_permission(user["rol"])
             levels = {"READ": 0, "WRITE": 1, "ALL": 2}
             min_level = max(levels.get(a, 0) for a in allowed)
             if levels.get(perm, 0) < min_level:
+                if _is_api_request():
+                    return jsonify({"error": "Sin permisos"}), 403
                 flash("No tienes permisos para esta acción", "error")
                 return redirect(url_for("home"))
             return f(*args, **kwargs)
         return decorated
     return decorator
-
-
-def module_required(module_key):
-    """Restrict access to users whose role has the given module enabled."""
-    def decorator(f):
-        @wraps(f)
-        def decorated(*args, **kwargs):
-            user = get_current_user()
-            if user is None:
-                return redirect(url_for("login"))
-            rol = user["rol"]
-            role_mods = _ROLE_MODULES.get(rol, _DEFAULT_MODULES)
-            if not role_mods.get(module_key, False):
-                flash("No tienes acceso a este módulo", "error")
-                return redirect(url_for("home"))
-            return f(*args, **kwargs)
-        return decorated
-    return decorator
-
 
 
 # Qué módulos del sidebar/home puede ver cada rol.
@@ -195,7 +224,60 @@ _ROLE_MODULES = {
 }
 
 # Módulo por defecto (sin rol): nada visible
-_DEFAULT_MODULES = {k: False for k in ["organizacion","personal","retiro","familia","eventos","eps","fondos","reportes","admin","dashboard","total_hijos"]}
+_DEFAULT_MODULES = {k: False for k in [
+    "organizacion", "personal", "personal_inactivo", "retiro",
+    "familia", "eventos", "eps", "fondos",
+    "reportes", "dashboard", "total_hijos", "admin",
+]}
+
+
+def _get_effective_modules(rol):
+    """Calcula el mapa completo de módulos visibles para un rol.
+    Primero intenta desde BD (rol_modulo); si no hay datos, usa _ROLE_MODULES."""
+    if not hasattr(g, "_role_modules_db"):
+        g._role_modules_db = _load_role_modules_from_db()
+    base = dict(_DEFAULT_MODULES)
+    if g._role_modules_db and rol in g._role_modules_db:
+        base.update(g._role_modules_db[rol])
+    else:
+        base.update(_ROLE_MODULES.get(rol, {}))
+
+    vm = dict(_DEFAULT_MODULES)
+    vm.update(base)
+
+    # dashboard y total_hijos heredan de reportes si no están definidos
+    if "dashboard" not in base:
+        vm["dashboard"] = vm.get("reportes", False)
+    if "total_hijos" not in base:
+        vm["total_hijos"] = vm.get("reportes", False)
+    if "personal_inactivo" not in base:
+        vm["personal_inactivo"] = vm.get("personal", False)
+
+    # Restricciones específicas por rol (igual que antes)
+    if rol == "GESTOR DE NOMINA":
+        vm["total_hijos"] = False
+    if rol == "BIENESTAR SOCIAL":
+        vm["dashboard"] = False
+    if rol == "GESTOR SST":
+        vm["personal_inactivo"] = False
+
+    return vm
+
+
+def module_required(module_key):
+    """Restringe el acceso a rutas según visibilidad de módulo por rol."""
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            user = get_current_user()
+            if user is None:
+                return redirect(url_for("login"))
+            if not _get_effective_modules(user["rol"]).get(module_key, False):
+                flash("No tienes acceso a este módulo", "error")
+                return redirect(url_for("home"))
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
 
 
 @app.context_processor
@@ -203,31 +285,13 @@ def inject_user():
     user = get_current_user()
     can_write = False
     can_admin = False
-    vm = dict(_DEFAULT_MODULES)   # visible_modules
+    vm = dict(_DEFAULT_MODULES)
     if user:
         rol = user["rol"]
-        perm = ROLE_PERMISSIONS.get(rol, "READ")
+        perm = get_role_permission(rol)
         can_write = perm in ("WRITE", "ALL")
         can_admin = perm == "ALL"
-        base = _ROLE_MODULES.get(rol, _DEFAULT_MODULES)
-        vm = dict(_DEFAULT_MODULES)
-        vm.update(base)
-        # Derivados: dashboard y total_hijos heredan de reportes si no se definen
-        if "dashboard" not in base:
-            vm["dashboard"] = vm.get("reportes", False)
-        if "total_hijos" not in base:
-            vm["total_hijos"] = vm.get("reportes", False)
-        # GESTOR DE NOMINA: no ve total_hijos
-        if rol == "GESTOR DE NOMINA":
-            vm["total_hijos"] = False
-        # BIENESTAR SOCIAL: no ve dashboard
-        if rol == "BIENESTAR SOCIAL":
-            vm["dashboard"] = False
-        # GESTOR SST: solo personal activo (inactivo también oculto)
-        if rol == "GESTOR SST":
-            vm["personal_inactivo"] = False
-        else:
-            vm["personal_inactivo"] = vm.get("personal", False)
+        vm = _get_effective_modules(rol)
     return dict(current_user=user, can_write=can_write, can_admin=can_admin, vm=vm)
 
 
@@ -287,12 +351,129 @@ def parse_fecha(fecha_str):
         return None
     if isinstance(fecha_str, date):
         return fecha_str
-    for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d", "%m/%d/%Y"):
+    for fmt in ("%m/%d/%Y", "%m/%d/%y", "%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"):
         try:
             return datetime.strptime(str(fecha_str).strip(), fmt).date()
         except (ValueError, AttributeError):
             continue
     return None
+
+
+def _calendar_label_maps():
+    """Mapas id -> etiqueta para tipo_documento, nivel_educativo, profesion (para mostrar en calendario)."""
+    def _s(v):
+        return str(v).strip() if v is not None else ""
+
+    tipo_map = {}
+    for row in query("SELECT id_tipo_documento, tipo_documento FROM tipo_documento"):
+        tid, tlabel = _s(row.get("id_tipo_documento")), _s(row.get("tipo_documento"))
+        if tid: tipo_map[tid] = row["tipo_documento"]
+        if tlabel: tipo_map[tlabel] = row["tipo_documento"]
+    nivel_map = {}
+    for row in query("SELECT id_nivel, nivel FROM nivel_educativo"):
+        nid, nlabel = _s(row.get("id_nivel")), _s(row.get("nivel"))
+        if nid: nivel_map[nid] = row["nivel"]
+        if nlabel: nivel_map[nlabel] = row["nivel"]
+    prof_map = {}
+    for row in query("SELECT id_profesion, profesion FROM profesion"):
+        pid, plabel = _s(row.get("id_profesion")), _s(row.get("profesion"))
+        if pid: prof_map[pid] = row["profesion"]
+        if plabel: prof_map[plabel] = row["profesion"]
+    return tipo_map, nivel_map, prof_map
+
+
+def _normalize_celular(val):
+    """Evita mostrar celular como 3145831927.0; devuelve string sin decimal."""
+    if val is None:
+        return ""
+    # Decimal (MySQL) o float
+    if hasattr(val, "__float__"):
+        try:
+            f = float(val)
+            return str(int(f)) if f == int(f) else str(val)
+        except (ValueError, TypeError):
+            pass
+    s = str(val).strip()
+    if not s:
+        return ""
+    if s.endswith(".0"):
+        try:
+            return str(int(float(s)))
+        except ValueError:
+            pass
+    return s
+
+
+def _looks_like_id(val):
+    """True si el valor parece un id (código) y no un nombre legible."""
+    if not val or len(val) > 80:
+        return False
+    s = str(val).strip()
+    return bool(re.match(r"^[a-z0-9]{6,20}$", s, re.I))
+
+
+def enrich_calendar_row(row_dict, tipo_map, nivel_map, prof_map):
+    """Pone en row_dict celular normalizado y etiquetas para tipo_documento, nivel_educativo, profesion."""
+    if "celular" in row_dict:
+        row_dict["celular"] = _normalize_celular(row_dict.get("celular"))
+    if "telefono_contacto" in row_dict:
+        row_dict["telefono_contacto"] = _normalize_celular(row_dict.get("telefono_contacto"))
+    v = str(row_dict.get("tipo_documento") or "").strip()
+    if v:
+        row_dict["tipo_documento"] = tipo_map.get(v, v)
+    v = str(row_dict.get("nivel_educativo") or "").strip()
+    if v:
+        row_dict["nivel_educativo"] = nivel_map.get(v, v)
+    v = str(row_dict.get("profesion") or "").strip()
+    if v:
+        row_dict["profesion"] = prof_map.get(v, v)
+
+
+def _resolve_calendar_ids_in_results(results):
+    """Resuelve profesion/tipo_documento/nivel_educativo que sigan como id en results (fallback por si el mapa falló)."""
+    ids_prof = set()
+    ids_tipo = set()
+    ids_nivel = set()
+    for item in results:
+        p = str(item.get("profesion") or "").strip()
+        if p and _looks_like_id(p):
+            ids_prof.add(p)
+        t = str(item.get("tipo_documento") or "").strip()
+        if t and _looks_like_id(t) and len(t) <= 20:
+            ids_tipo.add(t)
+        n = str(item.get("nivel_educativo") or "").strip()
+        if n and _looks_like_id(n):
+            ids_nivel.add(n)
+    if ids_prof:
+        rows = query(
+            "SELECT id_profesion, profesion FROM profesion WHERE id_profesion IN (" + ",".join(["%s"] * len(ids_prof)) + ")",
+            tuple(ids_prof),
+        )
+        prof_by_id = {str(r["id_profesion"]).strip(): r["profesion"] for r in rows}
+        for item in results:
+            p = str(item.get("profesion") or "").strip()
+            if p in prof_by_id:
+                item["profesion"] = prof_by_id[p]
+    if ids_tipo:
+        rows = query(
+            "SELECT id_tipo_documento, tipo_documento FROM tipo_documento WHERE id_tipo_documento IN (" + ",".join(["%s"] * len(ids_tipo)) + ")",
+            tuple(ids_tipo),
+        )
+        tipo_by_id = {str(r["id_tipo_documento"]).strip(): r["tipo_documento"] for r in rows}
+        for item in results:
+            t = str(item.get("tipo_documento") or "").strip()
+            if t in tipo_by_id:
+                item["tipo_documento"] = tipo_by_id[t]
+    if ids_nivel:
+        rows = query(
+            "SELECT id_nivel, nivel FROM nivel_educativo WHERE id_nivel IN (" + ",".join(["%s"] * len(ids_nivel)) + ")",
+            tuple(ids_nivel),
+        )
+        nivel_by_id = {str(r["id_nivel"]).strip(): r["nivel"] for r in rows}
+        for item in results:
+            n = str(item.get("nivel_educativo") or "").strip()
+            if n in nivel_by_id:
+                item["nivel_educativo"] = nivel_by_id[n]
 
 
 def enrich_empleados(empleados):
@@ -470,6 +651,7 @@ def api_cumpleanos():
         "FROM empleado WHERE estado = 'ACTIVO'"
     )
 
+    tipo_map, nivel_map, prof_map = _calendar_label_maps()
     results = []
     for r in rows:
         bd = parse_fecha(r["fecha_nacimiento"])
@@ -478,7 +660,7 @@ def api_cumpleanos():
                 cumple_date = date(year, bd.month, bd.day)
             except ValueError:
                 continue
-            results.append({
+            item = {
                 "id_cedula": r["id_cedula"],
                 "apellidos_nombre": r["apellidos_nombre"],
                 "fecha_nacimiento": r["fecha_nacimiento"],
@@ -497,8 +679,11 @@ def api_cumpleanos():
                 "dia": bd.day,
                 "mes_cumple": bd.month,
                 "cumpleanos": cumple_date.strftime("%d/%m/%Y"),
-            })
+            }
+            enrich_calendar_row(item, tipo_map, nivel_map, prof_map)
+            results.append(item)
 
+    _resolve_calendar_ids_in_results(results)
     return jsonify(results)
 
 
@@ -524,6 +709,7 @@ def api_aniversario():
         "FROM empleado e WHERE e.estado = 'ACTIVO'"
     )
 
+    tipo_map, nivel_map, prof_map = _calendar_label_maps()
     results = []
     today = date.today()
     for r in rows:
@@ -553,7 +739,7 @@ def api_aniversario():
                 except ValueError:
                     pass
 
-            results.append({
+            item = {
                 "id_cedula": r["id_cedula"],
                 "apellidos_nombre": r["apellidos_nombre"],
                 "fecha_ingreso": r["fecha_ingreso"],
@@ -572,8 +758,11 @@ def api_aniversario():
                 "aniversario_laboral": aniv_date.strftime("%d/%m/%Y"),
                 "antiguedad": antiguedad,
                 "dia": fi.day,
-            })
+            }
+            enrich_calendar_row(item, tipo_map, nivel_map, prof_map)
+            results.append(item)
 
+    _resolve_calendar_ids_in_results(results)
     return jsonify(results)
 
 
@@ -921,7 +1110,7 @@ def editar_hijo(id):
     return redirect(url_for("detalle_empleado", id=cedula))
 
 
-@app.route("/hijo/<id>/eliminar")
+@app.route("/hijo/<id>/eliminar", methods=["POST"])
 @login_required
 @role_required("ALL")
 def eliminar_hijo(id):
@@ -935,7 +1124,7 @@ def eliminar_hijo(id):
 
 # ── CRUD RETIRADOS ───────────────────────────────────────────
 
-@app.route("/retirado/<id>/eliminar")
+@app.route("/retirado/<id>/eliminar", methods=["POST"])
 @login_required
 @role_required("ALL")
 def eliminar_retirado(id):
@@ -1364,6 +1553,7 @@ def view_eps():
 
 @app.route("/view-eps/add", methods=["POST"])
 @login_required
+@role_required("WRITE")
 def eps_add():
     nombre = (request.form.get("nombre") or "").strip().upper()
     if not nombre:
@@ -1521,6 +1711,7 @@ def view_fondos():
 
 @app.route("/view-fondos/add", methods=["POST"])
 @login_required
+@role_required("WRITE")
 def fondos_add():
     nombre = (request.form.get("nombre") or "").strip().upper()
     if not nombre:
@@ -1913,16 +2104,6 @@ def fondo_eliminar(fondo_name):
 
 # ── USUARIOS (solo ADMIN) ────────────────────────────────────
 
-_ACCIONES_MAP = {
-    "ADMIN": "TODOS LOS CAMBIOS",
-    "COORD. GH": "TODOS LOS CAMBIOS",
-    "GESTOR DE CONTRATACION": "AGREGAR Y MODIFICAR",
-    "BIENESTAR SOCIAL": "AGREGAR Y MODIFICAR",
-    "GESTOR DE NOMINA": "AGREGAR Y MODIFICAR",
-    "GESTOR SST": "VISTA",
-}
-
-
 @app.route("/users/nuevo", methods=["POST"])
 @login_required
 @role_required("ALL")
@@ -1953,7 +2134,7 @@ def usuario_nuevo():
         "INSERT INTO usuario (id_user, email, password_hash, nombre, rol, estado, acciones) "
         "VALUES (%s, %s, %s, %s, %s, %s, %s)",
         (new_id, email, generate_password_hash(password),
-         nombre, rol, True, _ACCIONES_MAP.get(rol, "VISTA")),
+         nombre, rol, True, get_acciones_for_rol(rol)),
     )
     flash(f"Usuario {nombre} creado correctamente (ID: {new_id})", "success")
     return redirect(url_for("usuarios"))
@@ -1995,7 +2176,7 @@ def usuario_editar(id):
     rol = (request.form.get("rol") or "").strip()
     execute(
         "UPDATE usuario SET nombre=%s, email=%s, rol=%s, acciones=%s WHERE id_user=%s",
-        (nombre, email, rol, _ACCIONES_MAP.get(rol, "VISTA"), id),
+        (nombre, email, rol, get_acciones_for_rol(rol), id),
     )
     flash("Usuario actualizado", "success")
     return redirect(url_for("usuarios"))
@@ -2322,6 +2503,7 @@ def dashboard_data(chart_key):
 
 @app.route("/dashboard/<chart_key>/export")
 @login_required
+@module_required("dashboard")
 def dashboard_export(chart_key):
     cfg = DASHBOARD_CHARTS.get(chart_key)
     if not cfg:
@@ -2405,4 +2587,4 @@ def test_db():
 # ── RUN ───────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True, host="0.0.0.0", port=5000)

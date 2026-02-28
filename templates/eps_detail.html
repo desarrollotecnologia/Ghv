@@ -24,7 +24,7 @@
                     Expand
                 </a>
                 {% if can_write is defined and can_write %}
-                <a href="#" class="btn btn-primary btn-sm">+ Add</a>
+                <a href="{{ url_for('crear_empleado') }}" class="btn btn-primary btn-sm">+ Nuevo Empleado</a>
                 {% endif %}
             </div>
         </div>
