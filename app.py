@@ -12,6 +12,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from config import Config
+from mail_utils import notificar_nueva_solicitud_permiso, notificar_resolucion_permiso
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -162,6 +163,7 @@ _ROLE_MODULES = {
         "fondos":       True,   # Fondo de Pensiones
         "reportes":     True,   # Total Hijos, Dashboard
         "admin":        True,   # Home Setting, Usuarios
+        "permisos":     True,   # Solicitud permiso/licencia
     },
     "COORD. GH": {
         "organizacion": True,
@@ -173,6 +175,7 @@ _ROLE_MODULES = {
         "fondos":       True,
         "reportes":     True,
         "admin":        True,
+        "permisos":     True,
     },
     "GESTOR DE CONTRATACION": {
         "organizacion": False,
@@ -184,6 +187,7 @@ _ROLE_MODULES = {
         "fondos":       True,
         "reportes":     True,
         "admin":        False,
+        "permisos":     True,
     },
     "BIENESTAR SOCIAL": {
         "organizacion": False,
@@ -196,6 +200,7 @@ _ROLE_MODULES = {
         "reportes":     True,   # solo Total Hijos
         "dashboard":    False,  # sin Dashboard
         "admin":        False,
+        "permisos":     True,
     },
     "GESTOR DE NOMINA": {
         "organizacion": False,
@@ -208,6 +213,7 @@ _ROLE_MODULES = {
         "reportes":     True,   # solo Dashboard
         "total_hijos":  False,
         "admin":        False,
+        "permisos":     True,
     },
     "GESTOR SST": {
         "organizacion": False,
@@ -220,6 +226,7 @@ _ROLE_MODULES = {
         "reportes":     True,   # solo Dashboard
         "total_hijos":  False,
         "admin":        False,
+        "permisos":     True,
     },
 }
 
@@ -227,21 +234,44 @@ _ROLE_MODULES = {
 _DEFAULT_MODULES = {k: False for k in [
     "organizacion", "personal", "personal_inactivo", "retiro",
     "familia", "eventos", "eps", "fondos",
-    "reportes", "dashboard", "total_hijos", "admin",
+    "reportes", "dashboard", "total_hijos", "admin", "permisos",
 ]}
+
+
+def _normalize_rol(rol):
+    """Normaliza el rol para comparar: sin tildes, mayúsculas, espacios colapsados."""
+    if not rol or not isinstance(rol, str):
+        return ""
+    s = " ".join(str(rol).upper().split())
+    for old, new in [("Á", "A"), ("É", "E"), ("Í", "I"), ("Ó", "O"), ("Ú", "U"), ("Ñ", "N")]:
+        s = s.replace(old, new)
+    return s
+
+
+def _rol_match(rol_from_db):
+    """Devuelve la clave de _ROLE_MODULES que corresponde a rol_from_db (exacta o normalizada)."""
+    if rol_from_db in _ROLE_MODULES:
+        return rol_from_db
+    norm = _normalize_rol(rol_from_db)
+    for key in _ROLE_MODULES:
+        if _normalize_rol(key) == norm:
+            return key
+    return rol_from_db
 
 
 def _get_effective_modules(rol):
     """Calcula el mapa completo de módulos visibles para un rol.
-    Primero intenta desde BD (rol_modulo); si no hay datos, usa _ROLE_MODULES."""
+    Usa _ROLE_MODULES como base; la BD solo puede sumar visibilidad (no quitar), así
+    gestor.contratacion@colbeef.com (GESTOR DE CONTRATACION) siempre ve Permisos."""
     if not hasattr(g, "_role_modules_db"):
         g._role_modules_db = _load_role_modules_from_db()
+    rol_key = _rol_match(rol)
     base = dict(_DEFAULT_MODULES)
+    base.update(_ROLE_MODULES.get(rol_key, {}))
     if g._role_modules_db and rol in g._role_modules_db:
-        base.update(g._role_modules_db[rol])
-    else:
-        base.update(_ROLE_MODULES.get(rol, {}))
-
+        for k, v in g._role_modules_db[rol].items():
+            if v:
+                base[k] = True
     vm = dict(_DEFAULT_MODULES)
     vm.update(base)
 
@@ -254,11 +284,11 @@ def _get_effective_modules(rol):
         vm["personal_inactivo"] = vm.get("personal", False)
 
     # Restricciones específicas por rol (igual que antes)
-    if rol == "GESTOR DE NOMINA":
+    if rol_key == "GESTOR DE NOMINA":
         vm["total_hijos"] = False
-    if rol == "BIENESTAR SOCIAL":
+    if rol_key == "BIENESTAR SOCIAL":
         vm["dashboard"] = False
-    if rol == "GESTOR SST":
+    if rol_key == "GESTOR SST":
         vm["personal_inactivo"] = False
 
     return vm
@@ -286,13 +316,24 @@ def inject_user():
     can_write = False
     can_admin = False
     vm = dict(_DEFAULT_MODULES)
+    show_permisos_menu = False
     if user:
-        rol = user["rol"]
+        rol = user.get("rol") or ""
         perm = get_role_permission(rol)
         can_write = perm in ("WRITE", "ALL")
         can_admin = perm == "ALL"
         vm = _get_effective_modules(rol)
-    return dict(current_user=user, can_write=can_write, can_admin=can_admin, vm=vm)
+        # Mostrar Permisos si vm lo tiene O si el rol es Gestor de Contratación (por nombre)
+        show_permisos_menu = vm.get("permisos") is True or (
+            "GESTOR" in rol.upper() and "CONTRAT" in rol.upper()
+        )
+    return dict(
+        current_user=user,
+        can_write=can_write,
+        can_admin=can_admin,
+        vm=vm,
+        show_permisos_menu=show_permisos_menu,
+    )
 
 
 # ── AUTH ROUTES ───────────────────────────────────────────────
@@ -733,6 +774,159 @@ def aniversario():
     return render_template("aniversario.html", active_page="Aniversario Laboral")
 
 
+# ── SOLICITUD DE PERMISO / LICENCIA ───────────────────────────
+
+def _puede_aprobar_permisos():
+    user = get_current_user()
+    return user and user.get("rol") in ("ADMIN", "COORD. GH")
+
+
+@app.route("/permisos")
+@login_required
+@module_required("permisos")
+def permisos_index():
+    """Listado para coordinadora (aprobar/rechazar) o formulario para solicitar."""
+    if _puede_aprobar_permisos():
+        pendientes = query(
+            "SELECT p.*, e.apellidos_nombre, e.direccion_email "
+            "FROM solicitud_permiso p JOIN empleado e ON p.id_cedula = e.id_cedula "
+            "ORDER BY p.estado = 'PENDIENTE' DESC, p.fecha_solicitud DESC"
+        )
+        for s in pendientes:
+            if s.get("fecha_solicitud"):
+                d = s["fecha_solicitud"]
+                s["fecha_solicitud_str"] = d.strftime("%d/%m/%Y %H:%M") if hasattr(d, "strftime") else str(d)
+            else:
+                s["fecha_solicitud_str"] = ""
+        return render_template(
+            "permisos_list.html",
+            active_page="Solicitud de permiso",
+            solicitudes=pendientes,
+            puede_aprobar=True,
+        )
+    return redirect(url_for("permiso_solicitar"))
+
+
+@app.route("/permisos/solicitar", methods=["GET", "POST"])
+@login_required
+@module_required("permisos")
+def permiso_solicitar():
+    """Formulario GH-FR-007: permiso o licencia (área, remunerado/no, hora inicio/fin)."""
+    if request.method == "POST":
+        id_cedula = (request.form.get("id_cedula") or "").strip()
+        tipo = (request.form.get("tipo") or "Permiso").strip()
+        fecha_desde = request.form.get("fecha_desde")
+        fecha_hasta = request.form.get("fecha_hasta")
+        motivo = (request.form.get("motivo") or "").strip()
+        area = (request.form.get("area") or "").strip() or None
+        pr = request.form.get("permiso_remunerado")
+        pnr = request.form.get("permiso_no_remunerado")
+        permiso_remunerado = int(pr) if pr in ("0", "1") else None
+        permiso_no_remunerado = int(pnr) if pnr in ("0", "1") else None
+        hora_inicio = (request.form.get("hora_inicio") or "").strip() or None
+        hora_fin = (request.form.get("hora_fin") or "").strip() or None
+        if not id_cedula or not fecha_desde or not fecha_hasta:
+            flash("Complete empleado, fecha desde y fecha hasta.", "error")
+            return redirect(url_for("permiso_solicitar"))
+        emp = query("SELECT id_cedula, apellidos_nombre, direccion_email, area FROM empleado WHERE id_cedula = %s AND estado = 'ACTIVO'", (id_cedula,), one=True)
+        if not emp:
+            flash("No se encontró un empleado activo con esa cédula.", "error")
+            return redirect(url_for("permiso_solicitar"))
+        if not area and emp.get("area"):
+            area = emp["area"]
+        try:
+            execute(
+                "INSERT INTO solicitud_permiso (id_cedula, tipo, fecha_desde, fecha_hasta, motivo, solicitante_email, area, permiso_remunerado, permiso_no_remunerado, hora_inicio, hora_fin) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (id_cedula, tipo, fecha_desde, fecha_hasta, motivo, get_current_user() and get_current_user().get("email"), area, permiso_remunerado, permiso_no_remunerado, hora_inicio, hora_fin),
+            )
+        except Exception as e:
+            if "Unknown column" in str(e):
+                execute(
+                    "INSERT INTO solicitud_permiso (id_cedula, tipo, fecha_desde, fecha_hasta, motivo, solicitante_email) VALUES (%s,%s,%s,%s,%s,%s)",
+                    (id_cedula, tipo, fecha_desde, fecha_hasta, motivo, get_current_user() and get_current_user().get("email")),
+                )
+            else:
+                raise
+        row = query("SELECT * FROM solicitud_permiso WHERE id_cedula = %s ORDER BY id DESC LIMIT 1", (id_cedula,), one=True)
+        correos_ok = notificar_nueva_solicitud_permiso(app, row, emp["apellidos_nombre"], emp.get("direccion_email"))
+        if correos_ok:
+            flash("Solicitud registrada. Se envió correo a Coordinación GH y a Gestor de Contratación.", "success")
+        else:
+            flash("Solicitud registrada. Revisar configuración de correo (MAIL_ENABLED, MAIL_PASSWORD) si no llegaron los avisos.", "info")
+        return redirect(url_for("permisos_index"))
+    empleados = query("SELECT id_cedula, apellidos_nombre, area FROM empleado WHERE estado = 'ACTIVO' ORDER BY apellidos_nombre")
+    return render_template(
+        "permiso_form.html",
+        active_page="Solicitud de permiso",
+        empleados=empleados,
+    )
+
+
+@app.route("/permisos/<int:id>/aprobar", methods=["POST"])
+@login_required
+@module_required("permisos")
+def permiso_aprobar(id):
+    if not _puede_aprobar_permisos():
+        flash("No tiene permiso para aprobar solicitudes.", "error")
+        return redirect(url_for("permisos_index"))
+    observaciones = (request.form.get("observaciones") or "").strip()
+    solicitud = query("SELECT * FROM solicitud_permiso WHERE id = %s", (id,), one=True)
+    if not solicitud or solicitud["estado"] != "PENDIENTE":
+        flash("Solicitud no encontrada o ya fue resuelta.", "error")
+        return redirect(url_for("permisos_index"))
+    execute(
+        "UPDATE solicitud_permiso SET estado = 'APROBADO', observaciones = %s, resuelto_por = %s, fecha_resolucion = NOW() WHERE id = %s",
+        (observaciones, get_current_user()["id_user"], id),
+    )
+    emp = query("SELECT apellidos_nombre, direccion_email FROM empleado WHERE id_cedula = %s", (solicitud["id_cedula"],), one=True)
+    correo_ok = notificar_resolucion_permiso(app, solicitud, emp["apellidos_nombre"] if emp else "", emp.get("direccion_email") if emp else "", aprobado=True, observaciones=observaciones)
+    try:
+        execute(
+            "UPDATE solicitud_permiso SET correo_resolucion_enviado = %s, correo_resolucion_at = IF(%s, NOW(), NULL) WHERE id = %s",
+            (1 if correo_ok else 0, correo_ok, id),
+        )
+    except Exception:
+        pass  # columnas no existen si no se ejecutó migration_correo_resolucion_validar.sql
+    if correo_ok:
+        flash("Solicitud aprobada. Se ha notificado al empleado por correo.", "success")
+    else:
+        flash("Solicitud aprobada. No se pudo enviar el correo al empleado (revisar consola y MAIL_PASSWORD en .env).", "warning")
+    return redirect(url_for("permisos_index"))
+
+
+@app.route("/permisos/<int:id>/rechazar", methods=["POST"])
+@login_required
+@module_required("permisos")
+def permiso_rechazar(id):
+    if not _puede_aprobar_permisos():
+        flash("No tiene permiso para rechazar solicitudes.", "error")
+        return redirect(url_for("permisos_index"))
+    observaciones = (request.form.get("observaciones") or "").strip()
+    solicitud = query("SELECT * FROM solicitud_permiso WHERE id = %s", (id,), one=True)
+    if not solicitud or solicitud["estado"] != "PENDIENTE":
+        flash("Solicitud no encontrada o ya fue resuelta.", "error")
+        return redirect(url_for("permisos_index"))
+    execute(
+        "UPDATE solicitud_permiso SET estado = 'RECHAZADO', observaciones = %s, resuelto_por = %s, fecha_resolucion = NOW() WHERE id = %s",
+        (observaciones, get_current_user()["id_user"], id),
+    )
+    emp = query("SELECT apellidos_nombre, direccion_email FROM empleado WHERE id_cedula = %s", (solicitud["id_cedula"],), one=True)
+    correo_ok = notificar_resolucion_permiso(app, solicitud, emp["apellidos_nombre"] if emp else "", emp.get("direccion_email") if emp else "", aprobado=False, observaciones=observaciones)
+    try:
+        execute(
+            "UPDATE solicitud_permiso SET correo_resolucion_enviado = %s, correo_resolucion_at = IF(%s, NOW(), NULL) WHERE id = %s",
+            (1 if correo_ok else 0, correo_ok, id),
+        )
+    except Exception:
+        pass  # columnas no existen si no se ejecutó migration_correo_resolucion_validar.sql
+    if correo_ok:
+        flash("Solicitud rechazada. Se ha notificado al empleado por correo.", "success")
+    else:
+        flash("Solicitud rechazada. No se pudo enviar el correo al empleado (revisar consola y MAIL_PASSWORD en .env).", "warning")
+    return redirect(url_for("permisos_index"))
+
+
 @app.route("/api/aniversario")
 @login_required
 def api_aniversario():
@@ -805,6 +999,7 @@ def api_aniversario():
 
 @app.route("/api/empleado/<id_cedula>", methods=["GET"])
 @login_required
+@module_required("personal")
 def api_empleado_get(id_cedula):
     emp = query("SELECT * FROM empleado WHERE id_cedula = %s", (id_cedula,), one=True)
     if not emp:
@@ -814,6 +1009,7 @@ def api_empleado_get(id_cedula):
 
 @app.route("/api/empleado/<id_cedula>", methods=["PUT"])
 @login_required
+@module_required("personal")
 @role_required("WRITE")
 def api_empleado_update(id_cedula):
     data = request.get_json()
@@ -840,6 +1036,7 @@ def api_empleado_update(id_cedula):
 
 @app.route("/personal-activo")
 @login_required
+@module_required("personal")
 def personal_activo():
     rows = query(
         "SELECT id_cedula, apellidos_nombre, tipo_documento, departamento, "
@@ -933,6 +1130,7 @@ def _form_context():
 
 @app.route("/personal-activo/<id>")
 @login_required
+@module_required("personal")
 def detalle_empleado(id):
     emp = query("SELECT * FROM empleado WHERE id_cedula = %s", (id,), one=True)
     if not emp:
@@ -953,6 +1151,7 @@ def detalle_empleado(id):
 
 @app.route("/personal-activo/nuevo", methods=["GET", "POST"])
 @login_required
+@module_required("personal")
 @role_required("WRITE")
 def crear_empleado():
     if request.method == "POST":
@@ -992,6 +1191,7 @@ def crear_empleado():
 
 @app.route("/personal-activo/<id>/editar", methods=["GET", "POST"])
 @login_required
+@module_required("personal")
 @role_required("WRITE")
 def editar_empleado(id):
     emp = query("SELECT * FROM empleado WHERE id_cedula = %s", (id,), one=True)
@@ -1028,6 +1228,7 @@ def editar_empleado(id):
 
 @app.route("/personal-activo/<id>/eliminar", methods=["POST"])
 @login_required
+@module_required("personal")
 @role_required("ALL")
 def eliminar_empleado(id):
     execute("DELETE FROM hijo WHERE id_cedula = %s", (id,))
@@ -1039,6 +1240,7 @@ def eliminar_empleado(id):
 
 @app.route("/personal-activo/<id>/retirar", methods=["GET", "POST"])
 @login_required
+@module_required("personal")
 @role_required("WRITE")
 def retirar_empleado(id):
     emp = query("SELECT * FROM empleado WHERE id_cedula = %s", (id,), one=True)
@@ -1095,6 +1297,7 @@ def retirar_empleado(id):
 
 @app.route("/hijo/nuevo", methods=["POST"])
 @login_required
+@module_required("familia")
 @role_required("WRITE")
 def crear_hijo():
     cedula = request.form.get("id_cedula", "").strip()
@@ -1129,6 +1332,7 @@ def crear_hijo():
 
 @app.route("/hijo/<id>/editar", methods=["POST"])
 @login_required
+@module_required("familia")
 @role_required("WRITE")
 def editar_hijo(id):
     cedula = request.form.get("id_cedula", "").strip()
@@ -1149,6 +1353,7 @@ def editar_hijo(id):
 
 @app.route("/hijo/<id>/eliminar", methods=["POST"])
 @login_required
+@module_required("familia")
 @role_required("ALL")
 def eliminar_hijo(id):
     redirect_cedula = request.args.get("redirect_cedula", "")
@@ -1163,6 +1368,7 @@ def eliminar_hijo(id):
 
 @app.route("/retirado/<id>/eliminar", methods=["POST"])
 @login_required
+@module_required("retiro")
 @role_required("ALL")
 def eliminar_retirado(id):
     redirect_cedula = request.args.get("redirect_cedula", "")
@@ -1590,6 +1796,7 @@ def view_eps():
 
 @app.route("/view-eps/add", methods=["POST"])
 @login_required
+@module_required("eps")
 @role_required("WRITE")
 def eps_add():
     nombre = (request.form.get("nombre") or "").strip().upper()
@@ -1748,6 +1955,7 @@ def view_fondos():
 
 @app.route("/view-fondos/add", methods=["POST"])
 @login_required
+@module_required("fondos")
 @role_required("WRITE")
 def fondos_add():
     nombre = (request.form.get("nombre") or "").strip().upper()
@@ -1885,6 +2093,7 @@ def fondo_retirado_detail(fondo_name, cedula, retiro_id):
 
 @app.route("/personal-activo/<id>/reactivar", methods=["POST"])
 @login_required
+@module_required("personal")
 @role_required("WRITE")
 def reactivar_empleado(id):
     execute("UPDATE empleado SET estado = 'ACTIVO' WHERE id_cedula = %s", (id,))
@@ -1896,6 +2105,7 @@ def reactivar_empleado(id):
 
 @app.route("/retirado/<id>/editar", methods=["GET", "POST"])
 @login_required
+@module_required("retiro")
 @role_required("WRITE")
 def editar_retirado(id):
     ret = query("SELECT * FROM retirado WHERE id_retiro = %s", (id,), one=True)
@@ -2143,6 +2353,7 @@ def fondo_eliminar(fondo_name):
 
 @app.route("/users/nuevo", methods=["POST"])
 @login_required
+@module_required("admin")
 @role_required("ALL")
 def usuario_nuevo():
     nombre   = (request.form.get("nombre")   or "").strip().upper()
@@ -2179,6 +2390,7 @@ def usuario_nuevo():
 
 @app.route("/users")
 @login_required
+@module_required("admin")
 @role_required("ALL")
 def usuarios():
     roles = query("SELECT nombre FROM rol ORDER BY nombre")
@@ -2206,6 +2418,7 @@ def usuarios():
 
 @app.route("/users/<id>/editar", methods=["POST"])
 @login_required
+@module_required("admin")
 @role_required("ALL")
 def usuario_editar(id):
     nombre = (request.form.get("nombre") or "").strip().upper()
@@ -2221,6 +2434,7 @@ def usuario_editar(id):
 
 @app.route("/users/<id>/toggle-estado", methods=["POST"])
 @login_required
+@module_required("admin")
 @role_required("ALL")
 def usuario_toggle_estado(id):
     user = query("SELECT estado, nombre FROM usuario WHERE id_user=%s", (id,), one=True)
@@ -2236,6 +2450,7 @@ def usuario_toggle_estado(id):
 
 @app.route("/users/<id>/reset-password", methods=["POST"])
 @login_required
+@module_required("admin")
 @role_required("ALL")
 def usuario_reset_password(id):
     nueva = (request.form.get("nueva_password") or "").strip()
@@ -2248,6 +2463,102 @@ def usuario_reset_password(id):
     )
     flash("Contraseña restablecida", "success")
     return redirect(url_for("usuarios"))
+
+
+# ── CATÁLOGOS (tipo documento, nivel educativo, profesión, motivo retiro) ──
+
+@app.route("/admin/catalogos")
+@login_required
+@module_required("admin")
+@role_required("ALL")
+def admin_catalogos():
+    """Lista y permite agregar registros a catálogos usados en empleados y retiros."""
+    tipo_doc = query("SELECT id_tipo_documento, tipo_documento FROM tipo_documento ORDER BY tipo_documento")
+    niveles = query("SELECT id_nivel, nivel FROM nivel_educativo ORDER BY nivel")
+    profesiones = query("SELECT id_profesion, profesion FROM profesion ORDER BY profesion")
+    motivos = query("SELECT id, tipo_retiro FROM motivo_retiro ORDER BY tipo_retiro")
+    return render_template(
+        "catalogos.html", active_page="Catalogos",
+        tipo_doc=tipo_doc, niveles=niveles, profesiones=profesiones, motivos=motivos,
+    )
+
+
+@app.route("/admin/catalogos/tipo-documento", methods=["POST"])
+@login_required
+@module_required("admin")
+@role_required("ALL")
+def catalogos_tipo_documento_add():
+    sigla = (request.form.get("id_tipo_documento") or "").strip().upper()[:50]
+    nombre = (request.form.get("tipo_documento") or "").strip()
+    if not sigla or not nombre:
+        flash("Sigla y nombre son obligatorios", "error")
+        return redirect(url_for("admin_catalogos"))
+    existing = query("SELECT id_tipo_documento FROM tipo_documento WHERE id_tipo_documento = %s", (sigla,), one=True)
+    if existing:
+        flash(f"Ya existe el tipo de documento con sigla {sigla}", "error")
+        return redirect(url_for("admin_catalogos"))
+    execute("INSERT INTO tipo_documento (id_tipo_documento, tipo_documento) VALUES (%s, %s)", (sigla, nombre))
+    flash(f"Tipo de documento '{nombre}' agregado", "success")
+    return redirect(url_for("admin_catalogos"))
+
+
+@app.route("/admin/catalogos/nivel-educativo", methods=["POST"])
+@login_required
+@module_required("admin")
+@role_required("ALL")
+def catalogos_nivel_add():
+    sigla = (request.form.get("id_nivel") or "").strip().upper()[:50]
+    nombre = (request.form.get("nivel") or "").strip()
+    if not sigla or not nombre:
+        flash("Sigla y nombre son obligatorios", "error")
+        return redirect(url_for("admin_catalogos"))
+    existing = query("SELECT id_nivel FROM nivel_educativo WHERE id_nivel = %s", (sigla,), one=True)
+    if existing:
+        flash(f"Ya existe el nivel con sigla {sigla}", "error")
+        return redirect(url_for("admin_catalogos"))
+    execute("INSERT INTO nivel_educativo (id_nivel, nivel) VALUES (%s, %s)", (sigla, nombre))
+    flash(f"Nivel educativo '{nombre}' agregado", "success")
+    return redirect(url_for("admin_catalogos"))
+
+
+@app.route("/admin/catalogos/profesion", methods=["POST"])
+@login_required
+@module_required("admin")
+@role_required("ALL")
+def catalogos_profesion_add():
+    id_prof = (request.form.get("id_profesion") or "").strip()[:100]
+    nombre = (request.form.get("profesion") or "").strip()
+    if not nombre:
+        flash("El nombre de la profesión es obligatorio", "error")
+        return redirect(url_for("admin_catalogos"))
+    if not id_prof:
+        import uuid
+        id_prof = str(uuid.uuid4())[:8]
+    existing = query("SELECT id_profesion FROM profesion WHERE id_profesion = %s", (id_prof,), one=True)
+    if existing:
+        flash("Ese ID ya existe; use otro o deje vacío para auto-generar", "error")
+        return redirect(url_for("admin_catalogos"))
+    execute("INSERT INTO profesion (id_profesion, profesion) VALUES (%s, %s)", (id_prof, nombre))
+    flash(f"Profesión '{nombre}' agregada", "success")
+    return redirect(url_for("admin_catalogos"))
+
+
+@app.route("/admin/catalogos/motivo-retiro", methods=["POST"])
+@login_required
+@module_required("admin")
+@role_required("ALL")
+def catalogos_motivo_retiro_add():
+    tipo_retiro = (request.form.get("tipo_retiro") or "").strip()
+    if not tipo_retiro:
+        flash("El motivo de retiro es obligatorio", "error")
+        return redirect(url_for("admin_catalogos"))
+    existing = query("SELECT id FROM motivo_retiro WHERE tipo_retiro = %s", (tipo_retiro,), one=True)
+    if existing:
+        flash(f"Ya existe el motivo '{tipo_retiro}'", "error")
+        return redirect(url_for("admin_catalogos"))
+    execute("INSERT INTO motivo_retiro (tipo_retiro) VALUES (%s)", (tipo_retiro,))
+    flash(f"Motivo de retiro '{tipo_retiro}' agregado", "success")
+    return redirect(url_for("admin_catalogos"))
 
 
 # ── VIEW TOTAL HIJOS ──────────────────────────────────────────
@@ -2579,6 +2890,7 @@ def dashboard_export(chart_key):
 
 @app.route("/home-setting")
 @login_required
+@module_required("admin")
 @role_required("ALL")
 def home_setting():
     rows = query("SELECT * FROM menu ORDER BY nombre")

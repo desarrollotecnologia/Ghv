@@ -134,6 +134,16 @@
         </div>
         {% endif %}
 
+        {% if show_permisos_menu %}
+        <div class="sidebar-section">
+            <span class="sidebar-label">Permisos</span>
+            <a href="{{ url_for('permisos_index') }}" class="nav-item {{ 'active' if active_page == 'Solicitud de permiso' }}">
+                <span class="material-symbols-outlined">assignment</span>
+                <span class="nav-label">Solicitud de permiso</span>
+            </a>
+        </div>
+        {% endif %}
+
         {% if vm.eps or vm.fondos %}
         <div class="sidebar-section">
             <span class="sidebar-label">Beneficios</span>
@@ -180,6 +190,10 @@
             <a href="{{ url_for('usuarios') }}" class="nav-item {{ 'active' if active_page == 'User' }}">
                 <span class="material-symbols-outlined">group</span>
                 <span class="nav-label">Usuarios</span>
+            </a>
+            <a href="{{ url_for('admin_catalogos') }}" class="nav-item {{ 'active' if active_page == 'Catalogos' }}">
+                <span class="material-symbols-outlined">list_alt</span>
+                <span class="nav-label">Catálogos</span>
             </a>
         </div>
         {% endif %}

@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% set pendientes = solicitudes|selectattr('estado', 'equalto', 'PENDIENTE')|list %}
+{% set aprobadas = solicitudes|selectattr('estado', 'equalto', 'APROBADO')|list %}
+{% set rechazadas = solicitudes|selectattr('estado', 'equalto', 'RECHAZADO')|list %}
+
+<div class="permisos-page">
+    {% if puede_aprobar %}
+    <div class="permisos-welcome">
+        <span class="permisos-welcome-icon material-symbols-outlined">verified_user</span>
+        <div class="permisos-welcome-text">
+            <strong>Bienvenida, coordinación.</strong> Aquí puede revisar y resolver las solicitudes con tranquilidad. Cada decisión queda registrada y el empleado recibe un correo con el resultado.
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="permisos-header">
+        <div class="permisos-header-text">
+            <h2 class="permisos-title">Solicitudes de permiso / licencia</h2>
+            {% if puede_aprobar %}
+            <p class="permisos-intro">Revise cada solicitud y elija <strong>Aprobar</strong> o <strong>Rechazar</strong>. No se enviará nada al empleado hasta que usted confirme.</p>
+            {% endif %}
+        </div>
+        <a href="{{ url_for('permiso_solicitar') }}" class="btn btn-outline btn-sm permisos-btn-nueva">
+            <span class="material-symbols-outlined" style="font-size:18px">add</span>
+            Nueva solicitud
+        </a>
+    </div>
+
+    {% if puede_aprobar and pendientes|length > 0 %}
+    <div class="permisos-alert-pendientes">
+        <span class="material-symbols-outlined">info</span>
+        Tiene <strong>{{ pendientes|length }}</strong> solicitud{{ 'es' if pendientes|length != 1 else '' }} pendiente{{ 's' if pendientes|length != 1 else '' }} por revisar.
+    </div>
+    {% endif %}
+
+    {% if puede_aprobar and solicitudes %}
+    <div class="permisos-stats">
+        <div class="permisos-stat permisos-stat-pendiente">
+            <span class="material-symbols-outlined">schedule</span>
+            <span class="permisos-stat-num">{{ pendientes|length }}</span>
+            <span class="permisos-stat-label">Pendientes</span>
+        </div>
+        <div class="permisos-stat permisos-stat-aprobado">
+            <span class="material-symbols-outlined">check_circle</span>
+            <span class="permisos-stat-num">{{ aprobadas|length }}</span>
+            <span class="permisos-stat-label">Aprobadas</span>
+        </div>
+        <div class="permisos-stat permisos-stat-rechazado">
+            <span class="material-symbols-outlined">cancel</span>
+            <span class="permisos-stat-num">{{ rechazadas|length }}</span>
+            <span class="permisos-stat-label">Rechazadas</span>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if solicitudes %}
+    <div class="permisos-list">
+        {% for s in solicitudes %}
+        <div class="permiso-card permiso-card-{{ s.estado|lower }}" data-estado="{{ s.estado }}">
+            <div class="permiso-card-main">
+                <div class="permiso-card-header">
+                    <div class="permiso-card-persona">
+                        <span class="permiso-card-nombre">{{ s.apellidos_nombre }}</span>
+                        <span class="permiso-card-cedula">{{ s.id_cedula }}</span>
+                        {% if s.area %}<span class="permiso-card-area">{{ s.area }}</span>{% endif %}
+                    </div>
+                    <div class="permiso-card-estado">
+                        {% if s.estado == 'PENDIENTE' %}
+                        <span class="badge badge-warning badge-lg">Pendiente</span>
+                        {% elif s.estado == 'APROBADO' %}
+                        <span class="badge badge-success badge-lg">Aprobado</span>
+                        {% else %}
+                        <span class="badge badge-danger badge-lg">Rechazado</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="permiso-card-details">
+                    <div class="permiso-detail-row">
+                        <span class="permiso-detail-label">Tipo</span>
+                        <span class="permiso-detail-value">{{ s.tipo }}</span>
+                    </div>
+                    <div class="permiso-detail-row">
+                        <span class="permiso-detail-label">Fechas</span>
+                        <span class="permiso-detail-value">{{ s.fecha_desde }} → {{ s.fecha_hasta }}</span>
+                    </div>
+                    {% if s.hora_inicio or s.hora_fin %}
+                    <div class="permiso-detail-row">
+                        <span class="permiso-detail-label">Horas</span>
+                        <span class="permiso-detail-value">{{ s.hora_inicio|default('—') }} - {{ s.hora_fin|default('—') }}</span>
+                    </div>
+                    {% endif %}
+                    {% if s.permiso_remunerado == 0 or s.permiso_remunerado == 1 or s.permiso_no_remunerado == 0 or s.permiso_no_remunerado == 1 %}
+                    <div class="permiso-detail-row">
+                        <span class="permiso-detail-label">Remun. / No remun.</span>
+                        <span class="permiso-detail-value">
+                            {% if s.permiso_remunerado == 0 or s.permiso_remunerado == 1 %}{% if s.permiso_remunerado %}Sí{% else %}No{% endif %}{% else %}—{% endif %}
+                            /
+                            {% if s.permiso_no_remunerado == 0 or s.permiso_no_remunerado == 1 %}{% if s.permiso_no_remunerado %}Sí{% else %}No{% endif %}{% else %}—{% endif %}
+                        </span>
+                    </div>
+                    {% endif %}
+                    <div class="permiso-detail-row permiso-motivo">
+                        <span class="permiso-detail-label">Motivo</span>
+                        <span class="permiso-detail-value permiso-motivo-text">{{ s.motivo or '—' }}</span>
+                    </div>
+                </div>
+                <div class="permiso-card-meta">
+                    <span class="permiso-fecha-solicitud">
+                        <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle">schedule</span>
+                        {{ s.fecha_solicitud_str or '—' }}
+                    </span>
+                </div>
+            </div>
+            {% if puede_aprobar and s.estado == 'PENDIENTE' %}
+            <div class="permiso-card-actions">
+                <p class="permiso-actions-hint">Su decisión notificará por correo al empleado.</p>
+                <button type="button" class="btn btn-success permiso-btn-aprobar btn-aprobar" data-id="{{ s.id }}" data-nombre="{{ s.apellidos_nombre }}" title="Puede agregar observaciones opcionales (ej. recordatorio)">
+                    <span class="material-symbols-outlined">check_circle</span>
+                    Aprobar
+                </button>
+                <button type="button" class="btn btn-outline permiso-btn-rechazar btn-rechazar" data-id="{{ s.id }}" data-nombre="{{ s.apellidos_nombre }}" title="Se abrirá una ventana para indicar el motivo (opcional)">
+                    <span class="material-symbols-outlined">cancel</span>
+                    Rechazar
+                </button>
+            </div>
+            {% elif puede_aprobar and s.estado != 'PENDIENTE' and s.observaciones %}
+            <div class="permiso-card-observaciones">
+                <span class="permiso-detail-label">Observaciones:</span> {{ s.observaciones }}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="permisos-empty">
+        <span class="material-symbols-outlined">inbox</span>
+        <p>No hay solicitudes registradas.</p>
+        <p class="permisos-empty-sub">Cuando un empleado o el gestor de contratación envíe una solicitud, aparecerá aquí para que pueda revisarla.</p>
+        <a href="{{ url_for('permiso_solicitar') }}" class="btn btn-primary btn-sm">Crear solicitud</a>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Modal aprobar: observaciones opcionales -->
+<div class="modal-overlay" id="modalAprobar">
+    <div class="modal modal-permiso-aprobar">
+        <div class="modal-header">
+            <h2>¿Aprobar esta solicitud?</h2>
+            <button type="button" class="btn-icon" data-close-modal data-modal="modalAprobar"><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <p class="modal-intro">El empleado recibirá un correo informando que la solicitud fue <strong>aprobada</strong>. Puede agregar observaciones opcionales (ej. un recordatorio) que se incluirán en el correo.</p>
+        <form method="POST" id="formAprobar">
+            <div class="form-group">
+                <label class="form-label">Observaciones (opcional)</label>
+                <textarea name="observaciones" class="form-input" rows="2" placeholder="Ej: Recuerde enviar soporte, Aprobado para las fechas indicadas..."></textarea>
+            </div>
+            <div class="form-actions form-actions-rechazar">
+                <button type="button" class="btn btn-outline" data-close-modal data-modal="modalAprobar">Cancelar</button>
+                <button type="submit" class="btn btn-success btn-aprobar-confirm">
+                    <span class="material-symbols-outlined">check_circle</span>
+                    Sí, aprobar
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal rechazar: tono seguro y claro -->
+<div class="modal-overlay" id="modalRechazar">
+    <div class="modal modal-permiso-rechazar">
+        <div class="modal-header">
+            <h2>¿Rechazar esta solicitud?</h2>
+            <button type="button" class="btn-icon" data-close-modal data-modal="modalRechazar"><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <p class="modal-rechazar-intro">El empleado recibirá un correo informando que la solicitud fue rechazada. Si lo desea, puede agregar observaciones para que conozca el motivo.</p>
+        <form method="POST" id="formRechazar">
+            <input type="hidden" name="id" id="rechazarId">
+            <div class="form-group">
+                <label class="form-label">Observaciones (opcional)</label>
+                <textarea name="observaciones" class="form-input" rows="3" placeholder="Ej: Fechas no disponibles, documentación pendiente..."></textarea>
+            </div>
+            <div class="form-actions form-actions-rechazar">
+                <button type="button" class="btn btn-outline" data-close-modal data-modal="modalRechazar">Cancelar</button>
+                <button type="submit" class="btn btn-danger btn-rechazar-confirm">
+                    <span class="material-symbols-outlined">cancel</span>
+                    Sí, rechazar
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.permisos-page { max-width: 920px; }
+/* Mensaje de bienvenida */
+.permisos-welcome { display: flex; align-items: flex-start; gap: 14px; padding: 18px 20px; margin-bottom: 24px; background: linear-gradient(135deg, var(--colbeef-green-50) 0%, #f0fdf4 100%); border: 1px solid var(--colbeef-green-light); border-radius: var(--radius-lg); }
+.permisos-welcome-icon { font-size: 28px; color: var(--colbeef-green); flex-shrink: 0; margin-top: 2px; }
+.permisos-welcome-text { font-size: 0.95rem; color: var(--text); line-height: 1.5; }
+.permisos-welcome-text strong { color: var(--colbeef-green-dark); }
+/* Aviso pendientes */
+.permisos-alert-pendientes { display: flex; align-items: center; gap: 10px; padding: 12px 16px; margin-bottom: 20px; background: #fffbeb; border: 1px solid #fde68a; border-radius: var(--radius); font-size: 0.9rem; color: #92400e; }
+.permisos-alert-pendientes .material-symbols-outlined { font-size: 20px; flex-shrink: 0; }
+.permisos-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+.permisos-header-text { flex: 1; min-width: 200px; }
+.permisos-title { margin: 0 0 8px 0; font-size: 1.5rem; font-weight: 600; color: var(--text); }
+.permisos-intro { margin: 0; font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5; }
+.permisos-btn-nueva { flex-shrink: 0; }
+.permisos-stats { display: flex; gap: 14px; margin-bottom: 24px; flex-wrap: wrap; }
+.permisos-stat { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-sm); border: 1px solid var(--border); transition: transform 0.15s ease, box-shadow 0.15s ease; }
+.permisos-stat:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); }
+.permisos-stat .material-symbols-outlined { font-size: 24px; opacity: .9; }
+.permisos-stat-num { font-size: 1.5rem; font-weight: 700; color: var(--text); }
+.permisos-stat-label { font-size: 0.82rem; color: var(--text-secondary); }
+.permisos-stat-pendiente .material-symbols-outlined, .permisos-stat-pendiente .permisos-stat-num { color: #b45309; }
+.permisos-stat-aprobado .material-symbols-outlined, .permisos-stat-aprobado .permisos-stat-num { color: var(--colbeef-green); }
+.permisos-stat-rechazado .material-symbols-outlined, .permisos-stat-rechazado .permisos-stat-num { color: var(--colbeef-red); }
+.permisos-list { display: flex; flex-direction: column; gap: 18px; }
+.permiso-card { display: flex; flex-wrap: wrap; align-items: stretch; gap: 20px; padding: 22px; background: var(--surface); border-radius: 14px; box-shadow: var(--shadow-sm); border: 1px solid var(--border); border-left: 5px solid var(--border); transition: box-shadow var(--transition), border-color var(--transition); }
+.permiso-card:hover { box-shadow: var(--shadow-md); }
+.permiso-card-pendiente { border-left-color: #f59e0b; background: linear-gradient(to right, #fffbeb 0%, var(--surface) 8%); }
+.permiso-card-aprobado { border-left-color: var(--colbeef-green); }
+.permiso-card-rechazado { border-left-color: var(--colbeef-red); }
+.permiso-card-main { flex: 1; min-width: 0; }
+.permiso-card-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.permiso-card-persona { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.permiso-card-nombre { font-weight: 600; font-size: 1.08rem; color: var(--text); }
+.permiso-card-cedula { font-size: 0.85rem; color: var(--text-secondary); }
+.permiso-card-area { font-size: 0.8rem; padding: 3px 10px; border-radius: 8px; background: var(--bg); color: var(--text-secondary); }
+.badge-lg { padding: 6px 14px; font-size: 0.82rem; font-weight: 600; border-radius: 8px; }
+.permiso-card-details { display: grid; gap: 10px; margin-bottom: 14px; }
+.permiso-detail-row { display: flex; gap: 12px; font-size: 0.92rem; }
+.permiso-detail-label { color: var(--text-secondary); min-width: 130px; flex-shrink: 0; }
+.permiso-detail-value { color: var(--text); }
+.permiso-motivo .permiso-detail-value { white-space: pre-wrap; word-break: break-word; line-height: 1.45; }
+.permiso-card-meta { font-size: 0.82rem; color: var(--text-secondary); }
+.permiso-fecha-solicitud .material-symbols-outlined { margin-right: 4px; }
+.permiso-card-actions { display: flex; flex-direction: column; justify-content: center; gap: 12px; min-width: 140px; }
+.permiso-actions-hint { margin: 0 0 4px 0; font-size: 0.75rem; color: var(--text-secondary); line-height: 1.3; max-width: 140px; }
+.permiso-action-form { display: block; }
+.permiso-btn-aprobar, .permiso-btn-rechazar { display: inline-flex; align-items: center; gap: 8px; min-width: 120px; justify-content: center; padding: 10px 16px; font-size: 0.9rem; border-radius: 10px; }
+.permiso-btn-aprobar { background: var(--colbeef-green); color: #fff; border: none; }
+.permiso-btn-aprobar:hover { background: var(--colbeef-green-dark); }
+.permiso-card-observaciones { padding-top: 14px; border-top: 1px solid var(--border); font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4; }
+.permisos-empty { text-align: center; padding: 56px 28px; background: var(--surface); border-radius: var(--radius-lg); border: 1px dashed var(--border); }
+.permisos-empty .material-symbols-outlined { font-size: 52px; color: var(--border); margin-bottom: 14px; }
+.permisos-empty p { margin: 0 0 8px 0; color: var(--text-secondary); font-size: 1rem; }
+.permisos-empty-sub { font-size: 0.88rem !important; margin-bottom: 20px !important; opacity: .9; max-width: 360px; margin-left: auto; margin-right: auto; }
+.permisos-empty .btn { margin-top: 4px; }
+/* Modal rechazar */
+.modal-permiso-aprobar { max-width: 440px; }
+.modal-permiso-rechazar { max-width: 440px; }
+.modal-intro, .modal-rechazar-intro { margin: 0 0 18px 0; padding: 0; font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5; }
+.btn-aprobar-confirm { display: inline-flex; align-items: center; gap: 6px; }
+.form-actions-rechazar { display: flex; gap: 12px; justify-content: flex-end; }
+.btn-rechazar-confirm { display: inline-flex; align-items: center; gap: 6px; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const actionBaseAprobar = "{{ url_for('permiso_aprobar', id=0) }}";
+    const actionBaseRechazar = "{{ url_for('permiso_rechazar', id=0) }}";
+
+    const modalAprobar = document.getElementById('modalAprobar');
+    const modalRechazar = document.getElementById('modalRechazar');
+    const formAprobar = document.getElementById('formAprobar');
+    const formRechazar = document.getElementById('formRechazar');
+    const rechazarIdInput = document.getElementById('rechazarId');
+
+    document.querySelectorAll('.btn-aprobar').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.dataset.id;
+            formAprobar.action = actionBaseAprobar.replace('/0/', '/' + id + '/');
+            formAprobar.querySelector('textarea[name="observaciones"]').value = '';
+            modalAprobar.classList.add('active');
+        });
+    });
+
+    document.querySelectorAll('.btn-rechazar').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.dataset.id;
+            rechazarIdInput.value = id;
+            formRechazar.action = actionBaseRechazar.replace('/0/', '/' + id + '/');
+            formRechazar.querySelector('textarea[name="observaciones"]').value = '';
+            modalRechazar.classList.add('active');
+        });
+    });
+
+    function closeModal(modalId) {
+        document.getElementById(modalId).classList.remove('active');
+    }
+    document.querySelectorAll('[data-close-modal]').forEach(el => {
+        el.addEventListener('click', () => closeModal(el.dataset.modal || 'modalRechazar'));
+    });
+    modalAprobar.addEventListener('click', e => { if (e.target === modalAprobar) closeModal('modalAprobar'); });
+    modalRechazar.addEventListener('click', e => { if (e.target === modalRechazar) closeModal('modalRechazar'); });
+})();
+</script>
+{% endblock %}

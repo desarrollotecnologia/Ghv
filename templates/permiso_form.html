@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="detail-card" style="max-width:720px">
+    <h3 class="form-section-title" style="color:var(--colbeef-green, #2D9E3F)">
+        <span class="material-symbols-outlined">assignment</span>
+        Formato de autorización de permiso o licencia <small style="font-weight:normal;color:#666">(GH-FR-007)</small>
+    </h3>
+    <p class="form-hint" style="margin-bottom:20px">
+        El <strong>Gestor de Contratación</strong> (gestor.contratacion@colbeef.com) le indicará cuándo debe llenar este formato.
+        Una vez enviado, <strong>Coordinación Gestión Humana</strong> (coordinacion.gestionhumana@colbeef.com) aprobará o rechazará su solicitud y le informará por correo.
+    </p>
+
+    <form method="POST" action="{{ url_for('permiso_solicitar') }}" id="formPermiso">
+        <div class="form-row">
+            <div class="form-group" style="grid-column:1/-1">
+                <label class="form-label">Documento de identidad / Nombre completo<span class="required">*</span></label>
+                <select name="id_cedula" class="form-input" required id="id_cedula">
+                    <option value="">— Seleccionar empleado —</option>
+                    {% for e in empleados %}
+                    <option value="{{ e.id_cedula }}" data-area="{{ e.area or '' }}">{{ e.apellidos_nombre }} ({{ e.id_cedula }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Área</label>
+                <input type="text" name="area" id="area" class="form-input" placeholder="Área / Departamento" value="">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Tipo<span class="required">*</span></label>
+                <select name="tipo" class="form-input" required>
+                    <option value="Permiso">Permiso</option>
+                    <option value="Licencia">Licencia</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Fecha del permiso / licencia (desde)<span class="required">*</span></label>
+                <input type="date" name="fecha_desde" class="form-input" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Fecha del permiso / licencia (hasta)<span class="required">*</span></label>
+                <input type="date" name="fecha_hasta" class="form-input" required>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Permiso remunerado</label>
+                <select name="permiso_remunerado" class="form-input">
+                    <option value="">—</option>
+                    <option value="1">Sí</option>
+                    <option value="0">No</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Permiso no remunerado</label>
+                <select name="permiso_no_remunerado" class="form-input">
+                    <option value="">—</option>
+                    <option value="1">Sí</option>
+                    <option value="0">No</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Hora de inicio</label>
+                <input type="time" name="hora_inicio" class="form-input" value="">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Hora final</label>
+                <input type="time" name="hora_fin" class="form-input" value="">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group" style="grid-column:1/-1">
+                <label class="form-label">Motivo</label>
+                <textarea name="motivo" class="form-input" rows="3" placeholder="Indique el motivo del permiso o licencia" style="resize:vertical"></textarea>
+            </div>
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">
+                <span class="material-symbols-outlined" style="font-size:18px">send</span>
+                Enviar solicitud
+            </button>
+            <a href="{{ url_for('permisos_index') }}" class="btn btn-outline">Cancelar</a>
+        </div>
+    </form>
+</div>
+
+<script>
+(function() {
+    var sel = document.getElementById('id_cedula');
+    var area = document.getElementById('area');
+    if (sel && area) {
+        sel.addEventListener('change', function() {
+            var opt = sel.options[sel.selectedIndex];
+            var a = opt.getAttribute('data-area') || '';
+            area.value = a;
+        });
+    }
+})();
+</script>
+{% endblock %}

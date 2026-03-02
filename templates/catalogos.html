@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="detail-card" style="max-width:1100px">
+    <h2 style="margin-top:0;color:var(--colbeef-green)">Catálogos del sistema</h2>
+    <p class="form-hint">Alimente los catálogos usados en Personal (tipo documento, nivel educativo, profesión) y en Retiros (motivo de retiro). Solo ADMIN puede agregar.</p>
+
+    <div style="display:grid;gap:28px;margin-top:24px">
+        <section>
+            <h3 class="form-section-title">Tipo de documento</h3>
+            <div class="table-wrap" style="margin-bottom:12px">
+                <table class="data-table">
+                    <thead><tr><th>Sigla</th><th>Nombre</th></tr></thead>
+                    <tbody>
+                        {% for r in tipo_doc %}
+                        <tr><td>{{ r.id_tipo_documento }}</td><td>{{ r.tipo_documento }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <form method="POST" action="{{ url_for('catalogos_tipo_documento_add') }}" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+                <input type="text" name="id_tipo_documento" placeholder="Sigla (ej. CC)" maxlength="50" class="form-input" style="width:100px">
+                <input type="text" name="tipo_documento" placeholder="Nombre" class="form-input" style="flex:1;min-width:200px">
+                <button type="submit" class="btn btn-primary btn-sm">Agregar</button>
+            </form>
+        </section>
+
+        <section>
+            <h3 class="form-section-title">Nivel educativo</h3>
+            <div class="table-wrap" style="margin-bottom:12px">
+                <table class="data-table">
+                    <thead><tr><th>Sigla</th><th>Nivel</th></tr></thead>
+                    <tbody>
+                        {% for r in niveles %}
+                        <tr><td>{{ r.id_nivel }}</td><td>{{ r.nivel }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <form method="POST" action="{{ url_for('catalogos_nivel_add') }}" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+                <input type="text" name="id_nivel" placeholder="Sigla" maxlength="50" class="form-input" style="width:100px">
+                <input type="text" name="nivel" placeholder="Nombre" class="form-input" style="flex:1;min-width:200px">
+                <button type="submit" class="btn btn-primary btn-sm">Agregar</button>
+            </form>
+        </section>
+
+        <section>
+            <h3 class="form-section-title">Profesión</h3>
+            <div class="table-wrap" style="margin-bottom:12px">
+                <table class="data-table">
+                    <thead><tr><th>ID</th><th>Profesión</th></tr></thead>
+                    <tbody>
+                        {% for r in profesiones %}
+                        <tr><td>{{ r.id_profesion }}</td><td>{{ r.profesion }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <form method="POST" action="{{ url_for('catalogos_profesion_add') }}" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+                <input type="text" name="id_profesion" placeholder="ID (opcional)" maxlength="100" class="form-input" style="width:140px">
+                <input type="text" name="profesion" placeholder="Nombre profesión" class="form-input" style="flex:1;min-width:200px">
+                <button type="submit" class="btn btn-primary btn-sm">Agregar</button>
+            </form>
+        </section>
+
+        <section>
+            <h3 class="form-section-title">Motivo de retiro</h3>
+            <div class="table-wrap" style="margin-bottom:12px">
+                <table class="data-table">
+                    <thead><tr><th>#</th><th>Tipo retiro</th></tr></thead>
+                    <tbody>
+                        {% for r in motivos %}
+                        <tr><td>{{ r.id }}</td><td>{{ r.tipo_retiro }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <form method="POST" action="{{ url_for('catalogos_motivo_retiro_add') }}" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+                <input type="text" name="tipo_retiro" placeholder="Ej. RENUNCIA VOLUNTARIA" class="form-input" style="flex:1;min-width:260px">
+                <button type="submit" class="btn btn-primary btn-sm">Agregar</button>
+            </form>
+        </section>
+    </div>
+</div>
+{% endblock %}

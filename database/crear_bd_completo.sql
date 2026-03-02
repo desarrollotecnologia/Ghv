@@ -1,20 +1,21 @@
 -- ============================================================
--- GESTIÓN HUMANA - Script de creación de BD
+-- CREAR BD GESTIÓN HUMANA — Un solo script para pegar y ejecutar
+-- ============================================================
+-- 1) Conéctate como ROOT en MySQL Workbench.
+-- 2) Selecciona TODO (Ctrl+A) y ejecuta (rayo o Ctrl+Shift+Enter).
+--    Si da error en GRANT (ej. Aria), ejecuta solo la Parte 1, luego
+--    en otra pestaña ejecuta la Parte 2 (desde USE gestio_humana).
 -- ============================================================
 
--- ************************************************************
--- PASO 1: Ejecutar SOLO estas 4 líneas como usuario ROOT
--- (Clic derecho > Run Selected en MySQL Workbench)
--- ************************************************************
--- CREATE DATABASE IF NOT EXISTS gestio_humana CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
--- CREATE USER IF NOT EXISTS 'gh_admin'@'localhost' IDENTIFIED BY 'GH_2026$ecure';
--- GRANT ALL PRIVILEGES ON gestio_humana.* TO 'gh_admin'@'localhost';
--- FLUSH PRIVILEGES;
+-- *********** PARTE 1: Crear BD y usuario (ejecutar como ROOT) ***********
+CREATE DATABASE IF NOT EXISTS gestio_humana CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'gh_admin'@'localhost' IDENTIFIED BY 'GH_2026$ecure';
+CREATE USER IF NOT EXISTS 'gh_admin'@'127.0.0.1' IDENTIFIED BY 'GH_2026$ecure';
+GRANT ALL PRIVILEGES ON gestio_humana.* TO 'gh_admin'@'localhost';
+GRANT ALL PRIVILEGES ON gestio_humana.* TO 'gh_admin'@'127.0.0.1';
+FLUSH PRIVILEGES;
 
--- ************************************************************
--- PASO 2: Desde aquí ejecutar con usuario gh_admin o root
--- ************************************************************
-
+-- *********** PARTE 2: Tablas y datos (usa gestio_humana) ***********
 USE gestio_humana;
 
 -- ============================================================
@@ -623,12 +624,3 @@ CREATE INDEX idx_empleado_estado ON empleado(estado);
 CREATE INDEX idx_empleado_nombre ON empleado(apellidos_nombre);
 CREATE INDEX idx_retirado_tipo ON retirado(tipo_retiro);
 CREATE INDEX idx_retirado_fecha ON retirado(fecha_retiro);
-
--- ============================================================
--- OPCIONAL: ajustes o verificaciones (ejecutar solo si aplica)
--- ============================================================
--- UPDATE usuario SET nombre = 'JOHAN PINTO' WHERE email = 'tecnologia@colbeef.com';
--- UPDATE usuario SET rol = 'ADMIN', acciones = 'TODOS LOS CAMBIOS', estado = 1 WHERE email = 'tecnologia@colbeef.com';
--- SELECT id_user, nombre, email, rol, acciones, estado FROM usuario WHERE email = 'tecnologia@colbeef.com';
--- SELECT id_cedula, apellidos_nombre, departamento, area, estado FROM empleado WHERE id_cedula = '1007898456';
--- DESCRIBE empleado;

@@ -155,6 +155,50 @@ Si todo lo anterior se cumple, el proyecto está funcionando y **no depende de d
 
 ---
 
+## 7. Solicitud de permiso / licencia (y correos)
+
+### 7.1 Crear la tabla en MySQL (solo una vez)
+Ejecutar el script de migración:
+```powershell
+# Desde MySQL Workbench o línea de comandos:
+mysql -u gh_admin -p gestio_humana < database/migration_solicitud_permiso.sql
+```
+O copiar y ejecutar el contenido de `database/migration_solicitud_permiso.sql` (o la sección correspondiente en `database/schema.sql`).
+
+### 7.2 Configurar correo (SMTP) para notificaciones
+En el archivo `.env`:
+- **MAIL_ENABLED=1** para activar el envío.
+- **MAIL_USER** / **MAIL_PASSWORD**: cuenta que envía (ej. Gmail). En Gmail usar [Contraseña de aplicación](https://myaccount.google.com/apppasswords), no la contraseña normal.
+- **MAIL_FROM**: mismo que MAIL_USER o el correo que quieras mostrar como remitente.
+- **MAIL_GH_PERMISOS**: correo que recibe las nuevas solicitudes (ej. gestionhumana@colbeef.com).
+- **MAIL_PRUEBAS_CC**: en pruebas, correos que reciben copia (ej. johanpinto232@gmail.com,pintojohan760@gmail.com). Dejar vacío en producción si no quieres CC.
+
+### 7.3 Flujo
+1. Cualquier usuario con módulo **Permisos** puede ir a **Solicitud de permiso** y diligenciar el formato (empleado, tipo, fechas, motivo). Al enviar, se notifica a **MAIL_GH_PERMISOS**.
+2. La coordinadora (COORD. GH) o ADMIN entra a **Solicitud de permiso**, ve el listado y puede **Aprobar** o **Rechazar**. Al resolver, el empleado recibe un correo a su **direccion_email** (o a MAIL_PRUEBAS_CC si no tiene email).
+
+### 7.4 Cómo probar en el sistema (paso a paso)
+
+**Antes de empezar (solo la primera vez):**
+- En MySQL, ejecutar: `database/migration_solicitud_permiso.sql` (crea la tabla).
+- Si no ves el ítem **Permisos** en el menú lateral, ejecutar: `database/agregar_modulo_permisos.sql`. Luego cerrar sesión y volver a entrar.
+- En `.env`: **MAIL_ENABLED=1**, **MAIL_PASSWORD** con la contraseña del SMTP Colbeef. Para pruebas: **MAIL_GH_PERMISOS=johanpinto232@gmail.com**, **MAIL_GESTOR_CONTRATACION=pintojohan760@gmail.com**.
+
+**Prueba 1 – Correo “Nueva solicitud” (llega a los dos):**
+1. `python app.py` → abrir **http://127.0.0.1:5000**
+2. Iniciar sesión (ej. tecnologia@colbeef.com / Colbeef2026*).
+3. Menú **Permisos** → **Solicitud de permiso** → **Nueva solicitud**
+4. Elegir empleado, tipo (Permiso/Licencia), fecha desde, fecha hasta, motivo → **Enviar solicitud**
+5. Revisar **johanpinto232@gmail.com** y **pintojohan760@gmail.com**: debe llegar a los dos el correo “[Gestión Humana] Nueva solicitud de permiso - [nombre]” (Coordinación aprueba; Contratación queda informado).
+
+**Prueba 2 – Correo “Aprobado/Rechazado” (al empleado):**
+6. En **Solicitud de permiso**, en la solicitud que creaste, clic en **Aprobar** o **Rechazar** (en Rechazar puedes poner observaciones en el modal).
+7. Revisar: el empleado recibe el correo en su **direccion_email** (en la BD). Si el empleado no tiene correo en la BD, el aviso llega al primer correo de **MAIL_PRUEBAS_CC** si lo tienes configurado.
+
+Si no llega ningún correo: revisar **MAIL_PASSWORD** en `.env` y la consola donde corre `python app.py` por errores.
+
+---
+
 ## Credenciales de prueba
 
 | Usuario                          | Rol   | Contraseña     |

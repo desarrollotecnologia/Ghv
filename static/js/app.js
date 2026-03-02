@@ -236,6 +236,13 @@ const RT = {
             this._setLiveTs();
             return;
         }
+        // No auto-refresh en páginas con formularios de captura (evitar que se borren los datos al usuario)
+        const pageContent = document.getElementById('pageContent');
+        const mainForm = pageContent && pageContent.querySelector('form:not(.modal-overlay form)');
+        if (mainForm && (mainForm.id === 'formPermiso' || mainForm.action.includes('/solicitar') || mainForm.action.includes('/nuevo') || mainForm.action.includes('/editar'))) {
+            this._setLiveTs();
+            return;
+        }
         this._refreshing = true;
         this._setLiveState('syncing');
         try {
