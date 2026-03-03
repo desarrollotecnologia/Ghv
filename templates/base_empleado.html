@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Portal del Empleado{% endblock %} - Gestion Humana</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght@24,400">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .emp-header { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+        .emp-brand { display: flex; align-items: center; gap: 12px; }
+        .emp-brand img { height: 40px; }
+        .emp-brand span { font-weight: 700; color: #111; font-size: 1.1rem; }
+        .emp-nav { display: flex; align-items: center; gap: 8px; }
+        .emp-nav a { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 10px; text-decoration: none; color: #374151; font-weight: 500; font-size: 0.95rem; }
+        .emp-nav a:hover { background: #f0fdf4; color: #2D9E3F; }
+        .emp-nav a.active { background: #dcfce7; color: #2D9E3F; }
+        .emp-user { display: flex; align-items: center; gap: 12px; font-size: 0.9rem; color: #6b7280; }
+        .emp-user .nombre { font-weight: 600; color: #111; }
+        .emp-content { max-width: 900px; margin: 0 auto; padding: 32px 24px; }
+    </style>
+</head>
+<body>
+    <header class="emp-header">
+        <div class="emp-brand">
+            <img src="{{ url_for('static', filename='img/logo_colbeef.jpg') }}" alt="Colbeef">
+            <span>Portal del Empleado</span>
+        </div>
+        <nav class="emp-nav">
+            <a href="{{ url_for('empleado_portal') }}" class="{{ 'active' if active_page == 'Portal Empleado' else '' }}">
+                <span class="material-symbols-outlined" style="font-size:20px">home</span>
+                Inicio
+            </a>
+            <a href="{{ url_for('permiso_solicitar') }}">
+                <span class="material-symbols-outlined" style="font-size:20px">edit_document</span>
+                Solicitud de permiso
+            </a>
+            <a href="{{ url_for('empleado_mis_solicitudes') }}" class="{{ 'active' if active_page == 'Mis solicitudes' else '' }}">
+                <span class="material-symbols-outlined" style="font-size:20px">list</span>
+                Mis solicitudes
+            </a>
+            <a href="{{ url_for('empleado_cambiar_password') }}" class="{{ 'active' if active_page == 'Cambiar contraseña' else '' }}">
+                <span class="material-symbols-outlined" style="font-size:20px">lock</span>
+                Cambiar contraseña
+            </a>
+        </nav>
+        <div class="emp-user">
+            <span class="nombre">{{ current_user.nombre if current_user else '' }}</span>
+            <a href="{{ url_for('logout') }}" style="padding:6px 10px; border-radius:8px; color:#6b7280; text-decoration:none;" title="Cerrar sesion">
+                <span class="material-symbols-outlined" style="font-size:22px">logout</span>
+            </a>
+        </div>
+    </header>
+    <main class="emp-content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for cat, msg in messages %}
+                    <div class="alert alert-{{ cat }}" style="margin-bottom:16px">{{ msg }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

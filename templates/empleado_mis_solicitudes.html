@@ -1,0 +1,52 @@
+{% extends "base_empleado.html" %}
+
+{% block content %}
+<h1 style="font-size:1.5rem; color:#111; margin-bottom:20px;">Mis solicitudes</h1>
+
+{% if not solicitudes %}
+    <p style="color:#6b7280;">No ha enviado ninguna solicitud aún.</p>
+    <a href="{{ url_for('permiso_solicitar') }}" class="btn btn-primary" style="display:inline-flex; align-items:center; gap:8px; margin-top:16px;">
+        <span class="material-symbols-outlined">add</span>
+        Nueva solicitud de permiso
+    </a>
+{% else %}
+    <div class="detail-card" style="overflow-x:auto;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Tipo</th>
+                    <th>Desde</th>
+                    <th>Hasta</th>
+                    <th>Estado</th>
+                    <th>Fecha solicitud</th>
+                    <th>Resolución</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in solicitudes %}
+                <tr>
+                    <td>{{ s.tipo or 'Permiso' }}</td>
+                    <td>{{ s.fecha_desde }}</td>
+                    <td>{{ s.fecha_hasta }}</td>
+                    <td>
+                        {% if s.estado == 'PENDIENTE' %}
+                            <span style="color:#d97706; font-weight:600;">Pendiente</span>
+                        {% elif s.estado == 'APROBADO' %}
+                            <span style="color:#15803d; font-weight:600;">Aprobado</span>
+                        {% else %}
+                            <span style="color:#b91c1c; font-weight:600;">Rechazado</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ s.fecha_solicitud_str }}</td>
+                    <td>{% if s.fecha_resolucion_str %}{{ s.fecha_resolucion_str }}{% if s.observaciones %} — {{ s.observaciones }}{% endif %}{% else %}—{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <a href="{{ url_for('permiso_solicitar') }}" class="btn btn-primary" style="display:inline-flex; align-items:center; gap:8px; margin-top:16px;">
+        <span class="material-symbols-outlined">add</span>
+        Nueva solicitud de permiso
+    </a>
+{% endif %}
+{% endblock %}

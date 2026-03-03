@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "base_empleado.html" if is_empleado else "base.html" %}
 
 {% block content %}
 <div class="detail-card" style="max-width:720px">
@@ -15,12 +15,17 @@
         <div class="form-row">
             <div class="form-group" style="grid-column:1/-1">
                 <label class="form-label">Documento de identidad / Nombre completo<span class="required">*</span></label>
+                {% if is_empleado and empleado_actual %}
+                <input type="hidden" name="id_cedula" value="{{ empleado_actual.id_cedula }}">
+                <input type="text" class="form-input" value="{{ empleado_actual.apellidos_nombre }} ({{ empleado_actual.id_cedula }})" readonly disabled style="background:#f3f4f6;">
+                {% else %}
                 <select name="id_cedula" class="form-input" required id="id_cedula">
                     <option value="">— Seleccionar empleado —</option>
-                    {% for e in empleados %}
+                    {% for e in empleados or [] %}
                     <option value="{{ e.id_cedula }}" data-area="{{ e.area or '' }}">{{ e.apellidos_nombre }} ({{ e.id_cedula }})</option>
                     {% endfor %}
                 </select>
+                {% endif %}
             </div>
         </div>
         <div class="form-row">
@@ -85,7 +90,7 @@
                 <span class="material-symbols-outlined" style="font-size:18px">send</span>
                 Enviar solicitud
             </button>
-            <a href="{{ url_for('permisos_index') }}" class="btn btn-outline">Cancelar</a>
+            <a href="{{ url_for('empleado_portal') if is_empleado else url_for('permisos_index') }}" class="btn btn-outline">Cancelar</a>
         </div>
     </form>
 </div>
@@ -97,10 +102,15 @@
     if (sel && area) {
         sel.addEventListener('change', function() {
             var opt = sel.options[sel.selectedIndex];
-            var a = opt.getAttribute('data-area') || '';
+            var a = opt ? (opt.getAttribute('data-area') || '') : '';
             area.value = a;
         });
     }
+    {% if is_empleado and empleado_actual %}
+    if (document.getElementById('area') && '{{ empleado_actual.area or '' }}') {
+        document.getElementById('area').value = '{{ empleado_actual.area or '' }}';
+    }
+    {% endif %}
 })();
 </script>
 {% endblock %}

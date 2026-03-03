@@ -1,0 +1,31 @@
+{% extends "base_empleado.html" %}
+
+{% block content %}
+<h1 style="font-size:1.5rem; color:#111; margin-bottom:8px;">Bienvenido, {{ current_user.nombre }}</h1>
+<p style="color:#6b7280; margin-bottom:28px;">Desde aquí puede solicitar permisos o licencias y ver el estado de sus solicitudes.</p>
+
+<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:20px;">
+    <a href="{{ url_for('permiso_solicitar') }}" class="detail-card" style="text-decoration:none; color:inherit; display:block; padding:24px; transition: transform .2s, box-shadow .2s;">
+        <div style="display:flex; align-items:center; gap:16px;">
+            <span class="material-symbols-outlined" style="font-size:48px; color:var(--colbeef-green, #2D9E3F);">edit_document</span>
+            <div>
+                <strong style="font-size:1.1rem;">Solicitud de permiso</strong>
+                <p style="margin:4px 0 0; font-size:0.9rem; color:#6b7280;">Llenar formato de permiso o licencia (GH-FR-007)</p>
+            </div>
+        </div>
+    </a>
+    <a href="{{ url_for('empleado_mis_solicitudes') }}" class="detail-card" style="text-decoration:none; color:inherit; display:block; padding:24px; transition: transform .2s, box-shadow .2s;">
+        <div style="display:flex; align-items:center; gap:16px;">
+            <span class="material-symbols-outlined" style="font-size:48px; color:#3b82f6;">list</span>
+            <div>
+                <strong style="font-size:1.1rem;">Mis solicitudes</strong>
+                <p style="margin:4px 0 0; font-size:0.9rem; color:#6b7280;">Ver estado de sus solicitudes enviadas</p>
+            </div>
+        </div>
+    </a>
+</div>
+
+<p style="margin-top:28px; font-size:0.9rem; color:#6b7280;">
+    Las solicitudes son revisadas por <strong>Coordinación Gestión Humana</strong> y se le notificará por correo la aprobación o rechazo.
+</p>
+{% endblock %}

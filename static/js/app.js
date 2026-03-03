@@ -48,11 +48,27 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ── Global search → table filter dispatch ───────────────
-    if (globalSearch && tableFilter && !hasPagination) {
+    // ── Global search: tabla O tarjetas del Home ─────────────
+    if (globalSearch) {
         globalSearch.addEventListener('input', () => {
-            tableFilter.value = globalSearch.value;
-            tableFilter.dispatchEvent(new Event('input'));
+            const term = (globalSearch.value || '').toLowerCase().trim();
+
+            // Home: filtrar tarjetas por texto del label
+            const homeGrid = document.querySelector('.home-grid');
+            if (homeGrid) {
+                homeGrid.querySelectorAll('.home-card').forEach(card => {
+                    const label = card.querySelector('.home-card-label');
+                    const text = (label ? label.textContent : card.textContent).toLowerCase();
+                    card.style.display = term === '' || text.includes(term) ? '' : 'none';
+                });
+                return;
+            }
+
+            // Páginas con tabla: sincronizar con tableFilter
+            if (tableFilter && !hasPagination) {
+                tableFilter.value = globalSearch.value;
+                tableFilter.dispatchEvent(new Event('input'));
+            }
         });
     }
 
@@ -277,6 +293,18 @@ const RT = {
                 btn.closest('.modal-overlay')?.classList.remove('active');
             });
         });
+
+        // Re-aplicar filtro global en Home si hay texto en la búsqueda
+        const gs = document.getElementById('globalSearch');
+        const grid = container.querySelector('.home-grid');
+        if (gs && grid && gs.value.trim()) {
+            const term = gs.value.toLowerCase().trim();
+            grid.querySelectorAll('.home-card').forEach(card => {
+                const label = card.querySelector('.home-card-label');
+                const text = (label ? label.textContent : card.textContent).toLowerCase();
+                card.style.display = text.includes(term) ? '' : 'none';
+            });
+        }
 
         // Table filter (non-paginated)
         const tf = document.getElementById('tableFilter');

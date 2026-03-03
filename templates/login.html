@@ -621,13 +621,13 @@
                         <div class="field">
                             <label>
                                 <span class="material-symbols-outlined" style="font-size:13px;color:#2D9E3F">mail</span>
-                                Correo electrónico
+                                Correo electrónico o cédula
                             </label>
                             <div class="input-wrap" id="wrap-email">
                                 <span class="material-symbols-outlined ico">mail</span>
-                                <input type="email" name="email" id="inp-email"
-                                       placeholder="usuario@colbeef.com"
-                                       required autofocus autocomplete="email"
+                                <input type="text" name="email" id="inp-email"
+                                       placeholder="correo@ejemplo.com o número de cédula"
+                                       required autofocus autocomplete="username"
                                        value="{{ request.form.get('email', '') }}">
                             </div>
                         </div>
@@ -655,6 +655,9 @@
                         </button>
                     </form>
 
+                    <div class="form-footer" style="margin-top:22px; padding-top:18px; border-top:1px solid #f0f4f0; text-align:center; font-size:13px; color:#9ca3af;">
+                        ¿Es empleado y no tiene cuenta? <a href="{{ url_for('empleado_registro') }}">Registrarse aquí</a>
+                    </div>
                 </div>
             </div>
         </div>

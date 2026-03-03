@@ -228,7 +228,22 @@ _ROLE_MODULES = {
         "admin":        False,
         "permisos":     True,
     },
+    "EMPLEADO": {
+        "organizacion": False,
+        "personal":     False,
+        "retiro":       False,
+        "familia":      False,
+        "eventos":      False,
+        "eps":          False,
+        "fondos":       False,
+        "reportes":     False,
+        "admin":        False,
+        "permisos":     True,   # solo Solicitud de permiso (portal empleado)
+    },
 }
+
+# Contraseña inicial para empleados creados por Gestor (y para dar de alta en BD)
+EMPLEADO_PASSWORD_DEFAULT = "Colbeef2026*"
 
 # Módulo por defecto (sin rol): nada visible
 _DEFAULT_MODULES = {k: False for k in [
@@ -304,6 +319,8 @@ def module_required(module_key):
                 return redirect(url_for("login"))
             if not _get_effective_modules(user["rol"]).get(module_key, False):
                 flash("No tienes acceso a este módulo", "error")
+                if (user.get("rol") or "").strip().upper() == "EMPLEADO":
+                    return redirect(url_for("empleado_portal"))
                 return redirect(url_for("home"))
             return f(*args, **kwargs)
         return decorated
@@ -344,18 +361,31 @@ def login():
         return redirect(url_for("home"))
 
     if request.method == "POST":
-        email = request.form.get("email", "").strip().lower()
+        login_value = request.form.get("email", "").strip()
         password = request.form.get("password", "")
 
-        user = query(
-            "SELECT * FROM usuario WHERE LOWER(email) = %s AND estado = 1",
-            (email,), one=True,
-        )
+        if "@" in login_value:
+            user = query(
+                "SELECT * FROM usuario WHERE LOWER(email) = %s AND estado = 1",
+                (login_value.lower(),), one=True,
+            )
+        else:
+            # Empleados sin correo: pueden entrar con solo su cédula (contraseña Colbeef2026*)
+            cedula = "".join(c for c in login_value if c.isdigit())
+            if cedula:
+                user = query(
+                    "SELECT * FROM usuario WHERE (id_cedula = %s OR id_user = %s) AND estado = 1",
+                    (cedula, "EMP-" + cedula), one=True,
+                )
+            else:
+                user = None
 
         if user and user.get("password_hash") and check_password_hash(user["password_hash"], password):
             session.clear()
             session["user_id"] = user["id_user"]
             session.permanent = True
+            if (user.get("rol") or "").strip().upper() == "EMPLEADO":
+                return redirect(url_for("empleado_portal"))
             return redirect(url_for("home"))
 
         flash("Correo o contraseña incorrectos", "error")
@@ -377,11 +407,134 @@ def logout():
     return redirect(url_for("login"))
 
 
+# ── PORTAL EMPLEADO (registro, panel, mis solicitudes) ─────────
+
+@app.route("/empleado/registro", methods=["GET", "POST"])
+def empleado_registro():
+    """Registro para empleados: cédula + correo (el que tengan) + contraseña. Ellos alimentan el sistema con su dato de contacto."""
+    if get_current_user():
+        return redirect(url_for("home"))
+    if request.method == "POST":
+        cedula = (request.form.get("id_cedula") or "").strip()
+        email = (request.form.get("email") or "").strip().lower()
+        password = request.form.get("password") or ""
+        if not cedula or not email or not password:
+            flash("Complete cédula, correo y contraseña.", "error")
+            return redirect(url_for("empleado_registro"))
+        emp = query(
+            "SELECT id_cedula, apellidos_nombre, direccion_email FROM empleado WHERE id_cedula = %s AND estado = 'ACTIVO'",
+            (cedula,), one=True,
+        )
+        if not emp:
+            flash("No hay un empleado activo con esa cédula. Contacte a Gestión Humana.", "error")
+            return redirect(url_for("empleado_registro"))
+        id_user = "EMP-" + cedula
+        existente = query("SELECT id_user, email FROM usuario WHERE id_user = %s", (id_user,), one=True)
+        if existente:
+            flash(
+                f"Ya está registrado. Inicie sesión con el correo {existente.get('email', '')} y la contraseña inicial: Colbeef2026*. Podrá cambiarla al ingresar al portal.",
+                "info",
+            )
+            return redirect(url_for("login"))
+        if query("SELECT id_user FROM usuario WHERE LOWER(email) = %s", (email,), one=True):
+            flash("Ese correo ya está registrado. Use Iniciar sesión o otro correo.", "error")
+            return redirect(url_for("empleado_registro"))
+        password_hash = generate_password_hash(password)
+        execute(
+            "INSERT INTO usuario (id_user, email, password_hash, nombre, rol, estado, id_cedula) VALUES (%s, %s, %s, %s, 'EMPLEADO', 1, %s)",
+            (id_user, email, password_hash, emp["apellidos_nombre"] or cedula, cedula),
+        )
+        # Que el empleado alimente el sistema: guardar su correo en la ficha del empleado (notificaciones de permisos irán ahí)
+        execute("UPDATE empleado SET direccion_email = %s WHERE id_cedula = %s", (email, cedula))
+        flash("Cuenta creada. Ya puede iniciar sesión con su correo y contraseña.", "success")
+        return redirect(url_for("login"))
+    return render_template("empleado_registro.html")
+
+
+@app.route("/empleado")
+@login_required
+def empleado_portal():
+    """Panel del empleado: solo acceso a Solicitud de permiso y Mis solicitudes."""
+    user = get_current_user()
+    if (user.get("rol") or "").strip().upper() != "EMPLEADO":
+        return redirect(url_for("home"))
+    return render_template("empleado_portal.html", active_page="Portal Empleado")
+
+
+@app.route("/empleado/mis-solicitudes")
+@login_required
+def empleado_mis_solicitudes():
+    """Listado de solicitudes del empleado (solo las suyas)."""
+    user = get_current_user()
+    if (user.get("rol") or "").strip().upper() != "EMPLEADO":
+        return redirect(url_for("home"))
+    id_cedula = (user.get("id_cedula") or "").strip()
+    if not id_cedula:
+        flash("No tiene cédula vinculada. Contacte al administrador.", "error")
+        return redirect(url_for("empleado_portal"))
+    solicitudes = query(
+        "SELECT id, tipo, fecha_desde, fecha_hasta, estado, fecha_solicitud, observaciones, resuelto_por, fecha_resolucion "
+        "FROM solicitud_permiso WHERE id_cedula = %s ORDER BY fecha_solicitud DESC",
+        (id_cedula,),
+    )
+    for s in solicitudes:
+        if s.get("fecha_solicitud"):
+            d = s["fecha_solicitud"]
+            s["fecha_solicitud_str"] = d.strftime("%d/%m/%Y %H:%M") if hasattr(d, "strftime") else str(d)
+        else:
+            s["fecha_solicitud_str"] = ""
+        if s.get("fecha_resolucion"):
+            d = s["fecha_resolucion"]
+            s["fecha_resolucion_str"] = d.strftime("%d/%m/%Y %H:%M") if hasattr(d, "strftime") else str(d)
+        else:
+            s["fecha_resolucion_str"] = ""
+    return render_template(
+        "empleado_mis_solicitudes.html",
+        active_page="Mis solicitudes",
+        solicitudes=solicitudes,
+    )
+
+
+@app.route("/empleado/cambiar-password", methods=["GET", "POST"])
+@login_required
+def empleado_cambiar_password():
+    """El empleado puede cambiar su contraseña (p. ej. desde la inicial Colbeef2026*)."""
+    user = get_current_user()
+    if (user.get("rol") or "").strip().upper() != "EMPLEADO":
+        return redirect(url_for("home"))
+    if request.method == "POST":
+        actual = request.form.get("password_actual", "")
+        nueva = (request.form.get("nueva_password") or "").strip()
+        repetir = (request.form.get("repetir_password") or "").strip()
+        if not actual:
+            flash("Indique su contraseña actual.", "error")
+            return redirect(url_for("empleado_cambiar_password"))
+        u = query("SELECT password_hash FROM usuario WHERE id_user = %s", (user["id_user"],), one=True)
+        if not u or not u.get("password_hash") or not check_password_hash(u["password_hash"], actual):
+            flash("Contraseña actual incorrecta.", "error")
+            return redirect(url_for("empleado_cambiar_password"))
+        if len(nueva) < 6:
+            flash("La nueva contraseña debe tener al menos 6 caracteres.", "error")
+            return redirect(url_for("empleado_cambiar_password"))
+        if nueva != repetir:
+            flash("La nueva contraseña y la repetición no coinciden.", "error")
+            return redirect(url_for("empleado_cambiar_password"))
+        execute(
+            "UPDATE usuario SET password_hash = %s WHERE id_user = %s",
+            (generate_password_hash(nueva), user["id_user"]),
+        )
+        flash("Contraseña actualizada. Use la nueva contraseña en su próximo inicio de sesión.", "success")
+        return redirect(url_for("empleado_portal"))
+    return render_template("empleado_cambiar_password.html", active_page="Cambiar contraseña")
+
+
 # ── HOME ─────────────────────────────────────────────────────
 
 @app.route("/")
 @login_required
 def home():
+    if (get_current_user().get("rol") or "").strip().upper() == "EMPLEADO":
+        return redirect(url_for("empleado_portal"))
     return render_template("home.html", active_page="Home")
 
 
@@ -812,8 +965,17 @@ def permisos_index():
 @module_required("permisos")
 def permiso_solicitar():
     """Formulario GH-FR-007: permiso o licencia (área, remunerado/no, hora inicio/fin)."""
+    user = get_current_user()
+    is_empleado = (user.get("rol") or "").strip().upper() == "EMPLEADO"
+    id_cedula_empleado = (user.get("id_cedula") or "").strip() if is_empleado else None
+
     if request.method == "POST":
         id_cedula = (request.form.get("id_cedula") or "").strip()
+        if is_empleado:
+            id_cedula = id_cedula_empleado or id_cedula
+            if id_cedula != id_cedula_empleado:
+                flash("No puede enviar solicitudes a nombre de otro empleado.", "error")
+                return redirect(url_for("permiso_solicitar"))
         tipo = (request.form.get("tipo") or "Permiso").strip()
         fecha_desde = request.form.get("fecha_desde")
         fecha_hasta = request.form.get("fecha_hasta")
@@ -854,12 +1016,28 @@ def permiso_solicitar():
             flash("Solicitud registrada. Se envió correo a Coordinación GH y a Gestor de Contratación.", "success")
         else:
             flash("Solicitud registrada. Revisar configuración de correo (MAIL_ENABLED, MAIL_PASSWORD) si no llegaron los avisos.", "info")
+        if is_empleado:
+            return redirect(url_for("empleado_mis_solicitudes"))
         return redirect(url_for("permisos_index"))
+    if is_empleado and id_cedula_empleado:
+        emp_actual = query(
+            "SELECT id_cedula, apellidos_nombre, area FROM empleado WHERE id_cedula = %s AND estado = 'ACTIVO'",
+            (id_cedula_empleado,), one=True,
+        )
+        return render_template(
+            "permiso_form.html",
+            active_page="Solicitud de permiso",
+            empleados=None,
+            is_empleado=True,
+            empleado_actual=emp_actual,
+        )
     empleados = query("SELECT id_cedula, apellidos_nombre, area FROM empleado WHERE estado = 'ACTIVO' ORDER BY apellidos_nombre")
     return render_template(
         "permiso_form.html",
         active_page="Solicitud de permiso",
         empleados=empleados,
+        is_empleado=False,
+        empleado_actual=None,
     )
 
 
@@ -933,6 +1111,12 @@ def api_aniversario():
     year = request.args.get("year", date.today().year, type=int)
     month = request.args.get("month", date.today().month, type=int)
 
+    # Una sola consulta de perfiles (evita N+1)
+    perfil_rows = query("SELECT id_perfil, perfil_ocupacional FROM perfil_ocupacional")
+    perfil_map = {str(r["id_perfil"]).strip(): r["perfil_ocupacional"] or "" for r in perfil_rows}
+
+    tipo_map, nivel_map, prof_map = _calendar_label_maps()
+
     rows = query(
         "SELECT e.id_cedula, e.apellidos_nombre, e.fecha_ingreso, e.fecha_nacimiento, "
         "e.departamento, e.area, e.id_perfil_ocupacional, e.sexo, e.celular, "
@@ -940,9 +1124,7 @@ def api_aniversario():
         "FROM empleado e WHERE e.estado = 'ACTIVO'"
     )
 
-    tipo_map, nivel_map, prof_map = _calendar_label_maps()
     results = []
-    today = date.today()
     for r in rows:
         fi = parse_fecha(r["fecha_ingreso"])
         if fi and fi.month == month:
@@ -952,14 +1134,7 @@ def api_aniversario():
                 continue
             antiguedad = year - fi.year
 
-            perfil = ""
-            if r["id_perfil_ocupacional"]:
-                p = query(
-                    "SELECT perfil_ocupacional FROM perfil_ocupacional WHERE id_perfil = %s",
-                    (str(r["id_perfil_ocupacional"]),), one=True,
-                )
-                if p:
-                    perfil = p["perfil_ocupacional"]
+            perfil = perfil_map.get(str(r["id_perfil_ocupacional"] or "").strip(), "")
 
             bd = parse_fecha(r["fecha_nacimiento"])
             mes_cumple = bd.month if bd else ""
@@ -1179,7 +1354,22 @@ def crear_empleado():
         placeholders = ", ".join(["%s"] * len(fields_list))
         cols = ", ".join(fields_list)
         execute(f"INSERT INTO empleado ({cols}) VALUES ({placeholders})", tuple(vals))
-        flash(f"Empleado {nombre} creado exitosamente", "success")
+        # Crear usuario para portal del empleado (contraseña inicial Colbeef2026*)
+        id_user_emp = "EMP-" + cedula
+        email_emp = (request.form.get("direccion_email") or "").strip().lower()
+        if not email_emp:
+            email_emp = cedula + "@empleado.colbeef.local"
+        if not query("SELECT id_user FROM usuario WHERE id_user = %s", (id_user_emp,), one=True):
+            execute(
+                "INSERT INTO usuario (id_user, email, password_hash, nombre, rol, estado, id_cedula) VALUES (%s, %s, %s, %s, 'EMPLEADO', 1, %s)",
+                (id_user_emp, email_emp, generate_password_hash(EMPLEADO_PASSWORD_DEFAULT), nombre, cedula),
+            )
+            flash(
+                f"Empleado {nombre} creado. Para el portal: correo {email_emp}, contraseña inicial Colbeef2026*. Podrá cambiarla al ingresar.",
+                "success",
+            )
+        else:
+            flash(f"Empleado {nombre} creado exitosamente", "success")
         return redirect(url_for("detalle_empleado", id=cedula))
 
     ctx = _form_context()
