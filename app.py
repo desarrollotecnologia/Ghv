@@ -120,11 +120,17 @@ def _is_api_request():
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if get_current_user() is None:
+        user = get_current_user()
+        if user is None:
             if _is_api_request():
                 return jsonify({"error": "No autenticado"}), 401
             flash("Debes iniciar sesión", "error")
             return redirect(url_for("login"))
+        # Obligatorio cambiar clave de una vez (flag en BD o entró con contraseña estándar)
+        must_change = user.get("debe_cambiar_clave") or session.get("force_change_password")
+        if must_change and request.endpoint not in ("cambiar_clave_obligatorio", "logout"):
+            flash("Debe cambiar su contraseña para continuar.", "warning")
+            return redirect(url_for("cambiar_clave_obligatorio"))
         return f(*args, **kwargs)
     return decorated
 
@@ -264,6 +270,8 @@ _ROLE_MODULES = {
 
 # Contraseña inicial para empleados creados por Gestor (y para dar de alta en BD)
 EMPLEADO_PASSWORD_DEFAULT = "Colbeef2026*"
+# Contraseña estándar al restablecer desde admin; el usuario debe cambiarla al ingresar
+PASSWORD_ESTANDAR = "Colbeef2026*"
 
 # Módulo por defecto (sin rol): nada visible
 _DEFAULT_MODULES = {k: False for k in [
@@ -404,6 +412,11 @@ def login():
             session.clear()
             session["user_id"] = user["id_user"]
             session.permanent = True
+            # Obligar a cambiar la clave de una vez: si tiene flag en BD o si entró con la estándar
+            if user.get("debe_cambiar_clave") or (password.strip() == PASSWORD_ESTANDAR):
+                if password.strip() == PASSWORD_ESTANDAR:
+                    session["force_change_password"] = True
+                return redirect(url_for("cambiar_clave_obligatorio"))
             if (user.get("rol") or "").strip().upper() == "EMPLEADO":
                 return redirect(url_for("empleado_portal"))
             return redirect(url_for("home"))
@@ -425,6 +438,61 @@ def logout():
     session.clear()
     flash("Sesión cerrada", "info")
     return redirect(url_for("login"))
+
+
+@app.route("/cambiar-clave", methods=["GET", "POST"])
+@login_required
+def cambiar_clave_obligatorio():
+    """Cambio de contraseña obligatorio: al entrar lo obliga de una vez (estándar o flag en BD)."""
+    user = get_current_user()
+    must_change = user.get("debe_cambiar_clave") or session.get("force_change_password")
+    if not must_change:
+        return redirect(url_for("empleado_portal" if (user.get("rol") or "").strip().upper() == "EMPLEADO" else "home"))
+
+    if request.method == "POST":
+        actual = (request.form.get("password_actual") or "").strip()
+        nueva = (request.form.get("nueva_password") or "").strip()
+        repetir = (request.form.get("repetir_password") or "").strip()
+        if not actual:
+            flash("Indique su contraseña actual.", "error")
+            return redirect(url_for("cambiar_clave_obligatorio"))
+        u = query("SELECT password_hash FROM usuario WHERE id_user = %s", (user["id_user"],), one=True)
+        if not u or not u.get("password_hash") or not check_password_hash(u["password_hash"], actual):
+            flash("La contraseña actual no es correcta.", "error")
+            return redirect(url_for("cambiar_clave_obligatorio"))
+        ok, msg = _validar_password(nueva)
+        if not ok:
+            flash(msg, "error")
+            return redirect(url_for("cambiar_clave_obligatorio"))
+        if nueva != repetir:
+            flash("La nueva contraseña y la repetición no coinciden.", "error")
+            return redirect(url_for("cambiar_clave_obligatorio"))
+        try:
+            execute(
+                "UPDATE usuario SET password_hash = %s, debe_cambiar_clave = 0 WHERE id_user = %s",
+                (generate_password_hash(nueva), user["id_user"]),
+            )
+        except Exception as e:
+            if "debe_cambiar_clave" in str(e):
+                execute(
+                    "UPDATE usuario SET password_hash = %s WHERE id_user = %s",
+                    (generate_password_hash(nueva), user["id_user"]),
+                )
+            else:
+                raise
+        if hasattr(g, "_user"):
+            g._user["debe_cambiar_clave"] = 0
+        session.pop("force_change_password", None)
+        flash("Contraseña actualizada. Ya puede usar su clave personal.", "success")
+        if (user.get("rol") or "").strip().upper() == "EMPLEADO":
+            return redirect(url_for("empleado_portal"))
+        return redirect(url_for("home"))
+
+    return render_template(
+        "cambiar_clave_obligatorio.html",
+        active_page="Cambiar contraseña",
+        is_empleado=(user.get("rol") or "").strip().upper() == "EMPLEADO",
+    )
 
 
 # ── FOTO DE PERFIL ───────────────────────────────────────────
@@ -1789,10 +1857,19 @@ def crear_empleado():
         if not email_emp:
             email_emp = cedula + "@empleado.colbeef.local"
         if not query("SELECT id_user FROM usuario WHERE id_user = %s", (id_user_emp,), one=True):
-            execute(
-                "INSERT INTO usuario (id_user, email, password_hash, nombre, rol, estado, id_cedula) VALUES (%s, %s, %s, %s, 'EMPLEADO', 1, %s)",
-                (id_user_emp, email_emp, generate_password_hash(EMPLEADO_PASSWORD_DEFAULT), nombre, cedula),
-            )
+            try:
+                execute(
+                    "INSERT INTO usuario (id_user, email, password_hash, nombre, rol, estado, id_cedula, debe_cambiar_clave) VALUES (%s, %s, %s, %s, 'EMPLEADO', 1, %s, 1)",
+                    (id_user_emp, email_emp, generate_password_hash(EMPLEADO_PASSWORD_DEFAULT), nombre, cedula),
+                )
+            except Exception as e:
+                if "debe_cambiar_clave" in str(e):
+                    execute(
+                        "INSERT INTO usuario (id_user, email, password_hash, nombre, rol, estado, id_cedula) VALUES (%s, %s, %s, %s, 'EMPLEADO', 1, %s)",
+                        (id_user_emp, email_emp, generate_password_hash(EMPLEADO_PASSWORD_DEFAULT), nombre, cedula),
+                    )
+                else:
+                    raise
             flash(
                 f"Empleado {nombre} creado. Para el portal: correo {email_emp}, contraseña inicial Colbeef2026*. Podrá cambiarla al ingresar.",
                 "success",
@@ -3034,14 +3111,25 @@ def usuario_nuevo():
     num = (int(last["id_user"].replace("US-", "")) + 1) if last else 1
     new_id = f"US-{num:04d}"
 
-    execute(
-        "INSERT INTO usuario (id_user, email, password_hash, nombre, rol, estado, acciones) "
-        "VALUES (%s, %s, %s, %s, %s, %s, %s)",
-        (new_id, email, generate_password_hash(password),
-         nombre, rol, True, get_acciones_for_rol(rol)),
-    )
+    try:
+        execute(
+            "INSERT INTO usuario (id_user, email, password_hash, nombre, rol, estado, acciones, debe_cambiar_clave) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, 1)",
+            (new_id, email, generate_password_hash(password),
+             nombre, rol, True, get_acciones_for_rol(rol)),
+        )
+    except Exception as e:
+        if "debe_cambiar_clave" in str(e):
+            execute(
+                "INSERT INTO usuario (id_user, email, password_hash, nombre, rol, estado, acciones) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (new_id, email, generate_password_hash(password),
+                 nombre, rol, True, get_acciones_for_rol(rol)),
+            )
+        else:
+            raise
     registrar_audit("Usuario creado", "admin", f"id={new_id} rol={rol}")
-    flash(f"Usuario {nombre} creado correctamente (ID: {new_id})", "success")
+    flash(f"Usuario {nombre} creado. Deberá cambiar la contraseña al ingresar por primera vez.", "success")
     return redirect(url_for("usuarios"))
 
 
@@ -3159,11 +3247,50 @@ def usuario_reset_password(id):
     if not ok:
         flash(msg, "error")
         return redirect(url_for("usuarios"))
-    execute(
-        "UPDATE usuario SET password_hash=%s WHERE id_user=%s",
-        (generate_password_hash(nueva), id),
-    )
-    flash("Contraseña restablecida", "success")
+    try:
+        execute(
+            "UPDATE usuario SET password_hash=%s, debe_cambiar_clave=0 WHERE id_user=%s",
+            (generate_password_hash(nueva), id),
+        )
+    except Exception as e:
+        if "debe_cambiar_clave" in str(e):
+            execute(
+                "UPDATE usuario SET password_hash=%s WHERE id_user=%s",
+                (generate_password_hash(nueva), id),
+            )
+        else:
+            raise
+    flash("Contraseña restablecida. El usuario puede ingresar con la nueva clave.", "success")
+    return redirect(url_for("usuarios"))
+
+
+@app.route("/users/<id>/reset-password-estandar", methods=["POST"])
+@login_required
+@module_required("admin_usuarios")
+def usuario_reset_password_estandar(id):
+    """Restablece la contraseña del usuario a la estándar; deberá cambiarla al ingresar."""
+    if not _user_management_allowed("reset"):
+        flash("No tienes permiso para restablecer contraseñas.", "error")
+        return redirect(url_for("usuarios"))
+    target = query("SELECT id_user, nombre FROM usuario WHERE id_user = %s", (id,), one=True)
+    if not target:
+        flash("Usuario no encontrado.", "error")
+        return redirect(url_for("usuarios"))
+    try:
+        execute(
+            "UPDATE usuario SET password_hash=%s, debe_cambiar_clave=1 WHERE id_user=%s",
+            (generate_password_hash(PASSWORD_ESTANDAR), id),
+        )
+    except Exception as e:
+        if "debe_cambiar_clave" in str(e):
+            execute(
+                "UPDATE usuario SET password_hash=%s WHERE id_user=%s",
+                (generate_password_hash(PASSWORD_ESTANDAR), id),
+            )
+        else:
+            raise
+    registrar_audit("Contraseña restablecida a estándar", "admin", f"id={id}")
+    flash(f"Contraseña de {target['nombre']} restablecida a la estándar. Deberá cambiarla al iniciar sesión.", "success")
     return redirect(url_for("usuarios"))
 
 

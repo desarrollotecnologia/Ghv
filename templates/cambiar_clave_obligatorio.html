@@ -1,0 +1,41 @@
+{% extends "base_empleado.html" if is_empleado else "base.html" %}
+
+{% block content %}
+<div class="detail-card" style="max-width:440px; margin: 2rem auto;">
+    <h2 class="form-section-title" style="color:var(--colbeef-green, #2D9E3F); margin-bottom:8px;">
+        <span class="material-symbols-outlined">lock_reset</span>
+        Cambiar contraseña
+    </h2>
+    <p class="form-hint" style="margin-bottom:20px;">
+        Es la primera vez que ingresa con la contraseña estándar (o se restableció desde administración).
+        Debe definir su <strong>contraseña personal</strong> para continuar. Mínimo 8 caracteres, al menos una letra y un número.
+    </p>
+
+    <form method="POST" action="{{ url_for('cambiar_clave_obligatorio') }}">
+        <div class="form-row">
+            <div class="form-group" style="grid-column:1/-1">
+                <label class="form-label">Contraseña actual <span class="required">*</span></label>
+                <input type="password" name="password_actual" class="form-input" required placeholder="La que usa ahora (ej. estándar)" autocomplete="current-password">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group" style="grid-column:1/-1">
+                <label class="form-label">Nueva contraseña <span class="required">*</span></label>
+                <input type="password" name="nueva_password" class="form-input" required minlength="8" placeholder="Mín. 8 caracteres, letra y número" autocomplete="new-password">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group" style="grid-column:1/-1">
+                <label class="form-label">Repetir nueva contraseña <span class="required">*</span></label>
+                <input type="password" name="repetir_password" class="form-input" required minlength="8" placeholder="Repita la nueva contraseña" autocomplete="new-password">
+            </div>
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">
+                <span class="material-symbols-outlined" style="font-size:18px">check_circle</span>
+                Guardar y continuar
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
