@@ -15,6 +15,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from config import Config
 from mail_utils import notificar_nueva_solicitud_permiso, notificar_resolucion_permiso
+import tempfile
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -57,8 +58,9 @@ def execute(sql, params=None):
 
 # Fallback si no existen tablas o están vacías
 _ROLE_PERMISSIONS_FALLBACK = {
-    "ADMIN": "ALL", "COORD. GH": "ALL", "GESTOR DE CONTRATACION": "WRITE",
-    "BIENESTAR SOCIAL": "READ", "GESTOR DE NOMINA": "WRITE", "GESTOR SST": "READ",
+    "ADMIN": "ALL", "COORD. GH": "ALL", "GH INFORMADA": "READ",
+    "GESTOR DE CONTRATACION": "WRITE", "BIENESTAR SOCIAL": "READ",
+    "GESTOR DE NOMINA": "WRITE", "GESTOR SST": "READ",
 }
 
 
@@ -201,6 +203,19 @@ _ROLE_MODULES = {
         "admin":        False,   # Sin Home Setting ni Catálogos
         "admin_usuarios": True,  # Solo ver usuarios e inactivar
         "permisos":     True,    # Coordinación aprueba/rechaza permisos
+    },
+    "GH INFORMADA": {
+        "organizacion": True,
+        "personal":     True,
+        "retiro":       True,
+        "familia":      True,
+        "eventos":      True,
+        "eps":          True,
+        "fondos":       True,
+        "reportes":     True,
+        "admin":        False,
+        "admin_usuarios": False,
+        "permisos":     True,    # Solo consulta; no aprueba ni rechaza
     },
     "GESTOR DE CONTRATACION": {
         "organizacion": False,
@@ -1111,9 +1126,7 @@ def _permisos_query(filtro_estado=None, buscar=None, area=None, tipo=None, orden
 @login_required
 @module_required("permisos")
 def permisos_index():
-    """Listado para coordinadora (aprobar/rechazar) con filtros y orden."""
-    if not _puede_aprobar_permisos():
-        return redirect(url_for("permiso_solicitar"))
+    """Listado de solicitudes de permiso. Quien puede aprobar/rechazar (COORD. GH, ADMIN) ve botones; rol GH INFORMADA solo ve la lista."""
     filtro_estado = request.args.get("estado", "").strip().upper()
     if filtro_estado not in ("PENDIENTE", "APROBADO", "RECHAZADO"):
         filtro_estado = None
@@ -1169,7 +1182,7 @@ def permisos_index():
         "permisos_list.html",
         active_page="Solicitud de permiso",
         solicitudes=solicitudes,
-        puede_aprobar=True,
+        puede_aprobar=_puede_aprobar_permisos(),
         filtro_estado=filtro_estado,
         filtro_buscar=buscar,
         filtro_area=area,
@@ -1467,7 +1480,37 @@ def permiso_aprobar(id):
     )
     registrar_audit("Solicitud aprobada", "permisos", f"id={id} cédula={solicitud.get('id_cedula')}")
     emp = query("SELECT apellidos_nombre, direccion_email FROM empleado WHERE id_cedula = %s", (solicitud["id_cedula"],), one=True)
-    correo_ok = notificar_resolucion_permiso(app, solicitud, emp["apellidos_nombre"] if emp else "", emp.get("direccion_email") if emp else "", aprobado=True, observaciones=observaciones)
+    attachments = []
+    evidencia_ruta = (solicitud.get("evidencia") or "").strip()
+    firma_path = (current_app.config.get("SIGNATURE_IMAGE_PATH") or "").strip()
+    if evidencia_ruta and firma_path:
+        evidencia_full = os.path.join(current_app.instance_path, "uploads", evidencia_ruta)
+        if os.path.isfile(evidencia_full) and evidencia_full.lower().endswith(".pdf"):
+            temp_pdf = None
+            try:
+                from pdf_firma import firmar_pdf
+                fd, temp_pdf = tempfile.mkstemp(suffix=".pdf")
+                os.close(fd)
+                if firmar_pdf(evidencia_full, firma_path, temp_pdf, posicion="bottom_right"):
+                    attachments.append(("Formato_permiso_firmado.pdf", temp_pdf))
+                elif temp_pdf and os.path.isfile(temp_pdf):
+                    try:
+                        os.unlink(temp_pdf)
+                    except Exception:
+                        pass
+            except Exception:
+                if temp_pdf and os.path.isfile(temp_pdf):
+                    try:
+                        os.unlink(temp_pdf)
+                    except Exception:
+                        pass
+    correo_ok = notificar_resolucion_permiso(app, solicitud, emp["apellidos_nombre"] if emp else "", emp.get("direccion_email") if emp else "", aprobado=True, observaciones=observaciones, attachments=attachments if attachments else None)
+    for _nom, path in attachments:
+        if os.path.isfile(path):
+            try:
+                os.unlink(path)
+            except Exception:
+                pass
     try:
         execute(
             "UPDATE solicitud_permiso SET correo_resolucion_enviado = %s, correo_resolucion_at = IF(%s, NOW(), NULL) WHERE id = %s",

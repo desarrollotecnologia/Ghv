@@ -24,7 +24,13 @@ class Config:
     # Coordinación GH = quien APRUEBA o rechaza. Contratación = quien le dice al empleado "llene acá" el formato.
     MAIL_GH_PERMISOS = os.getenv("MAIL_GH_PERMISOS", "coordinacion.gestionhumana@colbeef.com")
     MAIL_GESTOR_CONTRATACION = os.getenv("MAIL_GESTOR_CONTRATACION", "gestor.contratacion@colbeef.com")
+    # Solo informada: recibe la misma notificación de nueva solicitud pero no aprueba/rechaza (rol GH INFORMADA).
+    MAIL_GH_INFORMADA = os.getenv("MAIL_GH_INFORMADA", "gestionhumana@colbeef.com")
     # Pruebas: dejar vacío o poner un correo extra que reciba copia en cada envío.
     MAIL_PRUEBAS_CC = os.getenv("MAIL_PRUEBAS_CC", "")
     # Único correo que puede tener el rol ADMIN (seguridad).
     ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "tecnologia@colbeef.com").strip().lower()
+
+    # Firma digital sobre PDF: ruta a imagen de firma (PNG/JPG) para estampar en el formato de permiso al aprobar.
+    # Si está vacío, no se genera PDF firmado. Ej.: instance/static/firma_coordinacion.png o ruta absoluta.
+    SIGNATURE_IMAGE_PATH = (os.getenv("SIGNATURE_IMAGE_PATH") or "").strip()

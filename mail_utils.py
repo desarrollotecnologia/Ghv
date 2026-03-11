@@ -168,6 +168,7 @@ def notificar_nueva_solicitud_permiso(app, solicitud, empleado_nombre, empleado_
     """
     Notifica por separado:
     - coordinacion.gestionhumana@colbeef.com (MAIL_GH_PERMISOS): es quien APRUEBA o RECHAZA el permiso.
+    - gestionhumana@colbeef.com (MAIL_GH_INFORMADA): misma info, solo informativa; no aprueba ni rechaza.
     - gestor.contratacion@colbeef.com (MAIL_GESTOR_CONTRATACION): se le informa que el empleado ya diligenció el formato.
     evidencia_path: ruta absoluta del archivo adjunto (permiso no remunerado); se incluye en el correo.
     """
@@ -179,7 +180,7 @@ def notificar_nueva_solicitud_permiso(app, solicitud, empleado_nombre, empleado_
 
     nota_evidencia = "<p><strong>Se adjunta la evidencia</strong> enviada por el empleado (permiso no remunerado).</p>" if attachments else ""
 
-    # Correo a Coordinación GH
+    # Correo a Coordinación GH (quien aprueba/rechaza)
     gh = (app.config.get("MAIL_GH_PERMISOS") or "").strip()
     if gh:
         subject_gh = f"Solicitud de permiso – {solicitud.get('fecha_desde', '')} – {empleado_nombre}"
@@ -195,6 +196,24 @@ def notificar_nueva_solicitud_permiso(app, solicitud, empleado_nombre, empleado_
         body_gh = _wrap_html(body_gh_content, title=subject_gh, subtitle="Nueva solicitud de permiso")
         plain_gh = _strip_html(body_gh_content)
         if send_mail(gh, subject_gh, body_gh, body_text=plain_gh, app=app, attachments=attachments):
+            ok = True
+
+    # Correo a GH Informada (solo informativa; coordinación es quien aprueba/rechaza)
+    informada = (app.config.get("MAIL_GH_INFORMADA") or "").strip()
+    if informada:
+        subject_inf = f"Solicitud de permiso (informativo) – {solicitud.get('fecha_desde', '')} – {empleado_nombre}"
+        body_inf_content = f"""
+        <p>Estimado/a Gestión Humana,</p>
+        <p>Se ha registrado una <strong>nueva solicitud de permiso</strong> en el sistema. A continuación el detalle:</p>
+        {tabla}
+        {nota_evidencia}
+        <div class="mail-divider"></div>
+        <p><strong>Este correo es solo informativo.</strong> Coordinación Gestión Humana es quien aprueba o rechaza las solicitudes. Usted puede ingresar al sistema para consultar el estado de los permisos.</p>
+        <p>Saludos cordiales,<br/><strong>Sistema de Gestión Humana – Colbeef</strong></p>
+        """
+        body_inf = _wrap_html(body_inf_content, title=subject_inf, subtitle="Nueva solicitud de permiso (informativo)")
+        plain_inf = _strip_html(body_inf_content)
+        if send_mail(informada, subject_inf, body_inf, body_text=plain_inf, app=app, attachments=attachments):
             ok = True
 
     # Correo a Gestor de Contratación
@@ -216,13 +235,14 @@ def notificar_nueva_solicitud_permiso(app, solicitud, empleado_nombre, empleado_
             ok = True
 
     if app and hasattr(app, "logger"):
-        app.logger.info(f"[Permisos] Notificación nueva solicitud: GH={bool(gh)}, Gestor={bool(gestor)}, enviados_ok={ok}")
+        app.logger.info(f"[Permisos] Notificación nueva solicitud: GH={bool(gh)}, Informada={bool(informada)}, Gestor={bool(gestor)}, enviados_ok={ok}")
     return ok
 
 
-def notificar_resolucion_permiso(app, solicitud, empleado_nombre, empleado_email, aprobado, observaciones=None):
+def notificar_resolucion_permiso(app, solicitud, empleado_nombre, empleado_email, aprobado, observaciones=None, attachments=None):
     """Notifica al empleado que su solicitud fue aprobada o rechazada.
-    El correo va al empleado (direccion_email en BD). Si está vacío, se usa el primer correo de MAIL_PRUEBAS_CC para pruebas."""
+    El correo va al empleado (direccion_email en BD). Si está vacío, se usa el primer correo de MAIL_PRUEBAS_CC para pruebas.
+    attachments: lista opcional de (nombre_archivo, ruta_archivo), ej. PDF firmado al aprobar."""
     original_email = (empleado_email or "").strip()
     if not original_email:
         empleado_email = app.config.get("MAIL_PRUEBAS_CC", "").split(",")[0].strip() or None
@@ -267,7 +287,7 @@ def notificar_resolucion_permiso(app, solicitud, empleado_nombre, empleado_email
     id_sol = solicitud.get("id")
     if app and hasattr(app, "logger"):
         app.logger.info(f"[Permisos] Resolución solicitud id={id_sol} → enviando a {empleado_email} ({estado})")
-    ok = send_mail(empleado_email, subject, body, body_text=plain, app=app)
+    ok = send_mail(empleado_email, subject, body, body_text=plain, app=app, attachments=attachments or [])
     if app and hasattr(app, "logger"):
         app.logger.info(f"[Permisos] Resolución id={id_sol} → resultado_enviado={ok}")
     return ok

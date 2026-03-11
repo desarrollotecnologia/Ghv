@@ -90,9 +90,15 @@ MAIL_PASSWORD=
 MAIL_FROM=
 MAIL_GH_PERMISOS=coordinacion@ejemplo.com
 MAIL_GESTOR_CONTRATACION=gestor@ejemplo.com
+MAIL_GH_INFORMADA=gestionhumana@ejemplo.com
 MAIL_PRUEBAS_CC=
 ADMIN_EMAIL=admin@ejemplo.com
+# Firma digital: imagen (PNG/JPG) para estampar en el PDF de permiso al aprobar. Si hay evidencia PDF, se envía copia firmada por correo.
+SIGNATURE_IMAGE_PATH=
 ```
+
+- **MAIL_GH_INFORMADA**: correo que recibe la misma notificación de nueva solicitud de permiso pero solo como información (no aprueba ni rechaza). Rol en sistema: **GH INFORMADA** (ver `database/migration_rol_gh_informada.sql`).
+- **SIGNATURE_IMAGE_PATH**: ruta a una imagen de firma (PNG/JPG). Al aprobar una solicitud cuya evidencia es un PDF, se genera una copia con la firma superpuesta y se adjunta al correo al empleado. Dejar vacío para no usar firma.
 
 Ajusta `MYSQL_USER` y `MYSQL_PASSWORD` al usuario que creaste en MySQL (por ejemplo `gh_admin` si usaste `crear_bd_completo.sql`).
 
