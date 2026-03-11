@@ -145,6 +145,17 @@
                         <span class="permiso-detail-label">Motivo</span>
                         <span class="permiso-detail-value permiso-motivo-text">{{ s.motivo or '—' }}</span>
                     </div>
+                    {% if s.evidencia %}
+                    <div class="permiso-detail-row permiso-evidencia-row">
+                        <span class="permiso-detail-label">Evidencia adjunta</span>
+                        <span class="permiso-detail-value">
+                            <a href="{{ url_for('permiso_evidencia', id=s.id) }}" target="_blank" rel="noopener" class="permiso-link-evidencia" title="Abrir o descargar el archivo adjunto">
+                                <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle">attach_file</span>
+                                Ver evidencia
+                            </a>
+                        </span>
+                    </div>
+                    {% endif %}
                 </div>
                 <div class="permiso-card-meta">
                     <span class="permiso-fecha-solicitud">
@@ -300,6 +311,8 @@
 .permiso-detail-label { color: var(--text-secondary); min-width: 130px; flex-shrink: 0; }
 .permiso-detail-value { color: var(--text); }
 .permiso-motivo .permiso-detail-value { white-space: pre-wrap; word-break: break-word; line-height: 1.45; }
+.permiso-link-evidencia { color: var(--colbeef-green, #2D9E3F); text-decoration: none; font-weight: 500; display: inline-flex; align-items: center; gap: 4px; }
+.permiso-link-evidencia:hover { text-decoration: underline; }
 .permiso-card-meta { font-size: 0.82rem; color: var(--text-secondary); }
 .permiso-fecha-solicitud .material-symbols-outlined { margin-right: 4px; }
 .permiso-card-actions { display: flex; flex-direction: column; justify-content: center; gap: 12px; min-width: 140px; }

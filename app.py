@@ -1,6 +1,6 @@
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    flash, jsonify, session, g, make_response, current_app,
+    flash, jsonify, session, g, make_response, current_app, send_file,
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -1568,6 +1568,28 @@ def permiso_rechazar(id):
         r = query("SELECT COUNT(*) as c FROM solicitud_permiso WHERE estado = 'RECHAZADO'", one=True)["c"]
         return jsonify(ok=True, pendientes=p, aprobadas=a, rechazadas=r)
     return redirect(url_for("permisos_index"))
+
+
+@app.route("/permisos/<int:id>/evidencia")
+@login_required
+@module_required("permisos")
+def permiso_evidencia(id):
+    """La coordinación (o quien tenga módulo permisos) puede ver/descargar la evidencia adjunta de la solicitud."""
+    solicitud = query("SELECT id, evidencia FROM solicitud_permiso WHERE id = %s", (id,), one=True)
+    if not solicitud or not (solicitud.get("evidencia") or "").strip():
+        flash("No hay evidencia adjunta para esta solicitud.", "info")
+        return redirect(url_for("permisos_index"))
+    evidencia_ruta = (solicitud["evidencia"] or "").strip()
+    if ".." in evidencia_ruta or evidencia_ruta.startswith("/"):
+        flash("Ruta de evidencia no válida.", "error")
+        return redirect(url_for("permisos_index"))
+    uploads_dir = os.path.join(current_app.instance_path, "uploads")
+    full_path = os.path.normpath(os.path.join(uploads_dir, evidencia_ruta))
+    if not full_path.startswith(os.path.normpath(uploads_dir)) or not os.path.isfile(full_path):
+        flash("Archivo de evidencia no encontrado.", "error")
+        return redirect(url_for("permisos_index"))
+    nombre_descarga = os.path.basename(evidencia_ruta)
+    return send_file(full_path, as_attachment=False, download_name=nombre_descarga, mimetype=None)
 
 
 PERMISOS_EXPORT_COLUMNS = [
