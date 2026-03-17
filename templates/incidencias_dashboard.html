@@ -1,0 +1,428 @@
+{% extends "base.html" %}
+
+{% block page_actions %}
+<a href="{{ url_for('incidencias_index') }}" class="btn btn-outline btn-sm">Listado</a>
+<a href="{{ url_for('incidencias_nueva') }}" class="btn btn-primary btn-sm">Nueva incidencia</a>
+{% endblock %}
+
+{% block content %}
+<header class="incidencia-dash-hero">
+    <div class="incidencia-dash-hero-inner">
+        <h1 class="incidencia-dash-hero-title">Análisis de accidentes – INATEL</h1>
+        <p class="incidencia-dash-hero-sub">Resumen dinámico para SISO (formato CARACTERIZACION AT / ANALISIS_AÑO).</p>
+    </div>
+</header>
+
+<div class="incidencia-dash-filtro">
+    <label for="filtroAnio" class="incidencia-dash-filtro-label">
+        <span class="material-symbols-outlined">calendar_today</span>
+        Año
+    </label>
+    <select id="filtroAnio" class="incidencia-dash-filtro-select" onchange="incidenciaDashboardFiltros()">
+        <option value="">Todos los años</option>
+        {% for a in años_disponibles %}
+        <option value="{{ a }}" {{ 'selected' if filtro_anio == a else '' }}>{{ a }}</option>
+        {% endfor %}
+    </select>
+    <label for="filtroMes" class="incidencia-dash-filtro-label">
+        <span class="material-symbols-outlined">filter_list</span>
+        Mes
+    </label>
+    <select id="filtroMes" class="incidencia-dash-filtro-select" onchange="incidenciaDashboardFiltros()">
+        <option value="">Todos los meses</option>
+        {% for m in meses_validos %}
+        <option value="{{ m }}" {{ 'selected' if filtro_mes == m else '' }}>{{ m }}</option>
+        {% endfor %}
+    </select>
+    {% if filtro_mes or filtro_anio %}
+    <span class="incidencia-dash-filtro-badge">
+        {% if filtro_anio %}{{ filtro_anio }}{% endif %}
+        {% if filtro_anio and filtro_mes %} – {% endif %}
+        {% if filtro_mes %}{{ filtro_mes }}{% endif %}
+    </span>
+    <a href="{{ url_for('incidencias_dashboard') }}" class="btn btn-outline btn-sm">Quitar filtros</a>
+    {% endif %}
+</div>
+<script>
+function incidenciaDashboardFiltros() {
+    var base = "{{ url_for('incidencias_dashboard') }}";
+    var anio = document.getElementById('filtroAnio').value;
+    var mes = document.getElementById('filtroMes').value;
+    var q = [];
+    if (anio) q.push('anio=' + encodeURIComponent(anio));
+    if (mes) q.push('mes=' + encodeURIComponent(mes));
+    window.location.href = q.length ? base + '?' + q.join('&') : base;
+}
+</script>
+
+<div class="incidencia-kpi-row">
+    <div class="incidencia-kpi-card">
+        <div class="incidencia-kpi-icon">
+            <span class="material-symbols-outlined">assignment</span>
+        </div>
+        <div class="incidencia-kpi-content">
+            <span class="incidencia-kpi-value">{{ total }}</span>
+            <span class="incidencia-kpi-label">Total registros</span>
+        </div>
+    </div>
+</div>
+
+{% set section_class = 'incidencia-dash-section' %}
+{% set table_class = 'table table-sm incidencia-dash-table' %}
+
+{# ─── 1. COMPARATIVO MES A MES ─── #}
+<section class="{{ section_class }}">
+    <h3 class="section-title"><span class="material-symbols-outlined">calendar_month</span> 1. Comparativo mes a mes</h3>
+    <div class="dash-section-grid dash-section-grid-2">
+        <div class="dash-block">
+            <h4 class="dash-block-label">MES – # AT</h4>
+            <div class="table-wrapper table-scroll">
+                <table class="{{ table_class }}">
+                    <thead><tr><th>Mes</th><th style="text-align:right"># AT</th></tr></thead>
+                    <tbody>
+                        {% for m in por_mes %}<tr><td>{{ m.mes or '—' }}</td><td style="text-align:right">{{ m.total }}</td></tr>{% endfor %}
+                        {% if por_mes %}<tr style="font-weight:600"><td>TOTAL</td><td style="text-align:right">{{ por_mes|sum(attribute='total') }}</td></tr>{% endif %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="chart-box"><canvas id="chartMes"></canvas></div>
+        </div>
+        <div class="dash-block">
+            <h4 class="dash-block-label">Severidad (días incapacidad) por mes</h4>
+            <div class="table-wrapper table-scroll">
+                <table class="{{ table_class }}">
+                    <thead><tr><th>Mes</th><th style="text-align:right">Días inc.</th></tr></thead>
+                    <tbody>
+                        {% for s in severidad_mes %}<tr><td>{{ s.mes or '—' }}</td><td style="text-align:right">{{ s.total }}</td></tr>{% endfor %}
+                        {% if severidad_mes %}<tr style="font-weight:600"><td>TOTAL</td><td style="text-align:right">{{ severidad_mes|sum(attribute='total') }}</td></tr>{% endif %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="chart-box"><canvas id="chartSeveridadMes"></canvas></div>
+        </div>
+    </div>
+</section>
+
+{# ─── 2. DÍA DE LA SEMANA ─── #}
+<section class="{{ section_class }}">
+    <h3 class="section-title"><span class="material-symbols-outlined">today</span> 2. Día de accidente</h3>
+    <div class="dash-section-grid dash-section-grid-aside">
+        <div class="table-wrapper table-scroll">
+            <table class="{{ table_class }}">
+                <thead><tr><th>Día</th><th style="text-align:right"># Accidentes</th></tr></thead>
+                <tbody>
+                    {% for d in por_dia_semana %}<tr><td>{{ d.dia or '—' }}</td><td style="text-align:right">{{ d.total }}</td></tr>{% endfor %}
+                    {% if por_dia_semana %}<tr style="font-weight:600"><td>TOTAL</td><td style="text-align:right">{{ por_dia_semana|sum(attribute='total') }}</td></tr>{% endif %}
+                </tbody>
+            </table>
+        </div>
+        <div class="chart-box chart-box-tall"><canvas id="chartDiaSemana"></canvas></div>
+    </div>
+</section>
+
+{# ─── 3. LUGAR DE OCURRENCIA ─── #}
+<section class="{{ section_class }}">
+    <h3 class="section-title"><span class="material-symbols-outlined">place</span> 3. Lugar de ocurrencia del accidente</h3>
+    <div class="dash-section-grid dash-section-grid-aside">
+        <div class="table-wrapper table-scroll">
+            <table class="{{ table_class }}">
+                <thead><tr><th>Lugar</th><th style="text-align:right"># Accidentes</th></tr></thead>
+                <tbody>
+                    {% for r in por_lugar %}<tr><td>{{ r.lugar or '—' }}</td><td style="text-align:right">{{ r.total }}</td></tr>{% endfor %}
+                    {% if por_lugar %}<tr style="font-weight:600"><td>TOTAL</td><td style="text-align:right">{{ por_lugar|sum(attribute='total') }}</td></tr>{% endif %}
+                </tbody>
+            </table>
+        </div>
+        <div class="chart-box"><canvas id="chartLugar"></canvas></div>
+    </div>
+</section>
+
+{# ─── 4. FORMA DEL ACCIDENTE ─── #}
+<section class="{{ section_class }}">
+    <h3 class="section-title"><span class="material-symbols-outlined">warning</span> 4. Forma del accidente</h3>
+    <div class="dash-section-grid dash-section-grid-aside">
+        <div class="table-wrapper table-scroll">
+            <table class="{{ table_class }}">
+                <thead><tr><th>Forma</th><th style="text-align:right"># Accidentes</th></tr></thead>
+                <tbody>
+                    {% for r in por_forma %}<tr><td>{{ r.forma or '—' }}</td><td style="text-align:right">{{ r.total }}</td></tr>{% endfor %}
+                    {% if por_forma %}<tr style="font-weight:600"><td>TOTAL</td><td style="text-align:right">{{ por_forma|sum(attribute='total') }}</td></tr>{% endif %}
+                </tbody>
+            </table>
+        </div>
+        <div class="chart-box"><canvas id="chartForma"></canvas></div>
+    </div>
+</section>
+
+{# ─── 5. PARTE DEL CUERPO ─── #}
+<section class="{{ section_class }}">
+    <h3 class="section-title"><span class="material-symbols-outlined">person</span> 5. Parte del cuerpo afectada</h3>
+    <div class="dash-section-grid dash-section-grid-aside">
+        <div class="table-wrapper table-scroll">
+            <table class="{{ table_class }}">
+                <thead><tr><th>Parte del cuerpo</th><th style="text-align:right"># Accidentes</th></tr></thead>
+                <tbody>
+                    {% for r in por_parte_cuerpo %}<tr><td>{{ r.parte or '—' }}</td><td style="text-align:right">{{ r.total }}</td></tr>{% endfor %}
+                    {% if por_parte_cuerpo %}<tr style="font-weight:600"><td>TOTAL</td><td style="text-align:right">{{ por_parte_cuerpo|sum(attribute='total') }}</td></tr>{% endif %}
+                </tbody>
+            </table>
+        </div>
+        <div class="chart-box"><canvas id="chartParteCuerpo"></canvas></div>
+    </div>
+</section>
+
+{# ─── 6. NATURALEZA DE LA LESIÓN ─── #}
+<section class="{{ section_class }}">
+    <h3 class="section-title"><span class="material-symbols-outlined">healing</span> 6. Naturaleza de la lesión</h3>
+    <div class="dash-section-grid dash-section-grid-aside">
+        <div class="table-wrapper table-scroll">
+            <table class="{{ table_class }}">
+                <thead><tr><th>Naturaleza</th><th style="text-align:right"># Accidentes</th></tr></thead>
+                <tbody>
+                    {% for r in por_tipo_lesion %}<tr><td>{{ r.lesion or '—' }}</td><td style="text-align:right">{{ r.total }}</td></tr>{% endfor %}
+                    {% if por_tipo_lesion %}<tr style="font-weight:600"><td>TOTAL</td><td style="text-align:right">{{ por_tipo_lesion|sum(attribute='total') }}</td></tr>{% endif %}
+                </tbody>
+            </table>
+        </div>
+        <div class="chart-box"><canvas id="chartTipoLesion"></canvas></div>
+    </div>
+</section>
+
+{# ─── 7. AGENTE DE LA LESIÓN ─── #}
+<section class="{{ section_class }}">
+    <h3 class="section-title"><span class="material-symbols-outlined">build</span> 7. Agente de la lesión</h3>
+    <div class="dash-section-grid dash-section-grid-aside">
+        <div class="table-wrapper table-scroll">
+            <table class="{{ table_class }}">
+                <thead><tr><th>Agente</th><th style="text-align:right"># Accidentes</th></tr></thead>
+                <tbody>
+                    {% for r in por_agente %}<tr><td>{{ r.agente or '—' }}</td><td style="text-align:right">{{ r.total }}</td></tr>{% endfor %}
+                    {% if por_agente %}<tr style="font-weight:600"><td>TOTAL</td><td style="text-align:right">{{ por_agente|sum(attribute='total') }}</td></tr>{% endif %}
+                </tbody>
+            </table>
+        </div>
+        <div class="chart-box"><canvas id="chartAgente"></canvas></div>
+    </div>
+</section>
+
+{# ─── 8. TIPO DE EVENTO ─── #}
+<section class="{{ section_class }}">
+    <h3 class="section-title"><span class="material-symbols-outlined">category</span> 8. Tipo de evento</h3>
+    <div class="dash-section-grid dash-section-grid-aside dash-section-grid-narrow">
+        <div class="table-wrapper table-scroll">
+            <table class="{{ table_class }}">
+                <thead><tr><th>Tipo</th><th style="text-align:right"># Eventos</th></tr></thead>
+                <tbody>
+                    {% for t in por_tipo %}<tr><td>{{ t.tipo or '—' }}</td><td style="text-align:right">{{ t.total }}</td></tr>{% endfor %}
+                    {% if por_tipo %}<tr style="font-weight:600"><td>TOTAL</td><td style="text-align:right">{{ por_tipo|sum(attribute='total') }}</td></tr>{% endif %}
+                </tbody>
+            </table>
+        </div>
+        <div class="chart-box chart-box-pie"><canvas id="chartTipoEvento"></canvas></div>
+    </div>
+</section>
+
+{# ─── 9. GÉNERO ─── #}
+<section class="{{ section_class }}">
+    <h3 class="section-title"><span class="material-symbols-outlined">group</span> 9. Género</h3>
+    <div class="dash-section-grid dash-section-grid-aside dash-section-grid-narrow">
+        <div class="table-wrapper table-scroll">
+            <table class="{{ table_class }}">
+                <thead><tr><th>Género</th><th style="text-align:right"># Eventos</th></tr></thead>
+                <tbody>
+                    {% for g in por_genero %}<tr><td>{{ g.genero or '—' }}</td><td style="text-align:right">{{ g.total }}</td></tr>{% endfor %}
+                    {% if por_genero %}<tr style="font-weight:600"><td>TOTAL</td><td style="text-align:right">{{ por_genero|sum(attribute='total') }}</td></tr>{% endif %}
+                </tbody>
+            </table>
+        </div>
+        <div class="chart-box chart-box-pie"><canvas id="chartGenero"></canvas></div>
+    </div>
+</section>
+
+{# ─── 10. CARGOS ─── #}
+<section class="{{ section_class }}">
+    <h3 class="section-title"><span class="material-symbols-outlined">badge</span> 10. Cargos</h3>
+    <div class="dash-section-grid dash-section-grid-aside">
+        <div class="table-wrapper table-scroll">
+            <table class="{{ table_class }}">
+                <thead><tr><th>Cargo</th><th style="text-align:right"># Eventos</th></tr></thead>
+                <tbody>
+                    {% for c in por_cargo %}<tr><td>{{ c.cargo or '—' }}</td><td style="text-align:right">{{ c.total }}</td></tr>{% endfor %}
+                    {% if por_cargo %}<tr style="font-weight:600"><td>TOTAL</td><td style="text-align:right">{{ por_cargo|sum(attribute='total') }}</td></tr>{% endif %}
+                </tbody>
+            </table>
+        </div>
+        <div class="chart-box"><canvas id="chartCargo"></canvas></div>
+    </div>
+</section>
+
+{% if not total %}
+<div class="incidencia-dash-empty">
+    <p class="text-muted">No hay incidencias registradas. Los gráficos se actualizarán al cargar datos desde el listado o desde el Excel.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+    Chart.defaults.animation.duration = 500;
+    Chart.defaults.font.family = "'Inter', sans-serif";
+    var COLORS = ['#0b3518','#166534','#22c55e','#4ade80','#15803d','#14532d','#16a34a','#052e16','#166534','#22c55e'];
+
+    function makeBar(ctx, labels, values, title, color) {
+        if (!ctx || !labels.length) return;
+        var c = color || COLORS[0];
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{ label: title || '#', data: values, backgroundColor: c, borderColor: c, borderWidth: 1 }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'x',
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { maxRotation: 45, minRotation: 0 } },
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+    }
+    function makeBarHorizontal(ctx, labels, values, title, color) {
+        if (!ctx || !labels.length) return;
+        var c = color || COLORS[0];
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{ label: title || '#', data: values, backgroundColor: c, borderColor: c, borderWidth: 1 }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { beginAtZero: true },
+                    y: { ticks: { autoSkip: false } }
+                }
+            }
+        });
+    }
+    function makeLine(ctx, labels, values, label) {
+        if (!ctx || !labels.length) return;
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: label || '#',
+                    data: values,
+                    borderColor: '#166534',
+                    backgroundColor: 'rgba(22, 101, 52, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#fff',
+                    pointBorderColor: '#166534',
+                    pointBorderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { x: { ticks: { maxRotation: 45 } }, y: { beginAtZero: true } }
+            }
+        });
+    }
+    function makePie(ctx, labels, values) {
+        if (!ctx || !labels.length) return;
+        var colors = labels.map(function(_, i) { return COLORS[i % COLORS.length]; });
+        new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{ data: values, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom' },
+                    tooltip: { callbacks: { label: function(ctx) {
+                        var t = ctx.dataset.data.reduce(function(a,b){ return a+b; }, 0);
+                        var p = t ? ((ctx.parsed / t) * 100).toFixed(1) : 0;
+                        return ' ' + ctx.parsed + ' (' + p + '%)';
+                    }}}
+                }
+            }
+        });
+    }
+    function makeDoughnut(ctx, labels, values) {
+        if (!ctx || !labels.length) return;
+        var colors = labels.map(function(_, i) { return COLORS[i % COLORS.length]; });
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{ data: values, backgroundColor: colors, borderWidth: 2, borderColor: '#fff', hoverOffset: 8 }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '55%',
+                plugins: {
+                    legend: { position: 'bottom' },
+                    tooltip: { callbacks: { label: function(ctx) {
+                        var t = ctx.dataset.data.reduce(function(a,b){ return a+b; }, 0);
+                        var p = t ? ((ctx.parsed / t) * 100).toFixed(1) : 0;
+                        return ' ' + ctx.parsed + ' (' + p + '%)';
+                    }}}
+                }
+            }
+        });
+    }
+
+    var porMes = {{ (por_mes|map(attribute='mes')|list)|tojson }};
+    var porMesTotal = {{ (por_mes|map(attribute='total')|list)|tojson }};
+    var severidadLabels = {{ (severidad_mes|map(attribute='mes')|list)|tojson }};
+    var severidadValues = {{ (severidad_mes|map(attribute='total')|list)|tojson }};
+    var diaLabels = {{ (por_dia_semana|map(attribute='dia')|list)|tojson }};
+    var diaValues = {{ (por_dia_semana|map(attribute='total')|list)|tojson }};
+    var lugarLabels = {{ (por_lugar|map(attribute='lugar')|list)|tojson }};
+    var lugarValues = {{ (por_lugar|map(attribute='total')|list)|tojson }};
+    var formaLabels = {{ (por_forma|map(attribute='forma')|list)|tojson }};
+    var formaValues = {{ (por_forma|map(attribute='total')|list)|tojson }};
+    var parteLabels = {{ (por_parte_cuerpo|map(attribute='parte')|list)|tojson }};
+    var parteValues = {{ (por_parte_cuerpo|map(attribute='total')|list)|tojson }};
+    var lesionLabels = {{ (por_tipo_lesion|map(attribute='lesion')|list)|tojson }};
+    var lesionValues = {{ (por_tipo_lesion|map(attribute='total')|list)|tojson }};
+    var agenteLabels = {{ (por_agente|map(attribute='agente')|list)|tojson }};
+    var agenteValues = {{ (por_agente|map(attribute='total')|list)|tojson }};
+    var tipoLabels = {{ (por_tipo|map(attribute='tipo')|list)|tojson }};
+    var tipoValues = {{ (por_tipo|map(attribute='total')|list)|tojson }};
+    var generoLabels = {{ (por_genero|map(attribute='genero')|list)|tojson }};
+    var generoValues = {{ (por_genero|map(attribute='total')|list)|tojson }};
+    var cargoLabels = {{ (por_cargo|map(attribute='cargo')|list)|tojson }};
+    var cargoValues = {{ (por_cargo|map(attribute='total')|list)|tojson }};
+
+    makeBar(document.getElementById('chartMes'), porMes, porMesTotal, 'Frecuencia AT', 'rgba(11, 53, 24, 0.85)');
+    makeBar(document.getElementById('chartSeveridadMes'), severidadLabels, severidadValues, 'Días incapacidad', 'rgba(34, 197, 94, 0.85)');
+    makeLine(document.getElementById('chartDiaSemana'), diaLabels, diaValues, '# Accidentes');
+    makeBar(document.getElementById('chartLugar'), lugarLabels, lugarValues, '# Accidentes', 'rgba(22, 101, 52, 0.8)');
+    makeBarHorizontal(document.getElementById('chartForma'), formaLabels, formaValues, '# Accidentes', 'rgba(21, 128, 61, 0.85)');
+    makeBar(document.getElementById('chartParteCuerpo'), parteLabels, parteValues, '# Accidentes', 'rgba(5, 46, 22, 0.8)');
+    makeBar(document.getElementById('chartTipoLesion'), lesionLabels, lesionValues, '# Accidentes', 'rgba(20, 83, 45, 0.85)');
+    makeBarHorizontal(document.getElementById('chartAgente'), agenteLabels, agenteValues, '# Accidentes', 'rgba(22, 163, 74, 0.8)');
+    makeDoughnut(document.getElementById('chartTipoEvento'), tipoLabels, tipoValues);
+    makePie(document.getElementById('chartGenero'), generoLabels, generoValues);
+    makeLine(document.getElementById('chartCargo'), cargoLabels, cargoValues, '# Eventos');
+})();
+</script>
+{% endblock %}

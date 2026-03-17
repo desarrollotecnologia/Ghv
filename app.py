@@ -267,7 +267,7 @@ _ROLE_MODULES = {
         "reportes":     True,   # solo Dashboard
         "total_hijos":  False,
         "admin":        False,
-        "permisos":     True,
+        "permisos":     False,  # GESTOR SST no ve Permisos (solo Incidencias SISO si aplica)
     },
     "EMPLEADO": {
         "organizacion": False,
@@ -281,6 +281,10 @@ _ROLE_MODULES = {
         "admin":        False,
         "permisos":     True,   # solo Solicitud de permiso (portal empleado)
     },
+    "SISO": {
+        "incidencias": True,   # Registro y análisis INATEL (incidentes, accidentes, enfermedades laborales)
+        "incidencias_dashboard": True,
+    },
 }
 
 # Contraseña inicial para empleados creados por Gestor (y para dar de alta en BD)
@@ -293,6 +297,7 @@ _DEFAULT_MODULES = {k: False for k in [
     "organizacion", "personal", "personal_inactivo", "retiro",
     "familia", "eventos", "eps", "fondos",
     "reportes", "dashboard", "total_hijos", "admin", "admin_usuarios", "permisos",
+    "incidencias", "incidencias_dashboard",
 ]}
 
 
@@ -348,6 +353,7 @@ def _get_effective_modules(rol):
         vm["dashboard"] = False
     if rol_key == "GESTOR SST":
         vm["personal_inactivo"] = False
+        vm["permisos"] = False  # GESTOR SST no ve Permisos (prevalece sobre rol_modulo en BD)
 
     return vm
 
@@ -360,7 +366,13 @@ def module_required(module_key):
             user = get_current_user()
             if user is None:
                 return redirect(url_for("login"))
-            if not _get_effective_modules(user["rol"]).get(module_key, False):
+            # Incidencias: visible también si el usuario es Siso@colbeef.com (aunque tenga otro rol)
+            email_lower = (user.get("email") or "").strip().lower()
+            tiene_incidencias = (
+                _get_effective_modules(user["rol"]).get(module_key, False)
+                or (module_key in ("incidencias", "incidencias_dashboard") and email_lower == "siso@colbeef.com")
+            )
+            if not tiene_incidencias:
                 flash("No tienes acceso a este módulo", "error")
                 if (user.get("rol") or "").strip().upper() == "EMPLEADO":
                     return redirect(url_for("empleado_portal"))
@@ -383,6 +395,13 @@ def inject_user():
         can_write = perm in ("WRITE", "ALL")
         can_admin = perm == "ALL"
         vm = _get_effective_modules(rol)
+        # Usuario Siso@colbeef.com: siempre ve el módulo Incidencias (aunque su rol sea GESTOR SST u otro)
+        if (user.get("email") or "").strip().lower() == "siso@colbeef.com":
+            vm["incidencias"] = True
+            vm["incidencias_dashboard"] = True
+        # GESTOR SST no ve Permisos (ni por código ni por BD)
+        if _rol_match(rol) == "GESTOR SST":
+            vm["permisos"] = False
         # Mostrar Permisos si vm lo tiene O si el rol es Gestor de Contratación (por nombre)
         show_permisos_menu = vm.get("permisos") is True or (
             "GESTOR" in rol.upper() and "CONTRAT" in rol.upper()
@@ -1487,10 +1506,24 @@ def permiso_aprobar(id):
         return redirect(url_for("permisos_index"))
     observaciones = (request.form.get("observaciones") or "").strip()
     solicitud = query("SELECT * FROM solicitud_permiso WHERE id = %s", (id,), one=True)
-    if not solicitud or solicitud["estado"] != "PENDIENTE":
-        flash("Solicitud no encontrada o ya fue resuelta.", "error")
+    if not solicitud:
+        flash("Solicitud no encontrada. En este equipo la base de datos puede ser distinta.", "error")
         if _is_api_request() or request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify(ok=False, error="Solicitud no encontrada o ya resuelta."), 400
+            try:
+                p = query("SELECT COUNT(*) as c FROM solicitud_permiso WHERE estado = 'PENDIENTE'", one=True)["c"]
+                a = query("SELECT COUNT(*) as c FROM solicitud_permiso WHERE estado = 'APROBADO'", one=True)["c"]
+                r = query("SELECT COUNT(*) as c FROM solicitud_permiso WHERE estado = 'RECHAZADO'", one=True)["c"]
+            except Exception:
+                p, a, r = 0, 0, 0
+            return jsonify(ok=False, error="Solicitud no encontrada. Revise que la base de datos sea la correcta en este equipo.", pendientes=p, aprobadas=a, rechazadas=r), 404
+        return redirect(url_for("permisos_index"))
+    if solicitud["estado"] != "PENDIENTE":
+        flash("La solicitud ya fue resuelta. Se actualiza la lista.", "info")
+        if _is_api_request() or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            p = query("SELECT COUNT(*) as c FROM solicitud_permiso WHERE estado = 'PENDIENTE'", one=True)["c"]
+            a = query("SELECT COUNT(*) as c FROM solicitud_permiso WHERE estado = 'APROBADO'", one=True)["c"]
+            r = query("SELECT COUNT(*) as c FROM solicitud_permiso WHERE estado = 'RECHAZADO'", one=True)["c"]
+            return jsonify(ok=True, ya_resuelta=True, pendientes=p, aprobadas=a, rechazadas=r)
         return redirect(url_for("permisos_index"))
     execute(
         "UPDATE solicitud_permiso SET estado = 'APROBADO', observaciones = %s, resuelto_por = %s, fecha_resolucion = NOW() WHERE id = %s",
@@ -1591,10 +1624,24 @@ def permiso_rechazar(id):
         return redirect(url_for("permisos_index"))
     observaciones = (request.form.get("observaciones") or "").strip()
     solicitud = query("SELECT * FROM solicitud_permiso WHERE id = %s", (id,), one=True)
-    if not solicitud or solicitud["estado"] != "PENDIENTE":
-        flash("Solicitud no encontrada o ya fue resuelta.", "error")
+    if not solicitud:
+        flash("Solicitud no encontrada. En este equipo la base de datos puede ser distinta.", "error")
         if _is_api_request() or request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify(ok=False, error="Solicitud no encontrada o ya resuelta."), 400
+            try:
+                p = query("SELECT COUNT(*) as c FROM solicitud_permiso WHERE estado = 'PENDIENTE'", one=True)["c"]
+                a = query("SELECT COUNT(*) as c FROM solicitud_permiso WHERE estado = 'APROBADO'", one=True)["c"]
+                r = query("SELECT COUNT(*) as c FROM solicitud_permiso WHERE estado = 'RECHAZADO'", one=True)["c"]
+            except Exception:
+                p, a, r = 0, 0, 0
+            return jsonify(ok=False, error="Solicitud no encontrada. Revise la base de datos.", pendientes=p, aprobadas=a, rechazadas=r), 404
+        return redirect(url_for("permisos_index"))
+    if solicitud["estado"] != "PENDIENTE":
+        flash("La solicitud ya fue resuelta. Se actualiza la lista.", "info")
+        if _is_api_request() or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            p = query("SELECT COUNT(*) as c FROM solicitud_permiso WHERE estado = 'PENDIENTE'", one=True)["c"]
+            a = query("SELECT COUNT(*) as c FROM solicitud_permiso WHERE estado = 'APROBADO'", one=True)["c"]
+            r = query("SELECT COUNT(*) as c FROM solicitud_permiso WHERE estado = 'RECHAZADO'", one=True)["c"]
+            return jsonify(ok=True, ya_resuelta=True, pendientes=p, aprobadas=a, rechazadas=r)
         return redirect(url_for("permisos_index"))
     execute(
         "UPDATE solicitud_permiso SET estado = 'RECHAZADO', observaciones = %s, resuelto_por = %s, fecha_resolucion = NOW() WHERE id = %s",
@@ -1642,6 +1689,267 @@ def permiso_evidencia(id):
         return redirect(url_for("permisos_index"))
     nombre_descarga = os.path.basename(evidencia_ruta)
     return send_file(full_path, as_attachment=False, download_name=nombre_descarga, mimetype=None)
+
+
+# ── INCIDENCIAS (INATEL) – Solo rol SISO ─────────────────────────────────────
+
+@app.route("/incidencias")
+@login_required
+@module_required("incidencias")
+def incidencias_index():
+    """Listado de incidencias (accidentes, incidentes, enfermedades laborales). Solo SISO."""
+    try:
+        rows = query(
+            "SELECT * FROM incidencia_at ORDER BY COALESCE(fecha_accidente, creado_en) DESC, id DESC"
+        )
+    except Exception:
+        rows = []
+    return render_template("incidencias_list.html", rows=rows, active_page="Incidencias")
+
+
+_MESES_VALIDOS = ("ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE")
+
+
+@app.route("/incidencias/dashboard")
+@login_required
+@module_required("incidencias")
+def incidencias_dashboard():
+    """Dashboard de incidencias para SISO. Filtros: ?mes=ENERO y ?anio=2026 para estadísticas por mes y/o año."""
+    filtro_mes = (request.args.get("mes") or "").strip().upper()
+    if filtro_mes and filtro_mes not in _MESES_VALIDOS:
+        filtro_mes = ""
+    try:
+        filtro_anio = request.args.get("anio", "").strip()
+        filtro_anio = int(filtro_anio) if filtro_anio and filtro_anio.isdigit() and 2000 <= int(filtro_anio) <= 2100 else None
+    except (ValueError, TypeError):
+        filtro_anio = None
+
+    try:
+        # Años que tienen al menos un registro (para el selector)
+        años_rows = query(
+            "SELECT DISTINCT YEAR(fecha_accidente) AS anio FROM incidencia_at WHERE fecha_accidente IS NOT NULL ORDER BY anio DESC"
+        )
+        años_disponibles = [r["anio"] for r in (años_rows or []) if r.get("anio")]
+
+        # Condiciones y params según filtros
+        cond_mes = " AND mes = %s" if filtro_mes else ""
+        cond_anio = " AND YEAR(fecha_accidente) = %s" if filtro_anio else ""
+        params_filtro = []
+        if filtro_mes:
+            params_filtro.append(filtro_mes)
+        if filtro_anio:
+            params_filtro.append(filtro_anio)
+        params_filtro = tuple(params_filtro) if params_filtro else None
+
+        where_total = ("WHERE 1=1" + cond_mes + cond_anio) if params_filtro else ""
+        total = query(
+            "SELECT COUNT(*) AS c FROM incidencia_at " + where_total,
+            params_filtro,
+            one=True,
+        )
+        total = (total or {}).get("c") or 0
+
+        placeholders = ",".join(["%s"] * len(_MESES_VALIDOS))
+        base_where = "WHERE mes IS NOT NULL AND mes != ''" + cond_mes + cond_anio
+        group_mes = " GROUP BY mes ORDER BY FIELD(mes, " + placeholders + ")"
+        params_por_mes = (params_filtro or ()) + _MESES_VALIDOS
+
+        por_mes = query(
+            "SELECT mes, COUNT(*) AS total FROM incidencia_at " + base_where + group_mes,
+            params_por_mes,
+        )
+        severidad_mes = query(
+            "SELECT mes, COALESCE(SUM(COALESCE(dias_incapacidad, 0)), 0) AS total FROM incidencia_at " + base_where + group_mes,
+            params_por_mes,
+        )
+
+        base_where_resto = "WHERE 1=1" + cond_mes + cond_anio
+        pr = params_filtro or ()
+
+        por_tipo = query(
+            "SELECT tipo_evento AS tipo, COUNT(*) AS total FROM incidencia_at " + base_where_resto + " AND tipo_evento IS NOT NULL AND tipo_evento != '' GROUP BY tipo_evento",
+            pr,
+        )
+        por_dia_semana = query(
+            "SELECT dia_semana AS dia, COUNT(*) AS total FROM incidencia_at " + base_where_resto + " AND dia_semana IS NOT NULL AND dia_semana != '' GROUP BY dia_semana ORDER BY FIELD(dia_semana, 'LUNES','MARTES','MIÉRCOLES','MIERCOLES','JUEVES','VIERNES','SÁBADO','SABADO','DOMINGO'), dia_semana",
+            pr,
+        )
+        por_lugar = query(
+            "SELECT area_seccion_ocurrencia AS lugar, COUNT(*) AS total FROM incidencia_at " + base_where_resto + " AND area_seccion_ocurrencia IS NOT NULL AND area_seccion_ocurrencia != '' GROUP BY area_seccion_ocurrencia ORDER BY total DESC",
+            pr,
+        )
+        por_forma = query(
+            "SELECT forma_accidente AS forma, COUNT(*) AS total FROM incidencia_at " + base_where_resto + " AND forma_accidente IS NOT NULL AND forma_accidente != '' GROUP BY forma_accidente ORDER BY total DESC",
+            pr,
+        )
+        por_parte_cuerpo = query(
+            "SELECT parte_cuerpo_afectada AS parte, COUNT(*) AS total FROM incidencia_at " + base_where_resto + " AND parte_cuerpo_afectada IS NOT NULL AND parte_cuerpo_afectada != '' GROUP BY parte_cuerpo_afectada ORDER BY total DESC",
+            pr,
+        )
+        por_tipo_lesion = query(
+            "SELECT tipo_lesion AS lesion, COUNT(*) AS total FROM incidencia_at " + base_where_resto + " AND tipo_lesion IS NOT NULL AND tipo_lesion != '' GROUP BY tipo_lesion ORDER BY total DESC",
+            pr,
+        )
+        por_agente = query(
+            "SELECT agente_lesion AS agente, COUNT(*) AS total FROM incidencia_at " + base_where_resto + " AND agente_lesion IS NOT NULL AND agente_lesion != '' GROUP BY agente_lesion ORDER BY total DESC",
+            pr,
+        )
+        por_genero = query(
+            "SELECT genero AS genero, COUNT(*) AS total FROM incidencia_at " + base_where_resto + " AND genero IS NOT NULL AND genero != '' GROUP BY genero ORDER BY total DESC",
+            pr,
+        )
+        por_cargo = query(
+            "SELECT cargo AS cargo, COUNT(*) AS total FROM incidencia_at " + base_where_resto + " AND cargo IS NOT NULL AND cargo != '' GROUP BY cargo ORDER BY total DESC",
+            pr,
+        )
+    except Exception:
+        total = 0
+        años_disponibles = []
+        por_mes = por_tipo = por_dia_semana = por_lugar = por_forma = []
+        por_parte_cuerpo = por_tipo_lesion = por_agente = por_genero = por_cargo = []
+        severidad_mes = []
+
+    return render_template(
+        "incidencias_dashboard.html",
+        total=total,
+        por_tipo=por_tipo,
+        por_mes=por_mes,
+        severidad_mes=severidad_mes,
+        por_dia_semana=por_dia_semana,
+        por_lugar=por_lugar,
+        por_forma=por_forma,
+        por_parte_cuerpo=por_parte_cuerpo,
+        por_tipo_lesion=por_tipo_lesion,
+        por_agente=por_agente,
+        por_genero=por_genero,
+        por_cargo=por_cargo,
+        filtro_mes=filtro_mes,
+        filtro_anio=filtro_anio,
+        meses_validos=_MESES_VALIDOS,
+        años_disponibles=años_disponibles,
+        active_page="Dashboard Incidencias",
+    )
+
+
+def _incidencia_from_form():
+    """Extrae dict de incidencia desde request.form."""
+    def _d(k, default=None):
+        v = (request.form.get(k) or "").strip()
+        return v if v else default
+    def _date(k):
+        v = _d(k)
+        if not v:
+            return None
+        try:
+            from datetime import datetime
+            return datetime.strptime(v[:10], "%Y-%m-%d").date()
+        except Exception:
+            return None
+    return {
+        "numero_registro": int(request.form.get("numero_registro") or 0) or None,
+        "mes": _d("mes"),
+        "fecha_accidente": _date("fecha_accidente"),
+        "dia_semana": _d("dia_semana"),
+        "hora_ocurrencia": _d("hora_ocurrencia"),
+        "tipo_evento": _d("tipo_evento"),
+        "nombre_trabajador": _d("nombre_trabajador"),
+        "cedula": _d("cedula"),
+        "genero": _d("genero"),
+        "cargo": _d("cargo"),
+        "fecha_ingreso": _date("fecha_ingreso"),
+        "antiguedad_meses": int(request.form.get("antiguedad_meses") or 0) or None,
+        "area_seccion_ocurrencia": _d("area_seccion_ocurrencia"),
+        "tipo_vinculacion": _d("tipo_vinculacion"),
+        "dias_incapacidad": int(request.form.get("dias_incapacidad") or 0) or None,
+        "prorroga": _d("prorroga"),
+        "parte_cuerpo_afectada": _d("parte_cuerpo_afectada"),
+        "tipo_lesion": _d("tipo_lesion"),
+        "forma_accidente": _d("forma_accidente"),
+        "clasificacion_origen": _d("clasificacion_origen"),
+        "agente_lesion": _d("agente_lesion"),
+        "reincidente": _d("reincidente"),
+        "descripcion_accidente": _d("descripcion_accidente"),
+        "investigado": _d("investigado"),
+        "causas": _d("causas"),
+        "seguimiento_clinico": _d("seguimiento_clinico"),
+    }
+
+
+@app.route("/incidencias/nueva", methods=["GET", "POST"])
+@login_required
+@module_required("incidencias")
+def incidencias_nueva():
+    """Alta de incidencia. Solo SISO."""
+    if request.method == "POST":
+        data = _incidencia_from_form()
+        user = get_current_user()
+        execute(
+            """INSERT INTO incidencia_at (
+                numero_registro, mes, fecha_accidente, dia_semana, hora_ocurrencia, tipo_evento,
+                nombre_trabajador, cedula, genero, cargo, fecha_ingreso, antiguedad_meses,
+                area_seccion_ocurrencia, tipo_vinculacion, dias_incapacidad, prorroga,
+                parte_cuerpo_afectada, tipo_lesion, forma_accidente, clasificacion_origen,
+                agente_lesion, reincidente, descripcion_accidente, investigado, causas,
+                seguimiento_clinico, creado_por
+            ) VALUES (
+                %(numero_registro)s, %(mes)s, %(fecha_accidente)s, %(dia_semana)s, %(hora_ocurrencia)s, %(tipo_evento)s,
+                %(nombre_trabajador)s, %(cedula)s, %(genero)s, %(cargo)s, %(fecha_ingreso)s, %(antiguedad_meses)s,
+                %(area_seccion_ocurrencia)s, %(tipo_vinculacion)s, %(dias_incapacidad)s, %(prorroga)s,
+                %(parte_cuerpo_afectada)s, %(tipo_lesion)s, %(forma_accidente)s, %(clasificacion_origen)s,
+                %(agente_lesion)s, %(reincidente)s, %(descripcion_accidente)s, %(investigado)s, %(causas)s,
+                %(seguimiento_clinico)s, %(creado_por)s
+            )""",
+            {**data, "creado_por": user.get("email") or user.get("id_user")},
+        )
+        flash("Incidencia registrada correctamente.", "success")
+        return redirect(url_for("incidencias_index"))
+    return render_template("incidencias_form.html", incidencia=None, active_page="Nueva incidencia")
+
+
+@app.route("/incidencias/<int:id>/editar", methods=["GET", "POST"])
+@login_required
+@module_required("incidencias")
+def incidencias_editar(id):
+    """Editar incidencia. Solo SISO."""
+    incidencia = query("SELECT * FROM incidencia_at WHERE id = %s", (id,), one=True)
+    if not incidencia:
+        flash("Incidencia no encontrada.", "error")
+        return redirect(url_for("incidencias_index"))
+    if request.method == "POST":
+        data = _incidencia_from_form()
+        execute(
+            """UPDATE incidencia_at SET
+                numero_registro=%(numero_registro)s, mes=%(mes)s, fecha_accidente=%(fecha_accidente)s,
+                dia_semana=%(dia_semana)s, hora_ocurrencia=%(hora_ocurrencia)s, tipo_evento=%(tipo_evento)s,
+                nombre_trabajador=%(nombre_trabajador)s, cedula=%(cedula)s, genero=%(genero)s, cargo=%(cargo)s,
+                fecha_ingreso=%(fecha_ingreso)s, antiguedad_meses=%(antiguedad_meses)s,
+                area_seccion_ocurrencia=%(area_seccion_ocurrencia)s, tipo_vinculacion=%(tipo_vinculacion)s,
+                dias_incapacidad=%(dias_incapacidad)s, prorroga=%(prorroga)s,
+                parte_cuerpo_afectada=%(parte_cuerpo_afectada)s, tipo_lesion=%(tipo_lesion)s,
+                forma_accidente=%(forma_accidente)s, clasificacion_origen=%(clasificacion_origen)s,
+                agente_lesion=%(agente_lesion)s, reincidente=%(reincidente)s,
+                descripcion_accidente=%(descripcion_accidente)s, investigado=%(investigado)s,
+                causas=%(causas)s, seguimiento_clinico=%(seguimiento_clinico)s
+            WHERE id = %(id)s""",
+            {**data, "id": id},
+        )
+        flash("Incidencia actualizada.", "success")
+        return redirect(url_for("incidencias_index"))
+    return render_template("incidencias_form.html", incidencia=incidencia, active_page="Editar incidencia")
+
+
+@app.route("/incidencias/<int:id>/eliminar", methods=["POST"])
+@login_required
+@module_required("incidencias")
+def incidencias_eliminar(id):
+    """Eliminar incidencia. Solo SISO."""
+    incidencia = query("SELECT id FROM incidencia_at WHERE id = %s", (id,), one=True)
+    if not incidencia:
+        flash("Incidencia no encontrada.", "error")
+        return redirect(url_for("incidencias_index"))
+    execute("DELETE FROM incidencia_at WHERE id = %s", (id,))
+    flash("Incidencia eliminada.", "success")
+    return redirect(url_for("incidencias_index"))
 
 
 PERMISOS_EXPORT_COLUMNS = [

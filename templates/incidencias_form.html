@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card" style="max-width:900px">
+    <h2 style="margin-bottom:1rem">{{ 'Editar incidencia' if incidencia else 'Nueva incidencia' }}</h2>
+    <form method="post" action="{{ url_for('incidencias_editar', id=incidencia.id) if incidencia else url_for('incidencias_nueva') }}">
+        <div class="form-section">
+            <h3 class="form-section-title">Datos del evento</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>No. registro</label>
+                    <input type="number" name="numero_registro" class="form-input" value="{{ incidencia.numero_registro or '' }}" min="0">
+                </div>
+                <div class="form-group">
+                    <label>Mes</label>
+                    <input type="text" name="mes" class="form-input" value="{{ incidencia.mes or '' }}" placeholder="Ej. Enero">
+                </div>
+                <div class="form-group">
+                    <label>Fecha del accidente</label>
+                    <input type="date" name="fecha_accidente" class="form-input" value="{{ incidencia.fecha_accidente.strftime('%Y-%m-%d') if incidencia and incidencia.fecha_accidente else '' }}">
+                </div>
+                <div class="form-group">
+                    <label>Día de semana</label>
+                    <input type="text" name="dia_semana" class="form-input" value="{{ incidencia.dia_semana or '' }}" placeholder="Lunes, Martes...">
+                </div>
+                <div class="form-group">
+                    <label>Hora de ocurrencia</label>
+                    <input type="text" name="hora_ocurrencia" class="form-input" value="{{ incidencia.hora_ocurrencia or '' }}" placeholder="08:30">
+                </div>
+                <div class="form-group">
+                    <label>Tipo de evento</label>
+                    <select name="tipo_evento" class="form-input">
+                        <option value="">— Seleccionar —</option>
+                        <option value="Incidente" {{ 'selected' if incidencia and incidencia.tipo_evento == 'Incidente' else '' }}>Incidente</option>
+                        <option value="Accidente" {{ 'selected' if incidencia and incidencia.tipo_evento == 'Accidente' else '' }}>Accidente</option>
+                        <option value="Enfermedad laboral" {{ 'selected' if incidencia and incidencia.tipo_evento == 'Enfermedad laboral' else '' }}>Enfermedad laboral</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3 class="form-section-title">Trabajador</h3>
+            <div class="form-grid">
+                <div class="form-group" style="grid-column:1/-1">
+                    <label>Nombre del trabajador</label>
+                    <input type="text" name="nombre_trabajador" class="form-input" value="{{ incidencia.nombre_trabajador or '' }}">
+                </div>
+                <div class="form-group">
+                    <label>Cédula</label>
+                    <input type="text" name="cedula" class="form-input" value="{{ incidencia.cedula or '' }}">
+                </div>
+                <div class="form-group">
+                    <label>Género</label>
+                    <input type="text" name="genero" class="form-input" value="{{ incidencia.genero or '' }}">
+                </div>
+                <div class="form-group">
+                    <label>Cargo</label>
+                    <input type="text" name="cargo" class="form-input" value="{{ incidencia.cargo or '' }}">
+                </div>
+                <div class="form-group">
+                    <label>Fecha de ingreso</label>
+                    <input type="date" name="fecha_ingreso" class="form-input" value="{{ incidencia.fecha_ingreso.strftime('%Y-%m-%d') if incidencia and incidencia.fecha_ingreso else '' }}">
+                </div>
+                <div class="form-group">
+                    <label>Antigüedad (meses)</label>
+                    <input type="number" name="antiguedad_meses" class="form-input" value="{{ incidencia.antiguedad_meses or '' }}" min="0">
+                </div>
+                <div class="form-group" style="grid-column:1/-1">
+                    <label>Área / Sección de ocurrencia</label>
+                    <input type="text" name="area_seccion_ocurrencia" class="form-input" value="{{ incidencia.area_seccion_ocurrencia or '' }}">
+                </div>
+                <div class="form-group">
+                    <label>Tipo de vinculación</label>
+                    <input type="text" name="tipo_vinculacion" class="form-input" value="{{ incidencia.tipo_vinculacion or '' }}">
+                </div>
+                <div class="form-group">
+                    <label>Días incapacidad</label>
+                    <input type="number" name="dias_incapacidad" class="form-input" value="{{ incidencia.dias_incapacidad or '' }}" min="0">
+                </div>
+                <div class="form-group">
+                    <label>Prórroga</label>
+                    <input type="text" name="prorroga" class="form-input" value="{{ incidencia.prorroga or '' }}">
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3 class="form-section-title">Lesión y clasificación</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Parte del cuerpo afectada</label>
+                    <input type="text" name="parte_cuerpo_afectada" class="form-input" value="{{ incidencia.parte_cuerpo_afectada or '' }}">
+                </div>
+                <div class="form-group">
+                    <label>Tipo de lesión</label>
+                    <input type="text" name="tipo_lesion" class="form-input" value="{{ incidencia.tipo_lesion or '' }}">
+                </div>
+                <div class="form-group">
+                    <label>Forma del accidente</label>
+                    <input type="text" name="forma_accidente" class="form-input" value="{{ incidencia.forma_accidente or '' }}">
+                </div>
+                <div class="form-group">
+                    <label>Clasificación del origen</label>
+                    <input type="text" name="clasificacion_origen" class="form-input" value="{{ incidencia.clasificacion_origen or '' }}">
+                </div>
+                <div class="form-group">
+                    <label>Agente de la lesión</label>
+                    <input type="text" name="agente_lesion" class="form-input" value="{{ incidencia.agente_lesion or '' }}">
+                </div>
+                <div class="form-group">
+                    <label>Reincidente</label>
+                    <select name="reincidente" class="form-input">
+                        <option value="">—</option>
+                        <option value="Sí" {{ 'selected' if incidencia and incidencia.reincidente == 'Sí' else '' }}>Sí</option>
+                        <option value="No" {{ 'selected' if incidencia and incidencia.reincidente == 'No' else '' }}>No</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3 class="form-section-title">Descripción e investigación</h3>
+            <div class="form-group">
+                <label>Descripción del accidente</label>
+                <textarea name="descripcion_accidente" class="form-input" rows="3">{{ incidencia.descripcion_accidente or '' }}</textarea>
+            </div>
+            <div class="form-group">
+                <label>Investigado</label>
+                <select name="investigado" class="form-input">
+                    <option value="">—</option>
+                    <option value="Sí" {{ 'selected' if incidencia and incidencia.investigado == 'Sí' else '' }}>Sí</option>
+                    <option value="No" {{ 'selected' if incidencia and incidencia.investigado == 'No' else '' }}>No</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Causas</label>
+                <textarea name="causas" class="form-input" rows="2">{{ incidencia.causas or '' }}</textarea>
+            </div>
+            <div class="form-group">
+                <label>Seguimiento clínico</label>
+                <textarea name="seguimiento_clinico" class="form-input" rows="2">{{ incidencia.seguimiento_clinico or '' }}</textarea>
+            </div>
+        </div>
+
+        <div style="display:flex;gap:12px;margin-top:1.5rem">
+            <button type="submit" class="btn btn-primary">Guardar</button>
+            <a href="{{ url_for('incidencias_index') }}" class="btn btn-outline">Cancelar</a>
+        </div>
+    </form>
+</div>
+<style>
+.form-section { margin-bottom:1.5rem; padding-bottom:1rem; border-bottom:1px solid #e5e7eb; }
+.form-section-title { font-size:1rem; color:#374151; margin-bottom:0.75rem; }
+.form-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:1rem; }
+.form-group label { display:block; font-size:0.875rem; color:#4b5563; margin-bottom:4px; }
+.form-input { width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; }
+</style>
+{% endblock %}

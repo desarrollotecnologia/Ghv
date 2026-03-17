@@ -105,6 +105,27 @@
     </a>
     {% endif %}
 
+    {% if vm.incidencias %}
+    <a href="{{ url_for('incidencias_index') }}" class="home-card">
+        <div class="home-card-img" style="background: linear-gradient(135deg, #fef3c7, #fde68a)">
+            <span class="material-symbols-outlined" style="color:#b45309">warning</span>
+        </div>
+        <div class="home-card-label">
+            <span class="card-dot yellow"></span>
+            Registro incidencias
+        </div>
+    </a>
+    <a href="{{ url_for('incidencias_dashboard') }}" class="home-card">
+        <div class="home-card-img" style="background: linear-gradient(135deg, #ecfdf5, #d1fae5)">
+            <span class="material-symbols-outlined" style="color:#047857">analytics</span>
+        </div>
+        <div class="home-card-label">
+            <span class="card-dot green"></span>
+            Dashboard incidencias
+        </div>
+    </a>
+    {% endif %}
+
     {% if vm.permisos %}
     <a href="{{ url_for('permisos_index') }}" class="home-card">
         <div class="home-card-img" style="background: linear-gradient(135deg, #f0fdf4, #dcfce7)">

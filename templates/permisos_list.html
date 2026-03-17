@@ -457,15 +457,21 @@ document.addEventListener('DOMContentLoaded', function() {
         var url = formAprobar.action;
         var formData = new FormData(formAprobar);
         var id = currentSolicitudId;
+        var btn = formAprobar.querySelector('.btn-aprobar-confirm');
+        if (btn) btn.disabled = true;
         submitAprobarRechazar(url, formData, id).then(function(res) {
             if (res.status === 200 && res.data && res.data.ok) {
                 closeModal('modalAprobar');
                 updateStatsFromServer(res.data);
                 removeCardById(id);
+                if (res.data.ya_resuelta) alert('La solicitud ya estaba aprobada o rechazada. Se actualizó la lista.');
             } else {
+                if (res.data && res.data.pendientes !== undefined) updateStatsFromServer(res.data);
                 alert(res.data && res.data.error ? res.data.error : 'Error al aprobar.');
             }
-        }).catch(function() { alert('Error de conexión.'); });
+        }).catch(function() { alert('Error de conexión. Compruebe que el servidor y la base de datos estén accesibles.'); }).finally(function() {
+            if (btn) btn.disabled = false;
+        });
         return false;
     });
 
@@ -474,15 +480,21 @@ document.addEventListener('DOMContentLoaded', function() {
         var url = formRechazar.action;
         var formData = new FormData(formRechazar);
         var id = currentSolicitudId;
+        var btn = formRechazar.querySelector('.btn-rechazar-confirm');
+        if (btn) btn.disabled = true;
         submitAprobarRechazar(url, formData, id).then(function(res) {
             if (res.status === 200 && res.data && res.data.ok) {
                 closeModal('modalRechazar');
                 updateStatsFromServer(res.data);
                 removeCardById(id);
+                if (res.data.ya_resuelta) alert('La solicitud ya estaba resuelta. Se actualizó la lista.');
             } else {
+                if (res.data && res.data.pendientes !== undefined) updateStatsFromServer(res.data);
                 alert(res.data && res.data.error ? res.data.error : 'Error al rechazar.');
             }
-        }).catch(function() { alert('Error de conexión.'); });
+        }).catch(function() { alert('Error de conexión. Compruebe que el servidor y la base de datos estén accesibles.'); }).finally(function() {
+            if (btn) btn.disabled = false;
+        });
         return false;
     });
 

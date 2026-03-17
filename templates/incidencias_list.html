@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+
+{% block page_actions %}
+<a href="{{ url_for('incidencias_dashboard') }}" class="btn btn-outline btn-sm">
+    <span class="material-symbols-outlined">analytics</span>
+    Dashboard
+</a>
+<a href="{{ url_for('incidencias_nueva') }}" class="btn btn-primary btn-sm">
+    <span class="material-symbols-outlined">add</span>
+    Nueva incidencia
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="overflow-x:auto">
+    <p class="text-muted" style="margin-bottom:1rem">
+        Registro y análisis INATEL (incidentes, accidentes y enfermedades laborales). Rol SISO.
+    </p>
+    {% if rows %}
+    <div class="table-toolbar">
+        <div class="toolbar-left">
+            <div class="search-filter">
+                <span class="material-symbols-outlined" style="font-size:18px;color:var(--text-secondary)">search</span>
+                <input type="text" id="tableFilter" placeholder="Buscar en {{ rows|length }} incidencias..." autocomplete="off">
+            </div>
+        </div>
+        <div class="toolbar-right">
+            <span class="table-info" id="tableInfo">{{ rows|length }} registros</span>
+            <div class="page-size-select">
+                <select id="pageSizeSelect">
+                    <option value="25">25</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
+                    <option value="0">Todos</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-wrapper">
+        <table class="data-table paginated-table" id="mainTable">
+            <thead>
+                <tr>
+                    <th>No</th>
+                    <th>Fecha</th>
+                    <th>Tipo evento</th>
+                    <th>Trabajador</th>
+                    <th>Cédula</th>
+                    <th>Área ocurrencia</th>
+                    <th>Días inc.</th>
+                    <th>Investigado</th>
+                    <th style="width:120px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr>
+                    <td>{{ r.numero_registro or r.id }}</td>
+                    <td>{{ r.fecha_accidente.strftime('%d/%m/%Y') if r.fecha_accidente else '—' }}</td>
+                    <td>{{ r.tipo_evento or '—' }}</td>
+                    <td>{{ r.nombre_trabajador or '—' }}</td>
+                    <td>{{ r.cedula or '—' }}</td>
+                    <td>{{ r.area_seccion_ocurrencia or '—' }}</td>
+                    <td>{{ r.dias_incapacidad or '—' }}</td>
+                    <td>{{ r.investigado or '—' }}</td>
+                    <td style="text-align:right">
+                        <a href="{{ url_for('incidencias_editar', id=r.id) }}" class="btn btn-outline btn-sm">Editar</a>
+                        <form method="post" action="{{ url_for('incidencias_eliminar', id=r.id) }}" style="display:inline" onsubmit="return confirm('¿Eliminar esta incidencia?');">
+                            <button type="submit" class="btn btn-outline btn-sm" style="color:var(--danger)">Eliminar</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="pagination-bar" id="paginationBar">
+            <div class="pagination-info">
+                Mostrando <strong id="pageStart">1</strong>-<strong id="pageEnd">0</strong> de <strong id="pageTotal">0</strong>
+            </div>
+            <div class="pagination-controls">
+                <button class="btn-page" id="btnFirst" title="Primera"><span class="material-symbols-outlined">first_page</span></button>
+                <button class="btn-page" id="btnPrev" title="Anterior"><span class="material-symbols-outlined">chevron_left</span></button>
+                <span class="page-indicator" id="pageIndicator">1 / 1</span>
+                <button class="btn-page" id="btnNext" title="Siguiente"><span class="material-symbols-outlined">chevron_right</span></button>
+                <button class="btn-page" id="btnLast" title="Última"><span class="material-symbols-outlined">last_page</span></button>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <p class="text-muted">
+        No hay incidencias registradas. Use <strong>Nueva incidencia</strong> para cargar datos según el formato
+        CARACTERIZACION AT -2026.
+    </p>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var incidenciaVisibleRows = [];
+var incidenciaCurrentPage = 1;
+
+function applyIncidenciaFilters() {
+    try {
+        var filterInput = document.getElementById('tableFilter');
+        var table = document.getElementById('mainTable');
+        var tableInfo = document.getElementById('tableInfo');
+        var q = (filterInput && filterInput.value || '').trim().toLowerCase();
+        if (!table || !table.tBodies || !table.tBodies[0]) return;
+        var tbody = table.tBodies[0];
+        var rows = tbody.querySelectorAll('tr');
+        incidenciaVisibleRows = [];
+        for (var i = 0; i < rows.length; i++) {
+            var tr = rows[i];
+            var textMatch = !q || (tr.textContent || '').toLowerCase().indexOf(q) !== -1;
+            if (textMatch) incidenciaVisibleRows.push(tr);
+        }
+        if (tableInfo) tableInfo.textContent = incidenciaVisibleRows.length + ' registros';
+        incidenciaCurrentPage = 1;
+        renderIncidenciaPage();
+    } catch (err) {
+        console.warn('applyIncidenciaFilters:', err);
+    }
+}
+
+function renderIncidenciaPage() {
+    var table = document.getElementById('mainTable');
+    var tbody = table && table.tBodies && table.tBodies[0];
+    if (!tbody) return;
+    var allRows = Array.from(tbody.querySelectorAll('tr'));
+    var pageSizeSelect = document.getElementById('pageSizeSelect');
+    var pageStart = document.getElementById('pageStart');
+    var pageEnd = document.getElementById('pageEnd');
+    var pageTotal = document.getElementById('pageTotal');
+    var pageIndicator = document.getElementById('pageIndicator');
+    var paginationBar = document.getElementById('paginationBar');
+    var pageSize = parseInt(pageSizeSelect && pageSizeSelect.value, 10) || 50;
+    var total = incidenciaVisibleRows.length;
+    if (total === 0) {
+        allRows.forEach(function(r) { r.classList.add('page-hidden'); });
+        if (pageStart) pageStart.textContent = '0';
+        if (pageEnd) pageEnd.textContent = '0';
+        if (pageTotal) pageTotal.textContent = '0';
+        if (pageIndicator) pageIndicator.textContent = '1 / 1';
+        if (paginationBar) paginationBar.style.display = 'flex';
+        document.getElementById('btnFirst').disabled = true;
+        document.getElementById('btnPrev').disabled = true;
+        document.getElementById('btnNext').disabled = true;
+        document.getElementById('btnLast').disabled = true;
+        return;
+    }
+    var totalPages = (pageSize === 0) ? 1 : Math.ceil(total / pageSize);
+    if (pageSize === 0) pageSize = total;
+    if (incidenciaCurrentPage > totalPages) incidenciaCurrentPage = totalPages;
+    var start = (incidenciaCurrentPage - 1) * pageSize;
+    var end = Math.min(start + pageSize, total);
+    allRows.forEach(function(r) { r.classList.add('page-hidden'); });
+    incidenciaVisibleRows.forEach(function(tr, i) {
+        if (i >= start && i < end) tr.classList.remove('page-hidden');
+    });
+    if (pageStart) pageStart.textContent = start + 1;
+    if (pageEnd) pageEnd.textContent = end;
+    if (pageTotal) pageTotal.textContent = total;
+    if (pageIndicator) pageIndicator.textContent = incidenciaCurrentPage + ' / ' + totalPages;
+    if (paginationBar) paginationBar.style.display = 'flex';
+    document.getElementById('btnFirst').disabled = incidenciaCurrentPage <= 1;
+    document.getElementById('btnPrev').disabled = incidenciaCurrentPage <= 1;
+    document.getElementById('btnNext').disabled = incidenciaCurrentPage >= totalPages;
+    document.getElementById('btnLast').disabled = incidenciaCurrentPage >= totalPages;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    if (!document.getElementById('mainTable')) return;
+    applyIncidenciaFilters();
+    document.getElementById('btnFirst') && document.getElementById('btnFirst').addEventListener('click', function() {
+        incidenciaCurrentPage = 1; renderIncidenciaPage();
+    });
+    document.getElementById('btnPrev') && document.getElementById('btnPrev').addEventListener('click', function() {
+        incidenciaCurrentPage--; renderIncidenciaPage();
+    });
+    document.getElementById('btnNext') && document.getElementById('btnNext').addEventListener('click', function() {
+        incidenciaCurrentPage++; renderIncidenciaPage();
+    });
+    document.getElementById('btnLast') && document.getElementById('btnLast').addEventListener('click', function() {
+        var ps = parseInt(document.getElementById('pageSizeSelect').value, 10) || 50;
+        incidenciaCurrentPage = ps === 0 ? 1 : Math.ceil(incidenciaVisibleRows.length / ps); renderIncidenciaPage();
+    });
+    document.getElementById('pageSizeSelect') && document.getElementById('pageSizeSelect').addEventListener('change', function() {
+        incidenciaCurrentPage = 1; renderIncidenciaPage();
+    });
+    document.addEventListener('input', function(e) {
+        if (e.target.id === 'tableFilter') {
+            setTimeout(applyIncidenciaFilters, 0);
+        }
+    });
+    document.addEventListener('change', function(e) {
+        if (e.target.id === 'tableFilter') {
+            setTimeout(applyIncidenciaFilters, 0);
+        }
+    });
+    window.addEventListener('pageshow', function(ev) {
+        if (ev.persisted || document.readyState === 'complete') {
+            applyIncidenciaFilters();
+        }
+    });
+    setTimeout(applyIncidenciaFilters, 100);
+});
+</script>
+{% endblock %}

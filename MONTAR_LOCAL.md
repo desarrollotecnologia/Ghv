@@ -50,3 +50,12 @@ Si otros no entran por la IP:
 ## 5. Parar el servidor
 
 En la terminal donde corre: **Ctrl+C**.
+
+## 6. Usar la app en otro PC
+
+Si copias el proyecto a otro equipo y al **aprobar o rechazar** una solicitud aparece *"Solicitud no encontrada o ya resuelta"*:
+
+- **Causa habitual:** en ese PC el `.env` apunta a otra base de datos (o a una copia vacía). Los IDs de la lista pertenecen a la BD que cargó la página; si la BD es distinta, ese ID no existe o ya fue resuelto ahí.
+- **Qué hacer:** usar la **misma base de datos** en todos los equipos. Por ejemplo:
+  - En el `.env` del otro PC, poner el mismo `MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE` que en el PC donde sí funciona (por ejemplo, la IP del servidor MySQL).
+  - O tener solo un servidor (un PC con la app + MySQL) y que el resto entre por la URL de red (http://IP:5000); así todos usan la misma BD.

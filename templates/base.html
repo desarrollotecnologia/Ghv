@@ -195,6 +195,22 @@
         </div>
         {% endif %}
 
+        {% if vm.incidencias %}
+        <div class="sidebar-section">
+            <span class="sidebar-label">Incidencias (SISO)</span>
+            <a href="{{ url_for('incidencias_index') }}" class="nav-item {{ 'active' if active_page == 'Incidencias' else '' }}">
+                <span class="material-symbols-outlined">warning</span>
+                <span class="nav-label">Registro incidencias</span>
+            </a>
+            {% if vm.incidencias_dashboard %}
+            <a href="{{ url_for('incidencias_dashboard') }}" class="nav-item {{ 'active' if active_page == 'Dashboard Incidencias' else '' }}">
+                <span class="material-symbols-outlined">analytics</span>
+                <span class="nav-label">Dashboard incidencias</span>
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
+
         {% if vm.eps or vm.fondos %}
         <div class="sidebar-section">
             <span class="sidebar-label">Beneficios</span>
