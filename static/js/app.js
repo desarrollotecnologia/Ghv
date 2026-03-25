@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Escape' && globalSearch) {
             globalSearch.blur();
             globalSearch.value = '';
-            globalSearch.dispatchEvent(new Event('input'));
+            globalSearch.dispatchEvent(new Event('input', { bubbles: true }));
         }
     });
 
@@ -83,11 +83,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // Páginas con tabla: sincronizar con tableFilter
+            // Páginas con tabla: sincronizar con tableFilter (incluye tablas paginadas)
+            // - En tablas NO paginadas, el listener global de tableFilter hace el filtrado.
+            // - En tablas paginadas, cada vista implementa su propio filtrado/paginación y escucha el input.
             const tf = document.getElementById('tableFilter');
-            if (tf && !document.querySelector('.paginated-table')) {
+            if (tf) {
                 tf.value = globalSearch.value;
-                tf.dispatchEvent(new Event('input'));
+                tf.dispatchEvent(new Event('input', { bubbles: true }));
+                return;
             }
         });
     }

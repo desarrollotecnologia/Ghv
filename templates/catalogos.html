@@ -5,6 +5,18 @@
     <h2 style="margin-top:0;color:var(--colbeef-green)">Catálogos del sistema</h2>
     <p class="form-hint">Alimente los catálogos usados en Personal (tipo documento, nivel educativo, profesión) y en Retiros (motivo de retiro). Solo ADMIN puede agregar.</p>
 
+    <div class="table-toolbar" style="margin-top:14px">
+        <div class="toolbar-left">
+            <div class="search-filter">
+                <span class="material-symbols-outlined" style="font-size:18px;color:var(--text-secondary)">search</span>
+                <input type="text" id="tableFilter" placeholder="Buscar en catálogos..." autocomplete="off">
+            </div>
+        </div>
+        <div class="toolbar-right">
+            <span class="text-muted" style="font-size:12px">Filtra en todas las tablas de esta pantalla</span>
+        </div>
+    </div>
+
     <div style="display:grid;gap:28px;margin-top:24px">
         <section>
             <h3 class="form-section-title">Tipo de documento</h3>
