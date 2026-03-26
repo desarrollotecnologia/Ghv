@@ -15,6 +15,17 @@
         </div>
     </a>
     {% endif %}
+    {% if vm.suite_principal %}
+    <a href="http://192.168.20.177:8000/site.html" class="home-card" target="_blank" rel="noopener noreferrer">
+        <div class="home-card-img" style="background: linear-gradient(135deg, #f0fdf4, #dcfce7); border: 2px solid #86efac">
+            <span class="material-symbols-outlined" style="color:#16a34a">house</span>
+        </div>
+        <div class="home-card-label">
+            <span class="card-dot green"></span>
+            Ir al Sitio Principal
+        </div>
+    </a>
+    {% endif %}
     {% if vm.eventos %}
     <a href="{{ url_for('cumpleanos') }}" class="home-card">
         <div class="home-card-img" style="background: linear-gradient(135deg, #fff5f5, #ffe4e6)">

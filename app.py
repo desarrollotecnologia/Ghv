@@ -297,7 +297,7 @@ _DEFAULT_MODULES = {k: False for k in [
     "organizacion", "personal", "personal_inactivo", "retiro",
     "familia", "eventos", "eps", "fondos",
     "reportes", "dashboard", "total_hijos", "admin", "admin_usuarios", "permisos",
-    "incidencias", "incidencias_dashboard",
+    "incidencias", "incidencias_dashboard", "suite_principal",
 ]}
 
 
@@ -395,6 +395,8 @@ def inject_user():
         can_write = perm in ("WRITE", "ALL")
         can_admin = perm == "ALL"
         vm = _get_effective_modules(rol)
+        # Acceso directo a la suite principal (todos los usuarios autenticados)
+        vm["suite_principal"] = True
         # Usuario Siso@colbeef.com: siempre ve el módulo Incidencias (aunque su rol sea GESTOR SST u otro)
         if (user.get("email") or "").strip().lower() == "siso@colbeef.com":
             vm["incidencias"] = True
