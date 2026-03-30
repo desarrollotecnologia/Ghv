@@ -11,7 +11,9 @@ from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
-XLSX_PATH = r"c:\Users\johan\Downloads\BDatos_APPGH (1).xlsx"
+# Si no defines BDATOS_XLSX_PATH en .env, usa la ruta por defecto (solo desarrollo).
+_default = r"c:\Users\johan\Downloads\BDatos_APPGH (1).xlsx"
+XLSX_PATH = (os.getenv("BDATOS_XLSX_PATH") or _default).strip()
 
 DB_CONFIG = {
     "host": os.getenv("MYSQL_HOST", "localhost"),
@@ -370,6 +372,10 @@ def import_usuarios(cursor, wb):
 
 
 def main():
+    if not os.path.isfile(XLSX_PATH):
+        print(f"ERROR: No existe el Excel:\n  {XLSX_PATH}")
+        print('En .env: BDATOS_XLSX_PATH="ruta\\completa\\archivo.xlsx"')
+        sys.exit(1)
     print(f"Opening: {XLSX_PATH}")
     wb = openpyxl.load_workbook(XLSX_PATH, data_only=True)
 
