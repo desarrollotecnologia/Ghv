@@ -27,7 +27,8 @@ class Config:
     MAIL_GESTOR_CONTRATACION = (os.getenv("MAIL_GESTOR_CONTRATACION") or "gestor.contratacion@colbeef.com").strip().lower()
     # Página externa al hacer clic en Locker (solo usuario con MAIL_GESTOR_CONTRATACION).
     GESTOR_CONTRATACION_PORTAL_URL = (
-        os.getenv("GESTOR_CONTRATACION_PORTAL_URL") or "http://192.168.20.205:8000/site.html"
+        os.getenv("GESTOR_CONTRATACION_PORTAL_URL")
+        or "http://192.168.20.205:5001/acceso-integrado"
     ).strip()
     # Solo informada: recibe la misma notificación de nueva solicitud pero no aprueba/rechaza (rol GH INFORMADA).
     MAIL_GH_INFORMADA = os.getenv("MAIL_GH_INFORMADA", "gestionhumana@colbeef.com")
