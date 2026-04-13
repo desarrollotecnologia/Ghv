@@ -360,12 +360,18 @@ def _normalize_email(s):
 
 
 def _is_locker_user(user):
-    """Locker: correo igual a MAIL_GESTOR_CONTRATACION o rol GESTOR DE CONTRATACION (evita fallos si .env está mal)."""
+    """Locker: visible para gestor de contratación y correo de gerencia."""
     if not user:
         return False
     email = _normalize_email(user.get("email"))
     gestor_mail = _normalize_email(app.config.get("MAIL_GESTOR_CONTRATACION") or "gestor.contratacion@colbeef.com")
+    extra_allowed = {
+        "gerencia@colbeef",
+        "gerencia@colbeef.com",
+    }
     if gestor_mail and email == gestor_mail:
+        return True
+    if email in extra_allowed:
         return True
     return _rol_match(user.get("rol")) == "GESTOR DE CONTRATACION"
 
