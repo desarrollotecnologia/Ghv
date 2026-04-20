@@ -236,11 +236,11 @@
         </div>
     </div>
 
-    <div class="form-section">
+    <div class="form-section" id="seccionHijos" style="display:none;">
         <h3 class="form-section-title">
             <span class="material-symbols-outlined">child_care</span> Hijos
             <small style="font-weight:400; color:#6b7280; font-size:13px; margin-left:10px;">
-                Agregue uno o varios. Puede dejarlo vacío si no tiene hijos.
+                Ingrese los datos de cada hijo. Use el botón para agregar más.
             </small>
         </h3>
 
@@ -398,6 +398,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const hijosContainer = document.getElementById('hijosContainer');
     const btnAgregarHijo = document.getElementById('btnAgregarHijo');
     const hijoTemplate = document.getElementById('hijoTemplate');
+    const seccionHijos = document.getElementById('seccionHijos');
+    const selectTieneHijos = document.querySelector('select[name="hijos"]');
 
     function bindRemoveHijo(scope) {
         scope.querySelectorAll('.btn-remove-hijo').forEach(btn => {
@@ -418,18 +420,39 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    bindRemoveHijo(hijosContainer);
-    bindUppercaseHijo(hijosContainer);
-
-    btnAgregarHijo.addEventListener('click', () => {
+    function agregarFilaHijo(focus) {
         const frag = hijoTemplate.content.cloneNode(true);
         hijosContainer.appendChild(frag);
         const added = hijosContainer.lastElementChild;
         bindRemoveHijo(added);
         bindUppercaseHijo(added);
-        const firstInput = added.querySelector('input[name="hijo_apellidos_nombre[]"]');
-        if (firstInput) firstInput.focus();
-    });
+        if (focus) {
+            const firstInput = added.querySelector('input[name="hijo_apellidos_nombre[]"]');
+            if (firstInput) firstInput.focus();
+        }
+    }
+
+    function actualizarVisibilidadHijos() {
+        const valor = (selectTieneHijos && selectTieneHijos.value || '').toUpperCase();
+        const mostrar = valor === 'SI';
+        seccionHijos.style.display = mostrar ? '' : 'none';
+        if (mostrar && hijosContainer.children.length === 0) {
+            agregarFilaHijo(false);
+        }
+    }
+
+    bindRemoveHijo(hijosContainer);
+    bindUppercaseHijo(hijosContainer);
+
+    btnAgregarHijo.addEventListener('click', () => agregarFilaHijo(true));
+
+    if (selectTieneHijos) {
+        if (hijosContainer.children.length > 0 && selectTieneHijos.value !== 'SI') {
+            selectTieneHijos.value = 'SI';
+        }
+        selectTieneHijos.addEventListener('change', actualizarVisibilidadHijos);
+        actualizarVisibilidadHijos();
+    }
 });
 </script>
 {% endblock %}
