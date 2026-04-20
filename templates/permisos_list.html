@@ -164,7 +164,7 @@
                     </span>
                 </div>
             </div>
-            {% if puede_aprobar and s.estado == 'PENDIENTE' %}
+            {% if puede_aprobar and s.estado == 'PENDIENTE' and s._puede_resolver %}
             <div class="permiso-card-actions">
                 <p class="permiso-actions-hint">Su decisión notificará por correo al empleado.</p>
                 <button type="button" class="btn btn-success permiso-btn-aprobar btn-aprobar" data-id="{{ s.id }}" data-nombre="{{ s.apellidos_nombre }}" title="Puede agregar observaciones opcionales (ej. recordatorio)">
@@ -175,6 +175,13 @@
                     <span class="material-symbols-outlined">cancel</span>
                     Rechazar
                 </button>
+            </div>
+            {% elif puede_aprobar and s.estado == 'PENDIENTE' and not s._puede_resolver %}
+            <div class="permiso-card-actions">
+                <p class="permiso-actions-hint" style="color:#9ca3af;">
+                    <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle">lock</span>
+                    Solo el encargado asignado a este empleado puede resolver esta solicitud.
+                </p>
             </div>
             {% elif puede_aprobar and s.estado != 'PENDIENTE' and s.observaciones %}
             <div class="permiso-card-observaciones">

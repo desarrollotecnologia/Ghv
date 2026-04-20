@@ -14,7 +14,14 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from config import Config
-from mail_utils import notificar_nueva_solicitud_permiso, notificar_resolucion_permiso
+from mail_utils import (
+    notificar_nueva_solicitud_permiso,
+    notificar_resolucion_permiso,
+    notificar_resolucion_vacaciones,
+    notificar_nueva_solicitud_vacaciones,
+    notificar_encargado_nueva_solicitud,
+    notificar_gh_resolucion_por_jefe,
+)
 import tempfile
 
 app = Flask(__name__)
@@ -1188,14 +1195,129 @@ def aniversario():
 # ── SOLICITUD DE PERMISO / LICENCIA ───────────────────────────
 
 def _puede_aprobar_permisos():
+    """Roles con visibilidad global: ADMIN y COORD. GH ven todas las solicitudes."""
     user = get_current_user()
     return user and user.get("rol") in ("ADMIN", "COORD. GH")
 
 
-def _permisos_query(filtro_estado=None, buscar=None, area=None, tipo=None, orden=None):
-    """Construye SQL y params para listado de solicitudes (coordinadora)."""
+def _es_admin_o_coord(user=None):
+    user = user or get_current_user()
+    return user and user.get("rol") in ("ADMIN", "COORD. GH")
+
+
+def _puede_resolver_solicitud(solicitud):
+    """Un usuario puede resolver (aprobar/rechazar) una solicitud si:
+    - Es ADMIN o COORD. GH (visibilidad global), o
+    - Es el encargado asignado al empleado de esa solicitud (empleado.id_user_encargado == user.id_user).
+    """
+    user = get_current_user()
+    if not user or not solicitud:
+        return False
+    if _es_admin_o_coord(user):
+        return True
+    try:
+        emp = query(
+            "SELECT id_user_encargado FROM empleado WHERE id_cedula = %s",
+            (solicitud.get("id_cedula"),), one=True,
+        )
+    except Exception:
+        return False
+    if not emp:
+        return False
+    return (emp.get("id_user_encargado") or "") == (user.get("id_user") or "")
+
+
+def _puede_ver_listado_solicitudes():
+    """Puede ver el listado de solicitudes si es ADMIN/COORD. GH, o si es encargado
+    de al menos 1 empleado (es decir, tiene solicitudes de sus asignados)."""
+    user = get_current_user()
+    if not user:
+        return False
+    if _es_admin_o_coord(user):
+        return True
+    try:
+        row = query(
+            "SELECT COUNT(*) AS c FROM empleado WHERE id_user_encargado = %s",
+            (user.get("id_user"),), one=True,
+        )
+        return bool(row and row.get("c"))
+    except Exception:
+        return False
+
+
+def _resolver_email_empleado(id_cedula):
+    """Devuelve el mejor correo disponible para el empleado, en este orden:
+    1. empleado.direccion_email (si está registrado en la ficha).
+    2. usuario.email del usuario vinculado a esa cédula (si no es un placeholder
+       tipo "<cedula>@empleado.colbeef.local").
+    Devuelve None si no se encuentra un correo válido.
+    Útil para que la notificación de resolución (aprobación/rechazo) llegue al
+    correo corporativo del empleado aunque no esté cargado en la ficha.
+    """
+    if not id_cedula:
+        return None
+    try:
+        emp = query(
+            "SELECT direccion_email FROM empleado WHERE id_cedula = %s",
+            (id_cedula,), one=True,
+        )
+    except Exception:
+        emp = None
+    em = ((emp or {}).get("direccion_email") or "").strip()
+    if em and "@" in em and not em.lower().endswith("@empleado.colbeef.local"):
+        return em
+    try:
+        u = query(
+            "SELECT email FROM usuario WHERE id_cedula = %s AND COALESCE(estado, 1) = 1 "
+            "ORDER BY (rol = 'EMPLEADO') ASC, id_user LIMIT 1",
+            (id_cedula,), one=True,
+        )
+    except Exception:
+        u = None
+    em2 = ((u or {}).get("email") or "").strip()
+    if em2 and "@" in em2 and not em2.lower().endswith("@empleado.colbeef.local"):
+        return em2
+    return em or em2 or None
+
+
+def _obtener_encargado_de(id_cedula):
+    """Devuelve (id_user, nombre, email) del encargado asignado al empleado.
+    None si el empleado no tiene encargado asignado o si la columna aún no existe.
+    """
+    if not id_cedula:
+        return None
+    try:
+        emp = query("SELECT id_user_encargado FROM empleado WHERE id_cedula = %s", (id_cedula,), one=True)
+    except Exception:
+        return None
+    if not emp or not emp.get("id_user_encargado"):
+        return None
+    u = query(
+        "SELECT id_user, nombre, email FROM usuario WHERE id_user = %s AND COALESCE(estado, 1) = 1",
+        (emp["id_user_encargado"],), one=True,
+    )
+    return u
+
+
+def _sql_filtro_encargado(alias="e"):
+    """Devuelve (where_fragment | None, params list) para filtrar solicitudes por encargado.
+    Si el usuario es ADMIN/COORD. GH, no aplica filtro (devuelve None).
+    En cualquier otro caso restringe a los empleados donde id_user_encargado == user.id_user.
+    """
+    user = get_current_user()
+    if _es_admin_o_coord(user):
+        return (None, [])
+    return (f"{alias}.id_user_encargado = %s", [user.get("id_user") if user else None])
+
+
+def _permisos_query(filtro_estado=None, buscar=None, area=None, tipo=None, orden=None, aplicar_filtro_encargado=True):
+    """Construye SQL y params para listado de solicitudes (coordinadora).
+    Si aplicar_filtro_encargado=True y el usuario no es ADMIN/COORD. GH,
+    se restringe a las solicitudes de empleados cuyo encargado es él mismo.
+    """
     sql = (
-        "SELECT p.*, e.apellidos_nombre, e.direccion_email, COALESCE(p.area, e.area) AS area "
+        "SELECT p.*, e.apellidos_nombre, e.direccion_email, "
+        "COALESCE(p.area, e.area) AS area, e.id_user_encargado "
         "FROM solicitud_permiso p JOIN empleado e ON p.id_cedula = e.id_cedula "
     )
     params = []
@@ -1212,6 +1334,11 @@ def _permisos_query(filtro_estado=None, buscar=None, area=None, tipo=None, orden
     if tipo:
         where.append("p.tipo = %s")
         params.append(tipo)
+    if aplicar_filtro_encargado:
+        enc_where, enc_params = _sql_filtro_encargado("e")
+        if enc_where:
+            where.append(enc_where)
+            params.extend(enc_params)
     if where:
         sql += " WHERE " + " AND ".join(where)
     order = (orden or "").strip().lower()
@@ -1228,7 +1355,12 @@ def _permisos_query(filtro_estado=None, buscar=None, area=None, tipo=None, orden
 @login_required
 @module_required("permisos")
 def permisos_index():
-    """Listado de solicitudes de permiso. Quien puede aprobar/rechazar (COORD. GH, ADMIN) ve botones; rol GH INFORMADA solo ve la lista."""
+    """Listado de solicitudes de permiso. ADMIN y COORD. GH ven todas; otros roles
+    (jefes/encargados) ven solo las de los empleados asignados a ellos.
+    """
+    if not _puede_ver_listado_solicitudes():
+        flash("No tiene solicitudes asignadas para revisar.", "info")
+        return redirect(url_for("home"))
     filtro_estado = request.args.get("estado", "").strip().upper()
     if filtro_estado not in ("PENDIENTE", "APROBADO", "RECHAZADO"):
         filtro_estado = None
@@ -1238,12 +1370,17 @@ def permisos_index():
     orden = request.args.get("orden", "").strip() or None
     sql, params = _permisos_query(filtro_estado=filtro_estado, buscar=buscar, area=area, tipo=tipo, orden=orden)
     solicitudes = query(sql, params)
+    cur_user = get_current_user() or {}
+    es_admin_coord = _es_admin_o_coord(cur_user)
     for s in solicitudes:
         if s.get("fecha_solicitud"):
             d = s["fecha_solicitud"]
             s["fecha_solicitud_str"] = d.strftime("%d/%m/%Y %H:%M") if hasattr(d, "strftime") else str(d)
         else:
             s["fecha_solicitud_str"] = ""
+        s["_puede_resolver"] = es_admin_coord or (
+            (s.get("id_user_encargado") or "") == (cur_user.get("id_user") or "")
+        )
         s["_es_proximo"] = False
         if s.get("estado") == "PENDIENTE" and s.get("fecha_desde"):
             fd = s["fecha_desde"]
@@ -1284,7 +1421,7 @@ def permisos_index():
         "permisos_list.html",
         active_page="Solicitud de permiso",
         solicitudes=solicitudes,
-        puede_aprobar=_puede_aprobar_permisos(),
+        puede_aprobar=_puede_ver_listado_solicitudes(),
         filtro_estado=filtro_estado,
         filtro_buscar=buscar,
         filtro_area=area,
@@ -1409,8 +1546,18 @@ def permiso_solicitar():
             fp = os.path.join(current_app.instance_path, "uploads", evidencia_ruta)
             evidencia_full_path = fp if os.path.isfile(fp) else None
         correos_ok = notificar_nueva_solicitud_permiso(app, row, emp["apellidos_nombre"], emp.get("direccion_email"), evidencia_path=evidencia_full_path)
+        encargado = _obtener_encargado_de(id_cedula)
+        if encargado and encargado.get("email"):
+            try:
+                notificar_encargado_nueva_solicitud(
+                    app, row, emp["apellidos_nombre"],
+                    encargado["email"], encargado.get("nombre"),
+                    tipo="permiso", evidencia_path=evidencia_full_path,
+                )
+            except Exception:
+                pass
         if correos_ok:
-            flash("Solicitud registrada. Se envió correo a Coordinación GH y a Gestor de Contratación.", "success")
+            flash("Solicitud registrada. Se envió correo a Coordinación GH" + (" y al encargado del empleado." if _obtener_encargado_de(id_cedula) else "."), "success")
         else:
             flash("Solicitud registrada. Revisar configuración de correo (MAIL_ENABLED, MAIL_PASSWORD) si no llegaron los avisos.", "info")
         if is_empleado:
@@ -1496,6 +1643,26 @@ def vacaciones_solicitar():
                 flash("Ejecute la migración: database/migration_solicitud_vacaciones.sql", "error")
                 return redirect(url_for("vacaciones_solicitar"))
             raise
+        try:
+            new_row = query(
+                "SELECT * FROM solicitud_vacaciones WHERE id_cedula = %s ORDER BY id DESC LIMIT 1",
+                (id_cedula,), one=True,
+            )
+            emp_row = query(
+                "SELECT apellidos_nombre FROM empleado WHERE id_cedula = %s", (id_cedula,), one=True,
+            )
+            emp_nombre = emp_row.get("apellidos_nombre") if emp_row else ""
+            if new_row and emp_nombre:
+                notificar_nueva_solicitud_vacaciones(app, new_row, emp_nombre)
+                encargado = _obtener_encargado_de(id_cedula)
+                if encargado and encargado.get("email"):
+                    notificar_encargado_nueva_solicitud(
+                        app, new_row, emp_nombre,
+                        encargado["email"], encargado.get("nombre"),
+                        tipo="vacaciones",
+                    )
+        except Exception:
+            pass
         flash("Solicitud de vacaciones registrada correctamente.", "success")
         if is_empleado:
             return redirect(url_for("vacaciones_mis_solicitudes"))
@@ -1530,19 +1697,138 @@ def vacaciones_solicitar():
 @login_required
 @module_required("permisos")
 def vacaciones_index():
-    """Listado de solicitudes de vacaciones (para Coordinación GH / Gestor)."""
-    if not _puede_aprobar_permisos():
+    """Listado de solicitudes de vacaciones.
+    ADMIN y COORD. GH ven TODAS. Otros roles (encargados) ven solo las de sus empleados asignados.
+    """
+    if not _puede_ver_listado_solicitudes():
         return redirect(url_for("vacaciones_solicitar"))
-    rows = query(
-        "SELECT v.id, v.id_cedula, e.apellidos_nombre, v.fecha_solicitud, v.periodo_causado, v.dias_en_tiempo, v.dias_compensados_dinero, "
-        "v.fecha_inicio, v.fecha_fin, v.fecha_regreso, v.pago_anticipado, v.estado, v.fecha_resolucion "
-        "FROM solicitud_vacaciones v JOIN empleado e ON e.id_cedula = v.id_cedula ORDER BY v.fecha_solicitud DESC, v.id DESC"
+    sql = (
+        "SELECT v.id, v.id_cedula, e.apellidos_nombre, e.direccion_email, e.id_user_encargado, "
+        "v.fecha_solicitud, v.periodo_causado, v.dias_en_tiempo, v.dias_compensados_dinero, "
+        "v.fecha_inicio, v.fecha_fin, v.fecha_regreso, v.pago_anticipado, "
+        "v.estado, v.observaciones, v.resuelto_por, v.fecha_resolucion, "
+        "u.nombre AS resuelto_por_nombre "
+        "FROM solicitud_vacaciones v "
+        "JOIN empleado e ON e.id_cedula = v.id_cedula "
+        "LEFT JOIN usuario u ON u.id_user = v.resuelto_por "
     )
+    params = []
+    enc_where, enc_params = _sql_filtro_encargado("e")
+    if enc_where:
+        sql += " WHERE " + enc_where
+        params.extend(enc_params)
+    sql += " ORDER BY CASE v.estado WHEN 'PENDIENTE' THEN 0 ELSE 1 END, v.fecha_solicitud DESC, v.id DESC"
+    rows = query(sql, tuple(params))
+    cur_user = get_current_user() or {}
+    es_admin_coord = _es_admin_o_coord(cur_user)
+    for r in rows:
+        r["_puede_resolver"] = es_admin_coord or (
+            (r.get("id_user_encargado") or "") == (cur_user.get("id_user") or "")
+        )
     return render_template(
         "vacaciones_list.html",
         active_page="Listado vacaciones",
         rows=rows,
+        puede_aprobar=_puede_ver_listado_solicitudes(),
     )
+
+
+@app.route("/vacaciones/<int:id>/aprobar", methods=["POST"])
+@login_required
+@module_required("permisos")
+def vacaciones_aprobar(id):
+    observaciones = (request.form.get("observaciones") or "").strip()
+    solicitud = query("SELECT * FROM solicitud_vacaciones WHERE id = %s", (id,), one=True)
+    if not solicitud:
+        flash("Solicitud de vacaciones no encontrada.", "error")
+        return redirect(url_for("vacaciones_index"))
+    if not _puede_resolver_solicitud(solicitud):
+        flash("No tiene permiso para aprobar esta solicitud (no es el encargado asignado).", "error")
+        return redirect(url_for("vacaciones_index"))
+    if solicitud["estado"] != "PENDIENTE":
+        flash("La solicitud ya fue resuelta. Se actualiza la lista.", "info")
+        return redirect(url_for("vacaciones_index"))
+    execute(
+        "UPDATE solicitud_vacaciones SET estado = 'APROBADO', observaciones = %s, "
+        "resuelto_por = %s, fecha_resolucion = NOW() WHERE id = %s",
+        (observaciones or None, get_current_user()["id_user"], id),
+    )
+    registrar_audit("Solicitud de vacaciones aprobada", "vacaciones", f"id={id} cédula={solicitud.get('id_cedula')}")
+    emp = query(
+        "SELECT apellidos_nombre, direccion_email FROM empleado WHERE id_cedula = %s",
+        (solicitud["id_cedula"],), one=True,
+    )
+    email_empleado = _resolver_email_empleado(solicitud["id_cedula"])
+    correo_ok = notificar_resolucion_vacaciones(
+        app, solicitud,
+        emp["apellidos_nombre"] if emp else "",
+        email_empleado,
+        aprobado=True, observaciones=observaciones,
+    )
+    _cur = get_current_user() or {}
+    if not _es_admin_o_coord(_cur):
+        try:
+            notificar_gh_resolucion_por_jefe(
+                app, solicitud, emp["apellidos_nombre"] if emp else "",
+                tipo="vacaciones", aprobado=True,
+                jefe_nombre=_cur.get("nombre"), observaciones=observaciones,
+            )
+        except Exception:
+            pass
+    if correo_ok:
+        flash("Solicitud de vacaciones aprobada. Se notificó al empleado por correo.", "success")
+    else:
+        flash("Solicitud de vacaciones aprobada. No se pudo enviar el correo (revisar consola y MAIL_PASSWORD en .env).", "warning")
+    return redirect(url_for("vacaciones_index"))
+
+
+@app.route("/vacaciones/<int:id>/rechazar", methods=["POST"])
+@login_required
+@module_required("permisos")
+def vacaciones_rechazar(id):
+    observaciones = (request.form.get("observaciones") or "").strip()
+    solicitud = query("SELECT * FROM solicitud_vacaciones WHERE id = %s", (id,), one=True)
+    if not solicitud:
+        flash("Solicitud de vacaciones no encontrada.", "error")
+        return redirect(url_for("vacaciones_index"))
+    if not _puede_resolver_solicitud(solicitud):
+        flash("No tiene permiso para rechazar esta solicitud (no es el encargado asignado).", "error")
+        return redirect(url_for("vacaciones_index"))
+    if solicitud["estado"] != "PENDIENTE":
+        flash("La solicitud ya fue resuelta. Se actualiza la lista.", "info")
+        return redirect(url_for("vacaciones_index"))
+    execute(
+        "UPDATE solicitud_vacaciones SET estado = 'RECHAZADO', observaciones = %s, "
+        "resuelto_por = %s, fecha_resolucion = NOW() WHERE id = %s",
+        (observaciones or None, get_current_user()["id_user"], id),
+    )
+    registrar_audit("Solicitud de vacaciones rechazada", "vacaciones", f"id={id} cédula={solicitud.get('id_cedula')}")
+    emp = query(
+        "SELECT apellidos_nombre, direccion_email FROM empleado WHERE id_cedula = %s",
+        (solicitud["id_cedula"],), one=True,
+    )
+    email_empleado = _resolver_email_empleado(solicitud["id_cedula"])
+    correo_ok = notificar_resolucion_vacaciones(
+        app, solicitud,
+        emp["apellidos_nombre"] if emp else "",
+        email_empleado,
+        aprobado=False, observaciones=observaciones,
+    )
+    _cur = get_current_user() or {}
+    if not _es_admin_o_coord(_cur):
+        try:
+            notificar_gh_resolucion_por_jefe(
+                app, solicitud, emp["apellidos_nombre"] if emp else "",
+                tipo="vacaciones", aprobado=False,
+                jefe_nombre=_cur.get("nombre"), observaciones=observaciones,
+            )
+        except Exception:
+            pass
+    if correo_ok:
+        flash("Solicitud de vacaciones rechazada. Se notificó al empleado por correo.", "success")
+    else:
+        flash("Solicitud de vacaciones rechazada. No se pudo enviar el correo (revisar consola y MAIL_PASSWORD en .env).", "warning")
+    return redirect(url_for("vacaciones_index"))
 
 
 @app.route("/vacaciones/mis-solicitudes")
@@ -1573,11 +1859,13 @@ def vacaciones_mis_solicitudes():
 @login_required
 @module_required("permisos")
 def permiso_aprobar(id):
-    if not _puede_aprobar_permisos():
-        flash("No tiene permiso para aprobar solicitudes.", "error")
-        return redirect(url_for("permisos_index"))
     observaciones = (request.form.get("observaciones") or "").strip()
     solicitud = query("SELECT * FROM solicitud_permiso WHERE id = %s", (id,), one=True)
+    if solicitud and not _puede_resolver_solicitud(solicitud):
+        flash("No tiene permiso para aprobar esta solicitud (no es el encargado asignado).", "error")
+        if _is_api_request() or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify(ok=False, error="Sin permiso para aprobar esta solicitud."), 403
+        return redirect(url_for("permisos_index"))
     if not solicitud:
         flash("Solicitud no encontrada. En este equipo la base de datos puede ser distinta.", "error")
         if _is_api_request() or request.headers.get("X-Requested-With") == "XMLHttpRequest":
@@ -1658,7 +1946,18 @@ def permiso_aprobar(id):
                         os.unlink(temp_pdf)
                     except Exception:
                         pass
-    correo_ok = notificar_resolucion_permiso(app, solicitud, emp["apellidos_nombre"] if emp else "", emp.get("direccion_email") if emp else "", aprobado=True, observaciones=observaciones, attachments=attachments if attachments else None)
+    email_empleado = _resolver_email_empleado(solicitud["id_cedula"])
+    correo_ok = notificar_resolucion_permiso(app, solicitud, emp["apellidos_nombre"] if emp else "", email_empleado, aprobado=True, observaciones=observaciones, attachments=attachments if attachments else None)
+    _cur = get_current_user() or {}
+    if not _es_admin_o_coord(_cur):
+        try:
+            notificar_gh_resolucion_por_jefe(
+                app, solicitud, emp["apellidos_nombre"] if emp else "",
+                tipo="permiso", aprobado=True,
+                jefe_nombre=_cur.get("nombre"), observaciones=observaciones,
+            )
+        except Exception:
+            pass
     for _nom, path in attachments:
         if os.path.isfile(path):
             try:
@@ -1691,11 +1990,13 @@ def permiso_aprobar(id):
 @login_required
 @module_required("permisos")
 def permiso_rechazar(id):
-    if not _puede_aprobar_permisos():
-        flash("No tiene permiso para rechazar solicitudes.", "error")
-        return redirect(url_for("permisos_index"))
     observaciones = (request.form.get("observaciones") or "").strip()
     solicitud = query("SELECT * FROM solicitud_permiso WHERE id = %s", (id,), one=True)
+    if solicitud and not _puede_resolver_solicitud(solicitud):
+        flash("No tiene permiso para rechazar esta solicitud (no es el encargado asignado).", "error")
+        if _is_api_request() or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify(ok=False, error="Sin permiso para rechazar esta solicitud."), 403
+        return redirect(url_for("permisos_index"))
     if not solicitud:
         flash("Solicitud no encontrada. En este equipo la base de datos puede ser distinta.", "error")
         if _is_api_request() or request.headers.get("X-Requested-With") == "XMLHttpRequest":
@@ -1721,7 +2022,18 @@ def permiso_rechazar(id):
     )
     registrar_audit("Solicitud rechazada", "permisos", f"id={id} cédula={solicitud.get('id_cedula')}")
     emp = query("SELECT apellidos_nombre, direccion_email FROM empleado WHERE id_cedula = %s", (solicitud["id_cedula"],), one=True)
-    correo_ok = notificar_resolucion_permiso(app, solicitud, emp["apellidos_nombre"] if emp else "", emp.get("direccion_email") if emp else "", aprobado=False, observaciones=observaciones)
+    email_empleado = _resolver_email_empleado(solicitud["id_cedula"])
+    correo_ok = notificar_resolucion_permiso(app, solicitud, emp["apellidos_nombre"] if emp else "", email_empleado, aprobado=False, observaciones=observaciones)
+    _cur = get_current_user() or {}
+    if not _es_admin_o_coord(_cur):
+        try:
+            notificar_gh_resolucion_por_jefe(
+                app, solicitud, emp["apellidos_nombre"] if emp else "",
+                tipo="permiso", aprobado=False,
+                jefe_nombre=_cur.get("nombre"), observaciones=observaciones,
+            )
+        except Exception:
+            pass
     try:
         execute(
             "UPDATE solicitud_permiso SET correo_resolucion_enviado = %s, correo_resolucion_at = IF(%s, NOW(), NULL) WHERE id = %s",
@@ -2042,8 +2354,10 @@ PERMISOS_EXPORT_COLUMNS = [
 @login_required
 @module_required("permisos")
 def permisos_export():
-    """Exporta listado de solicitudes de permiso con los mismos filtros que la vista."""
-    if not _puede_aprobar_permisos():
+    """Exporta listado de solicitudes de permiso con los mismos filtros que la vista.
+    Respeta el filtro por encargado (jefe ve solo los suyos).
+    """
+    if not _puede_ver_listado_solicitudes():
         flash("No tiene permiso para exportar.", "error")
         return redirect(url_for("permisos_index"))
     filtro_estado = request.args.get("estado", "").strip().upper()
@@ -2276,8 +2590,76 @@ EMPLEADO_FIELDS = [
 ]
 
 
+def _procesar_hijos_form(id_cedula, request_form, reemplazar=False):
+    """Lee las listas hijo_id[], hijo_apellidos_nombre[], hijo_identificacion[],
+    hijo_fecha_nacimiento[], hijo_sexo[], hijo_estado[] del formulario y sincroniza
+    la tabla `hijo` para el empleado dado.
+    - Filas sin nombre se ignoran (se consideran vacías).
+    - Si reemplazar=True (caso edición), los hijos existentes que no figuren en el form
+      se eliminan.
+    - Si una fila trae hijo_id lo actualiza; si no, se inserta con un id generado.
+    Devuelve la cantidad de hijos resultantes para el empleado.
+    """
+    import uuid
+    if not id_cedula:
+        return 0
+    nombres = request_form.getlist("hijo_apellidos_nombre[]")
+    identificaciones = request_form.getlist("hijo_identificacion[]")
+    fechas = request_form.getlist("hijo_fecha_nacimiento[]")
+    sexos = request_form.getlist("hijo_sexo[]")
+    estados = request_form.getlist("hijo_estado[]")
+    ids = request_form.getlist("hijo_id[]")
+
+    def _g(lst, i):
+        return (lst[i].strip() if i < len(lst) and lst[i] is not None else "")
+
+    total_rows = max(len(nombres), len(ids))
+    ids_en_form = set()
+    for i in range(total_rows):
+        nombre = _g(nombres, i).upper()
+        if not nombre:
+            continue
+        hijo_id = _g(ids, i)
+        identificacion = _g(identificaciones, i) or None
+        fecha_nac = _g(fechas, i) or None
+        sexo = _g(sexos, i) or None
+        estado = _g(estados, i) or "ACTIVO"
+        if hijo_id:
+            ids_en_form.add(hijo_id)
+            execute(
+                "UPDATE hijo SET apellidos_nombre=%s, identificacion_hijo=%s, fecha_nacimiento=%s, "
+                "sexo=%s, estado=%s WHERE id_hijo=%s AND id_cedula=%s",
+                (nombre, identificacion, fecha_nac, sexo, estado, hijo_id, id_cedula),
+            )
+        else:
+            new_id = uuid.uuid4().hex[:8]
+            execute(
+                "INSERT INTO hijo (id_hijo, id_cedula, apellidos_nombre, identificacion_hijo, "
+                "fecha_nacimiento, sexo, estado) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (new_id, id_cedula, nombre, identificacion, fecha_nac, sexo, estado),
+            )
+            ids_en_form.add(new_id)
+
+    if reemplazar:
+        existentes = query("SELECT id_hijo FROM hijo WHERE id_cedula = %s", (id_cedula,))
+        for row in existentes:
+            if row["id_hijo"] not in ids_en_form:
+                execute("DELETE FROM hijo WHERE id_hijo = %s AND id_cedula = %s", (row["id_hijo"], id_cedula))
+
+    total = query("SELECT COUNT(*) AS c FROM hijo WHERE id_cedula = %s", (id_cedula,), one=True)
+    return int(total["c"]) if total else 0
+
+
 def _form_context():
     """Lookup data for the empleado form dropdowns."""
+    try:
+        encargados_list = query(
+            "SELECT id_user, nombre, rol FROM usuario "
+            "WHERE COALESCE(estado, 1) = 1 AND UPPER(COALESCE(rol, '')) <> 'EMPLEADO' "
+            "ORDER BY nombre"
+        )
+    except Exception:
+        encargados_list = []
     return dict(
         tipos_doc=query("SELECT DISTINCT tipo_documento FROM tipo_documento ORDER BY tipo_documento"),
         departamentos=query("SELECT nombre FROM departamento ORDER BY nombre"),
@@ -2294,6 +2676,7 @@ def _form_context():
         fondos_list=query("SELECT nombre FROM fondo_pensiones ORDER BY nombre"),
         niveles=query("SELECT DISTINCT nivel FROM nivel_educativo ORDER BY nivel"),
         profesiones=query("SELECT DISTINCT profesion FROM profesion ORDER BY profesion"),
+        encargados_list=encargados_list,
     )
 
 
@@ -2310,10 +2693,19 @@ def detalle_empleado(id):
         "SELECT id_retiro, fecha_retiro, tipo_retiro, dias_laborados, motivo "
         "FROM retirado WHERE id_cedula = %s ORDER BY fecha_retiro DESC", (id,)
     )
+    encargado_info = None
+    if emp.get("id_user_encargado"):
+        try:
+            encargado_info = query(
+                "SELECT id_user, nombre, email, rol FROM usuario WHERE id_user = %s",
+                (emp["id_user_encargado"],), one=True,
+            )
+        except Exception:
+            encargado_info = None
     return render_template(
         "detail.html", active_page="Personal Activo",
         data=emp, fields=EMPLEADO_FIELDS, children=hijos,
-        retirados=retirados,
+        retirados=retirados, encargado_info=encargado_info,
         back_url=url_for("personal_activo"),
     )
 
@@ -2340,14 +2732,31 @@ def crear_empleado():
             "ciudad_residencia", "telefono", "celular", "direccion_email", "eps",
             "fondo_pensiones", "fecha_nacimiento", "hijos", "estado", "nivel_educativo",
             "profesion", "contacto_emergencia", "telefono_contacto", "parentezco",
+            "id_user_encargado",
         ]
         vals = []
         for f in fields_list:
             v = request.form.get(f, "").strip()
             vals.append(v if v else None)
-        placeholders = ", ".join(["%s"] * len(fields_list))
-        cols = ", ".join(fields_list)
-        execute(f"INSERT INTO empleado ({cols}) VALUES ({placeholders})", tuple(vals))
+        try:
+            execute(f"INSERT INTO empleado ({', '.join(fields_list)}) VALUES ({', '.join(['%s'] * len(fields_list))})", tuple(vals))
+        except Exception as e:
+            # Compat: si la BD aún no tiene la columna id_user_encargado, reintentar sin ella.
+            if "id_user_encargado" in str(e).lower():
+                fields_fallback = [f for f in fields_list if f != "id_user_encargado"]
+                vals_fallback = [request.form.get(f, "").strip() or None for f in fields_fallback]
+                execute(
+                    f"INSERT INTO empleado ({', '.join(fields_fallback)}) VALUES ({', '.join(['%s'] * len(fields_fallback))})",
+                    tuple(vals_fallback),
+                )
+            else:
+                raise
+        try:
+            total_hijos = _procesar_hijos_form(cedula, request.form, reemplazar=False)
+            if total_hijos > 0:
+                execute("UPDATE empleado SET hijos = 'SI' WHERE id_cedula = %s", (cedula,))
+        except Exception:
+            pass
         # Crear usuario para portal del empleado (contraseña inicial Colbeef2026*)
         id_user_emp = "EMP-" + cedula
         email_emp = (request.form.get("direccion_email") or "").strip().lower()
@@ -2378,7 +2787,7 @@ def crear_empleado():
     ctx = _form_context()
     return render_template(
         "empleado_form.html", active_page="Personal Activo",
-        emp=None, back_url=url_for("personal_activo"), **ctx,
+        emp=None, hijos_emp=[], back_url=url_for("personal_activo"), **ctx,
     )
 
 
@@ -2399,7 +2808,7 @@ def editar_empleado(id):
             "direccion_residencia", "barrio_residencia", "ciudad_residencia", "telefono",
             "celular", "direccion_email", "eps", "fondo_pensiones", "fecha_nacimiento",
             "hijos", "estado", "nivel_educativo", "profesion", "contacto_emergencia",
-            "telefono_contacto", "parentezco",
+            "telefono_contacto", "parentezco", "id_user_encargado",
         ]
         sets = []
         vals = []
@@ -2408,14 +2817,33 @@ def editar_empleado(id):
             sets.append(f"{f} = %s")
             vals.append(v if v else None)
         vals.append(id)
-        execute(f"UPDATE empleado SET {', '.join(sets)} WHERE id_cedula = %s", tuple(vals))
+        try:
+            execute(f"UPDATE empleado SET {', '.join(sets)} WHERE id_cedula = %s", tuple(vals))
+        except Exception as e:
+            if "id_user_encargado" in str(e).lower():
+                fb_fields = [f for f in update_fields if f != "id_user_encargado"]
+                fb_sets = [f"{f} = %s" for f in fb_fields]
+                fb_vals = [request.form.get(f, "").strip() or None for f in fb_fields] + [id]
+                execute(f"UPDATE empleado SET {', '.join(fb_sets)} WHERE id_cedula = %s", tuple(fb_vals))
+            else:
+                raise
+        try:
+            total_hijos = _procesar_hijos_form(id, request.form, reemplazar=True)
+            estado_hijos = "SI" if total_hijos > 0 else (request.form.get("hijos", "").strip() or None)
+            execute("UPDATE empleado SET hijos = %s WHERE id_cedula = %s", (estado_hijos, id))
+        except Exception:
+            pass
         flash("Empleado actualizado exitosamente", "success")
         return redirect(url_for("detalle_empleado", id=id))
 
     ctx = _form_context()
+    hijos_emp = query(
+        "SELECT id_hijo, identificacion_hijo, apellidos_nombre, fecha_nacimiento, sexo, estado "
+        "FROM hijo WHERE id_cedula = %s ORDER BY apellidos_nombre", (id,)
+    )
     return render_template(
         "empleado_form.html", active_page="Personal Activo",
-        emp=emp, back_url=url_for("detalle_empleado", id=id), **ctx,
+        emp=emp, hijos_emp=hijos_emp, back_url=url_for("detalle_empleado", id=id), **ctx,
     )
 
 
@@ -2488,6 +2916,13 @@ def retirar_empleado(id):
 
 # ── CRUD HIJOS ───────────────────────────────────────────────
 
+def _safe_redirect_to(target, fallback_endpoint, **fallback_kwargs):
+    """Redirige a target si es una ruta interna segura, si no al fallback."""
+    if target and target.startswith("/") and not target.startswith("//"):
+        return redirect(target)
+    return redirect(url_for(fallback_endpoint, **fallback_kwargs))
+
+
 @app.route("/hijo/nuevo", methods=["POST"])
 @login_required
 @module_required("familia")
@@ -2495,9 +2930,15 @@ def retirar_empleado(id):
 def crear_hijo():
     cedula = request.form.get("id_cedula", "").strip()
     nombre = request.form.get("apellidos_nombre", "").strip().upper()
+    redirect_to = request.form.get("redirect_to", "").strip()
     if not cedula or not nombre:
         flash("Cédula del padre y nombre del hijo son obligatorios", "error")
-        return redirect(url_for("detalle_empleado", id=cedula))
+        return _safe_redirect_to(redirect_to, "detalle_empleado", id=cedula)
+
+    padre = query("SELECT id_cedula FROM empleado WHERE id_cedula = %s", (cedula,), one=True)
+    if not padre:
+        flash(f"No existe un empleado con cédula {cedula}. Verifica el número.", "error")
+        return _safe_redirect_to(redirect_to, "hijos_gestion")
 
     last = query("SELECT id_hijo FROM hijo ORDER BY id_hijo DESC LIMIT 1", one=True)
     if last:
@@ -2520,7 +2961,7 @@ def crear_hijo():
          request.form.get("estado", "ACTIVO").strip()),
     )
     flash(f"Hijo {nombre} agregado exitosamente", "success")
-    return redirect(url_for("detalle_empleado", id=cedula))
+    return _safe_redirect_to(redirect_to, "detalle_empleado", id=cedula)
 
 
 @app.route("/hijo/<id>/editar", methods=["POST"])
@@ -2530,6 +2971,7 @@ def crear_hijo():
 def editar_hijo(id):
     cedula = request.form.get("id_cedula", "").strip()
     nombre = request.form.get("apellidos_nombre", "").strip().upper()
+    redirect_to = request.form.get("redirect_to", "").strip()
     execute(
         "UPDATE hijo SET identificacion_hijo=%s, apellidos_nombre=%s, "
         "fecha_nacimiento=%s, sexo=%s, estado=%s WHERE id_hijo=%s",
@@ -2541,7 +2983,7 @@ def editar_hijo(id):
          id),
     )
     flash(f"Hijo {nombre} actualizado", "success")
-    return redirect(url_for("detalle_empleado", id=cedula))
+    return _safe_redirect_to(redirect_to, "detalle_empleado", id=cedula)
 
 
 @app.route("/hijo/<id>/eliminar", methods=["POST"])
@@ -2549,12 +2991,15 @@ def editar_hijo(id):
 @module_required("familia")
 @role_required("ALL")
 def eliminar_hijo(id):
-    redirect_cedula = request.args.get("redirect_cedula", "")
+    redirect_cedula = request.args.get("redirect_cedula", "") or request.form.get("redirect_cedula", "")
+    redirect_to = request.args.get("redirect_to", "") or request.form.get("redirect_to", "")
     execute("DELETE FROM hijo WHERE id_hijo = %s", (id,))
     flash("Hijo eliminado", "success")
+    if redirect_to:
+        return _safe_redirect_to(redirect_to, "hijos_gestion")
     if redirect_cedula:
         return redirect(url_for("detalle_empleado", id=redirect_cedula))
-    return redirect(url_for("hijos_activos"))
+    return redirect(url_for("hijos_gestion"))
 
 
 # ── CRUD RETIRADOS ───────────────────────────────────────────
@@ -2674,6 +3119,79 @@ def hijos_activos():
 def hijos_inactivos():
     # Redirige a la vista unificada con el estado INACTIVO seleccionado
     return redirect(url_for("hijos_activos", estado="INACTIVO"))
+
+
+# ── API para autocompletar nombre del padre al escribir cedula ──
+@app.route("/api/padre/<id_cedula>", methods=["GET"])
+@login_required
+@module_required("familia")
+def api_padre_por_cedula(id_cedula):
+    emp = query(
+        "SELECT id_cedula, apellidos_nombre, departamento, area, estado "
+        "FROM empleado WHERE id_cedula = %s",
+        (id_cedula.strip(),), one=True,
+    )
+    if not emp:
+        return jsonify({"ok": False, "error": "No existe un empleado con esa cédula"}), 404
+    return jsonify({"ok": True, "empleado": emp})
+
+
+# ── GESTION DE HIJOS (vista dedicada con busqueda + CRUD) ────
+@app.route("/hijos-gestion")
+@login_required
+@module_required("familia")
+def hijos_gestion():
+    estado = request.args.get("estado", "TODOS").strip().upper()
+    q_texto = request.args.get("q", "").strip()
+
+    sql = (
+        "SELECT h.id_hijo, h.identificacion_hijo, h.id_cedula, "
+        "COALESCE(e.apellidos_nombre, '(padre no registrado)') AS nombre_padre, "
+        "e.departamento, e.area, e.estado AS estado_padre, "
+        "h.apellidos_nombre AS nombre_hijo, "
+        "h.fecha_nacimiento, h.sexo, h.estado AS estado_hijo "
+        "FROM hijo h "
+        "LEFT JOIN empleado e ON e.id_cedula = h.id_cedula "
+    )
+    where = []
+    params = []
+    if estado in ("ACTIVO", "INACTIVO"):
+        where.append("h.estado = %s")
+        params.append(estado)
+    if q_texto:
+        where.append(
+            "(h.id_cedula LIKE %s OR h.apellidos_nombre LIKE %s "
+            "OR e.apellidos_nombre LIKE %s OR h.identificacion_hijo LIKE %s)"
+        )
+        like = f"%{q_texto}%"
+        params.extend([like, like, like, like])
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY e.apellidos_nombre IS NULL, e.apellidos_nombre, h.apellidos_nombre"
+
+    rows = query(sql, tuple(params))
+
+    total = len(rows)
+    activos = sum(1 for r in rows if (r.get("estado_hijo") or "").upper() == "ACTIVO")
+    inactivos = total - activos
+    padres_distintos = len({r["id_cedula"] for r in rows if r.get("id_cedula")})
+
+    stats = [
+        {"value": total,     "label": "Hijos encontrados",  "icon": "groups",           "color": "blue"},
+        {"value": activos,   "label": "Activos",            "icon": "child_care",       "color": "green"},
+        {"value": inactivos, "label": "Inactivos",          "icon": "child_friendly",   "color": "orange"},
+        {"value": padres_distintos, "label": "Padres distintos", "icon": "family_restroom", "color": "purple"},
+    ]
+
+    return render_template(
+        "hijos_gestion.html",
+        active_page="Gestión de Hijos",
+        rows=rows,
+        stats=stats,
+        estado_actual=estado,
+        q_texto=q_texto,
+        redirect_to=request.full_path.rstrip("?") or url_for("hijos_gestion"),
+    )
 
 
 # ── RETIRO DE PERSONAL ───────────────────────────────────────

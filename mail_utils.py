@@ -274,8 +274,10 @@ def notificar_nueva_solicitud_permiso(app, solicitud, empleado_nombre, empleado_
     Notifica por separado:
     - coordinacion.gestionhumana@colbeef.com (MAIL_GH_PERMISOS): es quien APRUEBA o RECHAZA el permiso.
     - gestionhumana@colbeef.com (MAIL_GH_INFORMADA): misma info, solo informativa; no aprueba ni rechaza.
-    - gestor.contratacion@colbeef.com (MAIL_GESTOR_CONTRATACION): se le informa que el empleado ya diligenció el formato.
     evidencia_path: ruta absoluta del archivo adjunto (permiso no remunerado); se incluye en el correo.
+
+    NOTA: Se eliminó la notificación a Gestor de Contratación (Johan). Si en el futuro se
+    quiere reactivar, restaurar el bloque con `app.config.get("MAIL_GESTOR_CONTRATACION")`.
     """
     tabla = _tabla_detalle_solicitud(solicitud, empleado_nombre=empleado_nombre, incluir_empleado=True)
     ok = False
@@ -321,26 +323,8 @@ def notificar_nueva_solicitud_permiso(app, solicitud, empleado_nombre, empleado_
         if send_mail(informada, subject_inf, body_inf, body_text=plain_inf, app=app, attachments=attachments):
             ok = True
 
-    # Correo a Gestor de Contratación
-    gestor = (app.config.get("MAIL_GESTOR_CONTRATACION") or "").strip()
-    if gestor:
-        subject_gestor = f"Formato de permiso diligenciado – {empleado_nombre}"
-        body_gestor_content = f"""
-        <p>Estimado/a Gestor de Contratación,</p>
-        <p>El empleado <strong>{html_escape(empleado_nombre)}</strong> ya diligenció el formato de permiso en el sistema. A continuación el detalle de la solicitud:</p>
-        {tabla}
-        {nota_evidencia}
-        <div class="mail-divider"></div>
-        <p>Coordinación Gestión Humana es quien aprobará o rechazará esta solicitud. Si necesita más detalles, puede contactar al empleado o a Coordinación GH.</p>
-        <p>Saludos cordiales,<br/><strong>Sistema de Gestión Humana – Colbeef</strong></p>
-        """
-        body_gestor = _wrap_html(body_gestor_content, title=subject_gestor, subtitle="Formato de permiso diligenciado")
-        plain_gestor = _strip_html(body_gestor_content)
-        if send_mail(gestor, subject_gestor, body_gestor, body_text=plain_gestor, app=app, attachments=attachments):
-            ok = True
-
     if app and hasattr(app, "logger"):
-        app.logger.info(f"[Permisos] Notificación nueva solicitud: GH={bool(gh)}, Informada={bool(informada)}, Gestor={bool(gestor)}, enviados_ok={ok}")
+        app.logger.info(f"[Permisos] Notificación nueva solicitud: GH={bool(gh)}, Informada={bool(informada)}, enviados_ok={ok}")
     return ok
 
 
@@ -495,3 +479,189 @@ def notificar_resolucion_permiso(app, solicitud, empleado_nombre, empleado_email
     if app and hasattr(app, "logger"):
         app.logger.info(f"[Permisos] Resolución id={id_sol} → resultado_enviado={ok}")
     return ok
+
+
+def _tabla_detalle_vacaciones(solicitud, empleado_nombre=None, incluir_empleado=True):
+    """Tabla HTML con el detalle de una solicitud de vacaciones."""
+    def _fmt(v):
+        if v is None or v == "":
+            return "—"
+        if hasattr(v, "strftime"):
+            return v.strftime("%d/%m/%Y")
+        return str(v)
+
+    filas = []
+    if incluir_empleado and empleado_nombre:
+        filas.append(("<th>Empleado</th>", f"<td>{html_escape(empleado_nombre)}</td>"))
+    filas.append(("<th>Fecha solicitud</th>", f"<td>{html_escape(_fmt(solicitud.get('fecha_solicitud')))}</td>"))
+    if solicitud.get("periodo_causado"):
+        filas.append(("<th>Periodo causado</th>", f"<td>{html_escape(str(solicitud.get('periodo_causado')))}</td>"))
+    if solicitud.get("dias_en_tiempo") is not None:
+        filas.append(("<th>Días en tiempo</th>", f"<td>{int(solicitud['dias_en_tiempo'])}</td>"))
+    if solicitud.get("dias_compensados_dinero") is not None:
+        filas.append(("<th>Días compensados en dinero</th>", f"<td>{int(solicitud['dias_compensados_dinero'])}</td>"))
+    filas.append(("<th>Fecha inicio</th>", f"<td>{html_escape(_fmt(solicitud.get('fecha_inicio')))}</td>"))
+    filas.append(("<th>Fecha fin</th>", f"<td>{html_escape(_fmt(solicitud.get('fecha_fin')))}</td>"))
+    filas.append(("<th>Fecha regreso</th>", f"<td>{html_escape(_fmt(solicitud.get('fecha_regreso')))}</td>"))
+    pa = solicitud.get("pago_anticipado")
+    pa_txt = "Sí" if pa == 1 else ("No" if pa == 0 else "—")
+    filas.append(("<th>Pago anticipado</th>", f"<td>{html_escape(pa_txt)}</td>"))
+    rows_html = "".join(f"<tr>{th}{td}</tr>" for th, td in filas)
+    return f'<table class="mail-table"><tbody>{rows_html}</tbody></table>'
+
+
+def notificar_resolucion_vacaciones(app, solicitud, empleado_nombre, empleado_email, aprobado, observaciones=None):
+    """Notifica al empleado (o a MAIL_PRUEBAS_CC si no hay correo) la resolución
+    de su solicitud de vacaciones. Sin PDF, solo detalle + badge."""
+    original_email = (empleado_email or "").strip()
+    if not original_email:
+        empleado_email = app.config.get("MAIL_PRUEBAS_CC", "").split(",")[0].strip() or None
+        if app and hasattr(app, "logger"):
+            app.logger.info(f"[Vacaciones] Empleado {empleado_nombre} sin correo en BD; enviando a MAIL_PRUEBAS_CC={empleado_email or 'no configurado'}")
+    else:
+        empleado_email = original_email
+    if not empleado_email:
+        if app and hasattr(app, "logger"):
+            app.logger.warning("[Vacaciones] No se envió correo de resolución: empleado sin direccion_email y MAIL_PRUEBAS_CC vacío")
+        return False
+
+    estado_label = "Aprobada" if aprobado else "Rechazada"
+    badge_class = "aprobado" if aprobado else "rechazado"
+    subject = f"Resolución: vacaciones {estado_label} – {empleado_nombre}"
+
+    tabla = _tabla_detalle_vacaciones(solicitud, empleado_nombre=empleado_nombre, incluir_empleado=False)
+    nombre_safe = html_escape(empleado_nombre or "—")
+    obs_html = ""
+    if observaciones:
+        obs_html = f'<p><strong>Observaciones:</strong> {html_escape(observaciones)}</p>'
+
+    if aprobado:
+        mensaje_cuerpo = (
+            "<p>Le informamos que su solicitud de <strong>vacaciones</strong> ha sido "
+            "<strong>aprobada</strong> por Coordinación Gestión Humana. A continuación el detalle:</p>"
+        )
+    else:
+        mensaje_cuerpo = (
+            "<p>Le informamos que su solicitud de <strong>vacaciones</strong> "
+            "<strong>no fue aprobada</strong>. Si tiene dudas, puede contactar a Coordinación Gestión Humana.</p>"
+        )
+
+    body_content = f"""
+    <p>Estimado/a <strong>{nombre_safe}</strong>,</p>
+    {mensaje_cuerpo}
+    <p><span class="mail-badge {badge_class}">{estado_label}</span></p>
+    {tabla}
+    {obs_html}
+    <p>Saludos cordiales,<br/><strong>Sistema de Gestión Humana – Colbeef</strong></p>
+    """
+    body = _wrap_html(body_content, title=subject, subtitle=f"Solicitud de vacaciones {estado_label}")
+    plain = _strip_html(body_content)
+    id_sol = solicitud.get("id")
+    if app and hasattr(app, "logger"):
+        app.logger.info(f"[Vacaciones] Resolución solicitud id={id_sol} → enviando a {empleado_email} ({estado_label.upper()})")
+    ok = send_mail(empleado_email, subject, body, body_text=plain, app=app)
+    if app and hasattr(app, "logger"):
+        app.logger.info(f"[Vacaciones] Resolución id={id_sol} → resultado_enviado={ok}")
+    return ok
+
+
+def notificar_nueva_solicitud_vacaciones(app, solicitud, empleado_nombre):
+    """Avisa a Coordinación GH que llegó una nueva solicitud de vacaciones.
+    Opcional: se dispara desde la ruta de solicitar si se desea. No falla si no hay config."""
+    gh = (app.config.get("MAIL_GH_PERMISOS") or "").strip()
+    if not gh:
+        return False
+    subject = f"Nueva solicitud de vacaciones – {empleado_nombre}"
+    tabla = _tabla_detalle_vacaciones(solicitud, empleado_nombre=empleado_nombre, incluir_empleado=True)
+    body_content = f"""
+    <p>Estimada Coordinación Gestión Humana,</p>
+    <p>Se ha registrado una <strong>nueva solicitud de vacaciones</strong> en el sistema. Por favor revise y resuelva (aprobar o rechazar).</p>
+    {tabla}
+    <div class="mail-divider"></div>
+    <p>Ingrese al sistema para resolver esta solicitud.</p>
+    <p>Saludos cordiales,<br/><strong>Sistema de Gestión Humana – Colbeef</strong></p>
+    """
+    body = _wrap_html(body_content, title=subject, subtitle="Nueva solicitud de vacaciones")
+    plain = _strip_html(body_content)
+    return send_mail(gh, subject, body, body_text=plain, app=app)
+
+
+def notificar_gh_resolucion_por_jefe(app, solicitud, empleado_nombre, tipo, aprobado, jefe_nombre, observaciones=None):
+    """Cuando un JEFE INMEDIATO (no ADMIN/COORD. GH) aprueba o rechaza una solicitud,
+    se envía un correo INFORMATIVO a Coordinación GH para que quede enterada.
+
+    tipo: "permiso" o "vacaciones".
+    Se envía a MAIL_GH_INFORMADA si está configurado; si no, a MAIL_GH_PERMISOS.
+    """
+    destino = (app.config.get("MAIL_GH_INFORMADA") or app.config.get("MAIL_GH_PERMISOS") or "").strip()
+    if not destino:
+        return False
+    tipo_norm = (tipo or "").strip().lower()
+    estado_label = "Aprobada" if aprobado else "Rechazada"
+    badge_class = "aprobado" if aprobado else "rechazado"
+    if tipo_norm == "vacaciones":
+        subject = f"[Informativo] Vacaciones {estado_label} por jefe inmediato – {empleado_nombre}"
+        subtitle = f"Vacaciones {estado_label} por jefe inmediato"
+        tabla = _tabla_detalle_vacaciones(solicitud, empleado_nombre=empleado_nombre, incluir_empleado=True)
+        tipo_label = "vacaciones"
+    else:
+        subject = f"[Informativo] Permiso {estado_label} por jefe inmediato – {empleado_nombre}"
+        subtitle = f"Permiso {estado_label} por jefe inmediato"
+        tabla = _tabla_detalle_solicitud(solicitud, empleado_nombre=empleado_nombre, incluir_empleado=True)
+        tipo_label = "permiso"
+
+    obs_html = ""
+    if observaciones:
+        obs_html = f'<p><strong>Observaciones del jefe:</strong> {html_escape(observaciones)}</p>'
+
+    body_content = f"""
+    <p>Estimada Coordinación Gestión Humana,</p>
+    <p>El/La jefe inmediato <strong>{html_escape(jefe_nombre or "—")}</strong> ha <strong>{estado_label.lower()}</strong> una solicitud de {tipo_label} del empleado <strong>{html_escape(empleado_nombre)}</strong>. El flujo ya cerró; este correo es solo informativo.</p>
+    <p><span class="mail-badge {badge_class}">{estado_label}</span></p>
+    {tabla}
+    {obs_html}
+    <div class="mail-divider"></div>
+    <p>Saludos cordiales,<br/><strong>Sistema de Gestión Humana – Colbeef</strong></p>
+    """
+    body = _wrap_html(body_content, title=subject, subtitle=subtitle)
+    plain = _strip_html(body_content)
+    return send_mail(destino, subject, body, body_text=plain, app=app)
+
+
+def notificar_encargado_nueva_solicitud(app, solicitud, empleado_nombre, encargado_email, encargado_nombre, tipo="permiso", evidencia_path=None):
+    """Envía al encargado asignado al empleado un correo pidiéndole que resuelva la
+    solicitud (aprobar/rechazar) en el sistema.
+
+    tipo: "permiso" o "vacaciones" (cambia el asunto y la tabla de detalle).
+    No falla si el encargado no tiene email o la configuración de correo es incompleta.
+    """
+    if not (encargado_email or "").strip():
+        return False
+    tipo_norm = (tipo or "").strip().lower()
+    nombre_enc = (encargado_nombre or "su equipo").strip()
+    if tipo_norm == "vacaciones":
+        subject = f"[Acción requerida] Nueva solicitud de vacaciones – {empleado_nombre}"
+        subtitle = "Nueva solicitud de vacaciones"
+        tabla = _tabla_detalle_vacaciones(solicitud, empleado_nombre=empleado_nombre, incluir_empleado=True)
+        intro = "una <strong>nueva solicitud de vacaciones</strong>"
+    else:
+        subject = f"[Acción requerida] Nueva solicitud de permiso – {empleado_nombre}"
+        subtitle = "Nueva solicitud de permiso"
+        tabla = _tabla_detalle_solicitud(solicitud, empleado_nombre=empleado_nombre, incluir_empleado=True)
+        intro = "una <strong>nueva solicitud de permiso</strong>"
+
+    attachments = []
+    if evidencia_path and os.path.isfile(evidencia_path):
+        attachments = [(os.path.basename(evidencia_path), evidencia_path)]
+
+    body_content = f"""
+    <p>Estimado/a <strong>{html_escape(nombre_enc)}</strong>,</p>
+    <p>Como encargado/a de <strong>{html_escape(empleado_nombre)}</strong>, ha recibido {intro} que requiere su aprobación o rechazo.</p>
+    {tabla}
+    <div class="mail-divider"></div>
+    <p>Por favor ingrese al sistema para resolver esta solicitud. Puede aprobarla o rechazarla e incluir observaciones.</p>
+    <p>Saludos cordiales,<br/><strong>Sistema de Gestión Humana – Colbeef</strong></p>
+    """
+    body = _wrap_html(body_content, title=subject, subtitle=subtitle)
+    plain = _strip_html(body_content)
+    return send_mail(encargado_email.strip(), subject, body, body_text=plain, app=app, attachments=attachments)

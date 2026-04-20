@@ -73,6 +73,27 @@
     </div>
 
     <div class="form-section">
+        <h3 class="form-section-title"><span class="material-symbols-outlined">supervisor_account</span> Encargado / Jefe inmediato</h3>
+        <div class="form-row">
+            <div class="form-group" style="flex: 1 1 100%;">
+                <label class="form-label">Encargado responsable de aprobar vacaciones y permisos</label>
+                <select name="id_user_encargado" class="form-input">
+                    <option value="">— Sin encargado asignado (solo ADMIN/COORD. GH ve sus solicitudes) —</option>
+                    {% for u in encargados_list %}
+                    <option value="{{ u.id_user }}"
+                        {{ 'selected' if emp and emp.id_user_encargado == u.id_user }}>
+                        {{ u.nombre }} ({{ u.rol }})
+                    </option>
+                    {% endfor %}
+                </select>
+                <small style="color:#6b7280; display:block; margin-top:4px;">
+                    Si no es ADMIN ni COORD. GH, solo este usuario podrá aprobar/rechazar las solicitudes de este empleado.
+                </small>
+            </div>
+        </div>
+    </div>
+
+    <div class="form-section">
         <h3 class="form-section-title"><span class="material-symbols-outlined">work</span> Información Laboral</h3>
         <div class="form-row">
             <div class="form-group">
@@ -215,6 +236,106 @@
         </div>
     </div>
 
+    <div class="form-section">
+        <h3 class="form-section-title">
+            <span class="material-symbols-outlined">child_care</span> Hijos
+            <small style="font-weight:400; color:#6b7280; font-size:13px; margin-left:10px;">
+                Agregue uno o varios. Puede dejarlo vacío si no tiene hijos.
+            </small>
+        </h3>
+
+        <div id="hijosContainer">
+            {% for h in (hijos_emp or []) %}
+            <div class="hijo-item" style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:14px; margin-bottom:12px; position:relative;">
+                <input type="hidden" name="hijo_id[]" value="{{ h.id_hijo }}">
+                <button type="button" class="btn-remove-hijo" title="Quitar este hijo"
+                        style="position:absolute; top:8px; right:8px; background:#fee2e2; color:#b91c1c; border:none; border-radius:6px; width:28px; height:28px; cursor:pointer; display:flex; align-items:center; justify-content:center;">
+                    <span class="material-symbols-outlined" style="font-size:18px">close</span>
+                </button>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Nombres y apellidos del hijo<span class="required">*</span></label>
+                        <input type="text" name="hijo_apellidos_nombre[]" class="form-input" value="{{ h.apellidos_nombre or '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Identificación</label>
+                        <input type="text" name="hijo_identificacion[]" class="form-input" value="{{ h.identificacion_hijo or '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Fecha de nacimiento</label>
+                        <input type="text" name="hijo_fecha_nacimiento[]" class="form-input" value="{{ h.fecha_nacimiento or '' }}" placeholder="DD/MM/AAAA">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Sexo</label>
+                        <select name="hijo_sexo[]" class="form-input">
+                            <option value="">—</option>
+                            <option value="M" {{ 'selected' if h.sexo == 'M' }}>M - Masculino</option>
+                            <option value="F" {{ 'selected' if h.sexo == 'F' }}>F - Femenino</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Estado</label>
+                        <select name="hijo_estado[]" class="form-input">
+                            <option value="ACTIVO" {{ 'selected' if (h.estado or 'ACTIVO') == 'ACTIVO' }}>ACTIVO</option>
+                            <option value="INACTIVO" {{ 'selected' if h.estado == 'INACTIVO' }}>INACTIVO</option>
+                        </select>
+                    </div>
+                    <div class="form-group"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <button type="button" id="btnAgregarHijo" class="btn btn-outline" style="margin-top:6px;">
+            <span class="material-symbols-outlined" style="font-size:18px">add</span>
+            Agregar otro hijo
+        </button>
+
+        <template id="hijoTemplate">
+            <div class="hijo-item" style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:14px; margin-bottom:12px; position:relative;">
+                <input type="hidden" name="hijo_id[]" value="">
+                <button type="button" class="btn-remove-hijo" title="Quitar este hijo"
+                        style="position:absolute; top:8px; right:8px; background:#fee2e2; color:#b91c1c; border:none; border-radius:6px; width:28px; height:28px; cursor:pointer; display:flex; align-items:center; justify-content:center;">
+                    <span class="material-symbols-outlined" style="font-size:18px">close</span>
+                </button>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Nombres y apellidos del hijo<span class="required">*</span></label>
+                        <input type="text" name="hijo_apellidos_nombre[]" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Identificación</label>
+                        <input type="text" name="hijo_identificacion[]" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Fecha de nacimiento</label>
+                        <input type="text" name="hijo_fecha_nacimiento[]" class="form-input" placeholder="DD/MM/AAAA">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Sexo</label>
+                        <select name="hijo_sexo[]" class="form-input">
+                            <option value="">—</option>
+                            <option value="M">M - Masculino</option>
+                            <option value="F">F - Femenino</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Estado</label>
+                        <select name="hijo_estado[]" class="form-input">
+                            <option value="ACTIVO" selected>ACTIVO</option>
+                            <option value="INACTIVO">INACTIVO</option>
+                        </select>
+                    </div>
+                    <div class="form-group"></div>
+                </div>
+            </div>
+        </template>
+    </div>
+
     <div class="form-actions">
         <button type="submit" class="btn btn-primary">
             <span class="material-symbols-outlined" style="font-size:18px">save</span>
@@ -272,6 +393,42 @@ document.addEventListener('DOMContentLoaded', () => {
         if (el.type === 'text' && el.name !== 'direccion_email') {
             el.addEventListener('blur', () => { el.value = el.value.toUpperCase(); });
         }
+    });
+
+    const hijosContainer = document.getElementById('hijosContainer');
+    const btnAgregarHijo = document.getElementById('btnAgregarHijo');
+    const hijoTemplate = document.getElementById('hijoTemplate');
+
+    function bindRemoveHijo(scope) {
+        scope.querySelectorAll('.btn-remove-hijo').forEach(btn => {
+            if (btn.dataset.bound === '1') return;
+            btn.dataset.bound = '1';
+            btn.addEventListener('click', () => {
+                const item = btn.closest('.hijo-item');
+                if (item) item.remove();
+            });
+        });
+    }
+
+    function bindUppercaseHijo(scope) {
+        scope.querySelectorAll('input[type=text]').forEach(el => {
+            if (el.dataset.upper === '1') return;
+            el.dataset.upper = '1';
+            el.addEventListener('blur', () => { el.value = el.value.toUpperCase(); });
+        });
+    }
+
+    bindRemoveHijo(hijosContainer);
+    bindUppercaseHijo(hijosContainer);
+
+    btnAgregarHijo.addEventListener('click', () => {
+        const frag = hijoTemplate.content.cloneNode(true);
+        hijosContainer.appendChild(frag);
+        const added = hijosContainer.lastElementChild;
+        bindRemoveHijo(added);
+        bindUppercaseHijo(added);
+        const firstInput = added.querySelector('input[name="hijo_apellidos_nombre[]"]');
+        if (firstInput) firstInput.focus();
     });
 });
 </script>

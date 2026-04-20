@@ -1,0 +1,419 @@
+{% extends "base.html" %}
+
+{% block page_actions %}
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    {% if can_write %}
+    <button class="btn btn-primary btn-sm" onclick="openHijoModalNuevo()">
+        <span class="material-symbols-outlined" style="font-size:18px">add</span>
+        Agregar Hijo
+    </button>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+.hijos-gestion-toolbar {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    margin: 16px 0;
+    padding: 12px 16px;
+    background: var(--bg-secondary, #f8fafc);
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 8px;
+}
+.hijos-gestion-search {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+    flex: 1 1 400px;
+    min-width: 300px;
+}
+.hijos-gestion-search-input {
+    position: relative;
+    flex: 1;
+    display: flex;
+    align-items: center;
+}
+.hijos-gestion-search-input .material-symbols-outlined:first-child {
+    position: absolute;
+    left: 10px;
+    color: var(--text-secondary, #6b7280);
+    font-size: 20px;
+    pointer-events: none;
+}
+.hijos-gestion-search-input input {
+    padding-left: 38px;
+    width: 100%;
+}
+.hijos-gestion-clear {
+    position: absolute;
+    right: 8px;
+    color: var(--text-secondary, #6b7280);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+}
+.hijos-gestion-clear:hover {
+    background: rgba(0,0,0,0.06);
+}
+.hijos-gestion-clear .material-symbols-outlined {
+    font-size: 18px;
+}
+.hijos-gestion-tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--bg-primary, #fff);
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 8px;
+    padding: 4px;
+}
+.hijos-gestion-tab {
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary, #6b7280);
+    text-decoration: none;
+    border-radius: 6px;
+    transition: all 0.15s;
+}
+.hijos-gestion-tab:hover {
+    color: var(--text-primary, #111827);
+    background: rgba(0,0,0,0.04);
+}
+.hijos-gestion-tab.active {
+    background: var(--colbeef-green, #0f766e);
+    color: #fff;
+}
+.padre-info-box {
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: var(--bg-secondary, #f8fafc);
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 6px;
+    font-size: 13px;
+}
+.padre-info-box.ok {
+    border-left: 3px solid #10b981;
+}
+.padre-info-box.error {
+    border-left: 3px solid #ef4444;
+    color: #b91c1c;
+}
+.padre-info-box.loading {
+    border-left: 3px solid #3b82f6;
+    color: #1e40af;
+}
+.link-cedula {
+    color: var(--colbeef-green, #0f766e);
+    font-family: monospace;
+    text-decoration: none;
+}
+.link-cedula:hover {
+    text-decoration: underline;
+}
+</style>
+
+{% if stats %}
+<div class="stats-grid animate-in" id="statsGrid">
+    {% for stat in stats %}
+    <div class="stat-card" style="animation-delay:{{ loop.index0 * 80 }}ms">
+        <div class="stat-icon {{ stat.color }}">
+            <span class="material-symbols-outlined">{{ stat.icon }}</span>
+        </div>
+        <div class="stat-info">
+            <h3 class="count-up" data-target="{{ stat.value }}">0</h3>
+            <p>{{ stat.label }}</p>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="hijos-gestion-toolbar">
+    <form method="GET" action="{{ url_for('hijos_gestion') }}" class="hijos-gestion-search">
+        <div class="hijos-gestion-search-input">
+            <span class="material-symbols-outlined">search</span>
+            <input type="text" name="q" value="{{ q_texto or '' }}"
+                   placeholder="Buscar por cédula del padre, nombre del padre, nombre del hijo o identificación…"
+                   class="form-input">
+            {% if q_texto %}
+            <a href="{{ url_for('hijos_gestion', estado=estado_actual) }}" class="hijos-gestion-clear" title="Limpiar búsqueda">
+                <span class="material-symbols-outlined">close</span>
+            </a>
+            {% endif %}
+        </div>
+        <input type="hidden" name="estado" value="{{ estado_actual }}">
+        <button type="submit" class="btn btn-primary btn-sm">
+            <span class="material-symbols-outlined" style="font-size:18px">search</span> Buscar
+        </button>
+    </form>
+
+    <div class="hijos-gestion-tabs">
+        <a href="{{ url_for('hijos_gestion', estado='TODOS', q=q_texto or none) }}"
+           class="hijos-gestion-tab {{ 'active' if estado_actual == 'TODOS' }}">Todos</a>
+        <a href="{{ url_for('hijos_gestion', estado='ACTIVO', q=q_texto or none) }}"
+           class="hijos-gestion-tab {{ 'active' if estado_actual == 'ACTIVO' }}">Activos</a>
+        <a href="{{ url_for('hijos_gestion', estado='INACTIVO', q=q_texto or none) }}"
+           class="hijos-gestion-tab {{ 'active' if estado_actual == 'INACTIVO' }}">Inactivos</a>
+    </div>
+</div>
+
+<div class="table-wrapper">
+    {% if rows|length > 0 %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Cédula Padre</th>
+                <th>Nombre Padre</th>
+                <th>Nombre Hijo</th>
+                <th>Identificación</th>
+                <th>Fecha Nacimiento</th>
+                <th>Sexo</th>
+                <th>Estado</th>
+                {% if can_write %}<th style="width:100px">Acciones</th>{% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for h in rows %}
+            <tr>
+                <td>
+                    <a href="{{ url_for('detalle_empleado', id=h.id_cedula) }}" class="link-cedula" title="Ver ficha del empleado">
+                        {{ h.id_cedula }}
+                    </a>
+                </td>
+                <td>{{ h.nombre_padre }}</td>
+                <td>{{ h.nombre_hijo }}</td>
+                <td>{{ h.identificacion_hijo or '—' }}</td>
+                <td>{{ h.fecha_nacimiento or '—' }}</td>
+                <td>{{ h.sexo or '—' }}</td>
+                <td>
+                    {% if (h.estado_hijo or '')|upper == 'ACTIVO' %}
+                        <span class="badge badge-active">ACTIVO</span>
+                    {% else %}
+                        <span class="badge badge-inactive">{{ h.estado_hijo or '—' }}</span>
+                    {% endif %}
+                </td>
+                {% if can_write %}
+                <td>
+                    <div style="display:flex;gap:4px">
+                        <button class="btn-icon" title="Editar"
+                                onclick="openHijoModalEditar('{{ h.id_hijo }}','{{ h.id_cedula }}','{{ h.nombre_padre|replace("'", "\\'") }}','{{ h.identificacion_hijo or '' }}','{{ h.nombre_hijo|replace("'", "\\'") }}','{{ h.fecha_nacimiento or '' }}','{{ h.sexo or '' }}','{{ h.estado_hijo or 'ACTIVO' }}')">
+                            <span class="material-symbols-outlined" style="font-size:16px">edit</span>
+                        </button>
+                        <button class="btn-icon" title="Eliminar" style="color:#ef4444"
+                                onclick="confirmDeleteHijo('{{ h.id_hijo }}','{{ h.nombre_hijo|replace("'", "\\'") }}')">
+                            <span class="material-symbols-outlined" style="font-size:16px">delete</span>
+                        </button>
+                    </div>
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state" style="padding:40px;text-align:center">
+        <span class="material-symbols-outlined" style="font-size:48px;color:var(--text-secondary)">search_off</span>
+        <p style="margin-top:8px;color:var(--text-secondary)">
+            {% if q_texto %}
+                No se encontraron hijos que coincidan con "<strong>{{ q_texto }}</strong>"
+            {% else %}
+                No hay hijos registrados{% if estado_actual in ['ACTIVO','INACTIVO'] %} en estado {{ estado_actual }}{% endif %}
+            {% endif %}
+        </p>
+    </div>
+    {% endif %}
+</div>
+
+{% if can_write %}
+<!-- Modal Agregar/Editar Hijo -->
+<div class="modal-overlay" id="hijoModal">
+    <div class="modal" style="max-width:600px">
+        <div class="modal-header">
+            <h2 id="hijoModalTitle">Agregar Hijo</h2>
+            <button class="btn-icon" data-close-modal>
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <form id="hijoForm" method="POST" action="{{ url_for('crear_hijo') }}">
+            <input type="hidden" name="redirect_to" value="{{ redirect_to }}">
+
+            <div class="form-group">
+                <label class="form-label">Cédula del Padre <span class="required">*</span></label>
+                <div style="display:flex;gap:8px;align-items:stretch">
+                    <input type="text" name="id_cedula" id="hijoCedulaPadre" class="form-input"
+                           placeholder="Ingrese la cédula del empleado" required autocomplete="off"
+                           oninput="padreLookupDebounced(this.value)">
+                    <button type="button" class="btn btn-outline btn-sm" onclick="buscarPadre()" style="white-space:nowrap">
+                        <span class="material-symbols-outlined" style="font-size:18px">search</span>
+                        Buscar
+                    </button>
+                </div>
+                <div id="padreInfo" class="padre-info-box" style="display:none"></div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group" style="flex:1">
+                    <label class="form-label">Nombre Completo del Hijo <span class="required">*</span></label>
+                    <input type="text" name="apellidos_nombre" id="hijoNombre" class="form-input" required>
+                </div>
+                <div class="form-group" style="flex:1">
+                    <label class="form-label">Identificación</label>
+                    <input type="text" name="identificacion_hijo" id="hijoIdentificacion" class="form-input">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group" style="flex:1">
+                    <label class="form-label">Fecha Nacimiento</label>
+                    <input type="text" name="fecha_nacimiento" id="hijoFecha" class="form-input" placeholder="DD/MM/AAAA">
+                </div>
+                <div class="form-group" style="flex:1">
+                    <label class="form-label">Sexo</label>
+                    <select name="sexo" id="hijoSexo" class="form-input">
+                        <option value="">— Seleccionar —</option>
+                        <option value="M">M</option>
+                        <option value="F">F</option>
+                    </select>
+                </div>
+                <div class="form-group" style="flex:1">
+                    <label class="form-label">Estado</label>
+                    <select name="estado" id="hijoEstado" class="form-input">
+                        <option value="ACTIVO">ACTIVO</option>
+                        <option value="INACTIVO">INACTIVO</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary" id="hijoFormSubmit">
+                    <span class="material-symbols-outlined" style="font-size:18px">save</span> Guardar
+                </button>
+                <button type="button" class="btn btn-outline" data-close-modal>Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal Confirmar Eliminar -->
+<div class="modal-overlay" id="deleteModal">
+    <div class="modal" style="max-width:420px">
+        <div class="modal-header">
+            <h2>Confirmar Eliminación</h2>
+            <button class="btn-icon" data-close-modal>
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div style="padding:0 0 20px">
+            <p style="color:var(--text-secondary);font-size:14px">
+                ¿Está seguro que desea eliminar a <strong id="deleteItemName"></strong>? Esta acción no se puede deshacer.
+            </p>
+        </div>
+        <div class="form-actions" style="border-top:1px solid var(--border);padding-top:16px">
+            <form id="deleteForm" method="POST">
+                <input type="hidden" name="redirect_to" value="{{ redirect_to }}">
+                <button type="submit" class="btn btn-danger">
+                    <span class="material-symbols-outlined" style="font-size:18px">delete</span> Eliminar
+                </button>
+            </form>
+            <button class="btn btn-outline" data-close-modal>Cancelar</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+let padreLookupTimer = null;
+function padreLookupDebounced(cedula) {
+    clearTimeout(padreLookupTimer);
+    padreLookupTimer = setTimeout(() => buscarPadre(), 450);
+}
+
+async function buscarPadre() {
+    const cedula = (document.getElementById('hijoCedulaPadre').value || '').trim();
+    const box = document.getElementById('padreInfo');
+    if (!cedula) {
+        box.style.display = 'none';
+        return;
+    }
+    box.style.display = 'block';
+    box.className = 'padre-info-box loading';
+    box.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle">hourglass_top</span> Buscando…';
+    try {
+        const res = await fetch(`/api/padre/${encodeURIComponent(cedula)}`);
+        if (res.ok) {
+            const data = await res.json();
+            const e = data.empleado;
+            box.className = 'padre-info-box ok';
+            box.innerHTML = `
+                <strong>${e.apellidos_nombre}</strong>
+                <span style="color:var(--text-secondary, #6b7280); margin-left:8px">
+                    ${e.departamento || ''} · ${e.area || ''} · Estado: ${e.estado || ''}
+                </span>
+            `;
+        } else {
+            box.className = 'padre-info-box error';
+            box.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle">error</span> No existe un empleado con esa cédula.';
+        }
+    } catch (err) {
+        box.className = 'padre-info-box error';
+        box.innerHTML = 'Error consultando el servidor.';
+    }
+}
+
+function openHijoModalNuevo() {
+    document.getElementById('hijoModalTitle').textContent = 'Agregar Hijo';
+    document.getElementById('hijoForm').action = '{{ url_for("crear_hijo") }}';
+    document.getElementById('hijoCedulaPadre').value = '';
+    document.getElementById('hijoCedulaPadre').disabled = false;
+    document.getElementById('hijoNombre').value = '';
+    document.getElementById('hijoIdentificacion').value = '';
+    document.getElementById('hijoFecha').value = '';
+    document.getElementById('hijoSexo').value = '';
+    document.getElementById('hijoEstado').value = 'ACTIVO';
+    document.getElementById('padreInfo').style.display = 'none';
+    document.getElementById('hijoModal').classList.add('active');
+}
+
+function openHijoModalEditar(idHijo, cedulaPadre, nombrePadre, identHijo, nombreHijo, fecha, sexo, estado) {
+    document.getElementById('hijoModalTitle').textContent = 'Editar Hijo';
+    document.getElementById('hijoForm').action = '/hijo/' + idHijo + '/editar';
+    document.getElementById('hijoCedulaPadre').value = cedulaPadre;
+    document.getElementById('hijoCedulaPadre').disabled = true;
+    document.getElementById('hijoNombre').value = nombreHijo;
+    document.getElementById('hijoIdentificacion').value = identHijo;
+    document.getElementById('hijoFecha').value = fecha;
+    document.getElementById('hijoSexo').value = sexo;
+    document.getElementById('hijoEstado').value = estado || 'ACTIVO';
+    const box = document.getElementById('padreInfo');
+    box.style.display = 'block';
+    box.className = 'padre-info-box ok';
+    box.innerHTML = `<strong>${nombrePadre}</strong>`;
+    document.getElementById('hijoModal').classList.add('active');
+}
+
+function confirmDeleteHijo(idHijo, nombre) {
+    document.getElementById('deleteItemName').textContent = nombre;
+    document.getElementById('deleteForm').action = '/hijo/' + idHijo + '/eliminar';
+    document.getElementById('deleteModal').classList.add('active');
+}
+
+document.getElementById('hijoForm').addEventListener('submit', function(e) {
+    const cedulaField = document.getElementById('hijoCedulaPadre');
+    if (cedulaField.disabled) {
+        cedulaField.disabled = false;
+        setTimeout(() => { cedulaField.disabled = true; }, 0);
+    }
+});
+</script>
+{% endblock %}

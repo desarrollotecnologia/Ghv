@@ -156,6 +156,10 @@
         {% if vm.familia %}
         <div class="sidebar-section">
             <span class="sidebar-label">Familia</span>
+            <a href="{{ url_for('hijos_gestion') }}" class="nav-item {{ 'active' if active_page == 'Gestión de Hijos' }}">
+                <span class="material-symbols-outlined">manage_accounts</span>
+                <span class="nav-label">Gestión de Hijos</span>
+            </a>
             <a href="{{ url_for('hijos_activos') }}" class="nav-item {{ 'active' if active_page == 'Hijos Activos' }}">
                 <span class="material-symbols-outlined">child_care</span>
                 <span class="nav-label">Hijos Activos</span>

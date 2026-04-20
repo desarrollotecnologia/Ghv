@@ -1,34 +1,91 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="page-toolbar" style="margin-bottom:16px">
-    <a href="{{ url_for('vacaciones_solicitar') }}" class="btn btn-primary btn-sm">
-        <span class="material-symbols-outlined" style="font-size:18px">add</span>
-        Nueva solicitud de vacaciones
-    </a>
+{% set pendientes = rows | selectattr('estado', 'equalto', 'PENDIENTE') | list %}
+{% set aprobadas = rows | selectattr('estado', 'equalto', 'APROBADO') | list %}
+{% set rechazadas = rows | selectattr('estado', 'equalto', 'RECHAZADO') | list %}
+
+<div class="vacaciones-header">
+    <div class="vacaciones-header-text">
+        <h2 class="vacaciones-title">Solicitudes de vacaciones</h2>
+        {% if puede_aprobar %}
+        <p class="vacaciones-intro">Revise cada solicitud y elija <strong>Aprobar</strong> o <strong>Rechazar</strong>. Al resolver, el empleado recibe un correo con la decisión.</p>
+        {% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <a href="{{ url_for('vacaciones_solicitar') }}" class="btn btn-primary btn-sm">
+            <span class="material-symbols-outlined" style="font-size:18px">add</span>
+            Nueva solicitud
+        </a>
+    </div>
 </div>
+
+{% if puede_aprobar and pendientes|length > 0 %}
+<div class="vacaciones-alert">
+    <span class="material-symbols-outlined">info</span>
+    <span>Tiene <strong>{{ pendientes|length }}</strong> solicitud{{ 'es' if pendientes|length != 1 else '' }} pendiente{{ 's' if pendientes|length != 1 else '' }} por revisar.</span>
+</div>
+{% endif %}
+
+{% if rows %}
+<div class="vacaciones-stats">
+    <div class="vac-stat vac-stat-pendiente">
+        <span class="material-symbols-outlined">schedule</span>
+        <div>
+            <div class="vac-stat-num">{{ pendientes|length }}</div>
+            <div class="vac-stat-label">Pendientes</div>
+        </div>
+    </div>
+    <div class="vac-stat vac-stat-aprobado">
+        <span class="material-symbols-outlined">check_circle</span>
+        <div>
+            <div class="vac-stat-num">{{ aprobadas|length }}</div>
+            <div class="vac-stat-label">Aprobadas</div>
+        </div>
+    </div>
+    <div class="vac-stat vac-stat-rechazado">
+        <span class="material-symbols-outlined">cancel</span>
+        <div>
+            <div class="vac-stat-num">{{ rechazadas|length }}</div>
+            <div class="vac-stat-label">Rechazadas</div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="table-wrapper">
     {% if rows %}
     <table class="data-table">
         <thead>
             <tr>
+                <th>Estado</th>
                 <th>Cédula</th>
                 <th>Empleado</th>
-                <th>Fecha solicitud</th>
+                <th>Solicitado</th>
                 <th>Periodo causado</th>
                 <th>Días tiempo</th>
                 <th>Días comp.</th>
                 <th>Desde</th>
                 <th>Hasta</th>
                 <th>Regreso</th>
-                <th>Pago anticipado</th>
-                <th>Estado</th>
+                <th>Pago ant.</th>
+                <th>Resolución</th>
+                {% if puede_aprobar %}<th style="min-width:170px">Acciones</th>{% endif %}
             </tr>
         </thead>
         <tbody>
             {% for r in rows %}
-            <tr>
-                <td>{{ r.id_cedula }}</td>
+            <tr class="{{ 'vac-row-pendiente' if r.estado == 'PENDIENTE' else '' }}">
+                <td>
+                    {% if r.estado == 'PENDIENTE' %}
+                    <span class="badge badge-warning">PENDIENTE</span>
+                    {% elif r.estado == 'APROBADO' %}
+                    <span class="badge badge-active">APROBADO</span>
+                    {% else %}
+                    <span class="badge badge-inactive">{{ r.estado }}</span>
+                    {% endif %}
+                </td>
+                <td style="font-family:monospace">{{ r.id_cedula }}</td>
                 <td>{{ r.apellidos_nombre }}</td>
                 <td>{{ r.fecha_solicitud.strftime('%d/%m/%Y') if r.fecha_solicitud else '—' }}</td>
                 <td>{{ r.periodo_causado or '—' }}</td>
@@ -39,24 +96,164 @@
                 <td>{{ r.fecha_regreso.strftime('%d/%m/%Y') if r.fecha_regreso else '—' }}</td>
                 <td>{% if r.pago_anticipado == 1 %}Sí{% elif r.pago_anticipado == 0 %}No{% else %}—{% endif %}</td>
                 <td>
-                    {% if r.estado == 'PENDIENTE' %}
-                    <span class="badge badge-warning">PENDIENTE</span>
-                    {% elif r.estado == 'APROBADO' %}
-                    <span class="badge badge-active">APROBADO</span>
+                    {% if r.fecha_resolucion %}
+                    <div style="font-size:0.82rem;line-height:1.3">
+                        <div>{{ r.fecha_resolucion.strftime('%d/%m/%Y %H:%M') }}</div>
+                        {% if r.resuelto_por_nombre %}
+                        <div style="color:var(--text-secondary, #6b7280)">por {{ r.resuelto_por_nombre }}</div>
+                        {% endif %}
+                        {% if r.observaciones %}
+                        <div style="color:var(--text-secondary, #6b7280);font-style:italic;margin-top:2px">"{{ r.observaciones }}"</div>
+                        {% endif %}
+                    </div>
+                    {% else %}—{% endif %}
+                </td>
+                {% if puede_aprobar %}
+                <td>
+                    {% if r.estado == 'PENDIENTE' and r._puede_resolver %}
+                    <div style="display:flex;gap:6px;flex-wrap:wrap">
+                        <button type="button" class="btn btn-success btn-sm"
+                                onclick="abrirModalAprobar({{ r.id }}, '{{ r.apellidos_nombre|replace("'", "\\'") }}')">
+                            <span class="material-symbols-outlined" style="font-size:16px">check</span>
+                            Aprobar
+                        </button>
+                        <button type="button" class="btn btn-danger btn-sm"
+                                onclick="abrirModalRechazar({{ r.id }}, '{{ r.apellidos_nombre|replace("'", "\\'") }}')">
+                            <span class="material-symbols-outlined" style="font-size:16px">close</span>
+                            Rechazar
+                        </button>
+                    </div>
+                    {% elif r.estado == 'PENDIENTE' %}
+                    <span title="Solo el encargado asignado puede resolverla" style="color:#9ca3af; font-size:0.85rem">
+                        <span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle">lock</span>
+                        Otro encargado
+                    </span>
                     {% else %}
-                    <span class="badge badge-inactive">{{ r.estado }}</span>
+                    <span style="color:var(--text-secondary, #6b7280); font-size:0.85rem">Resuelta</span>
                     {% endif %}
                 </td>
+                {% endif %}
             </tr>
             {% endfor %}
         </tbody>
     </table>
     {% else %}
     <div class="empty-state">
-        <span class="material-symbols-outlined">beach_access</span>
+        <span class="material-symbols-outlined" style="font-size:48px;color:var(--text-secondary)">beach_access</span>
         <p>No hay solicitudes de vacaciones registradas.</p>
         <a href="{{ url_for('vacaciones_solicitar') }}" class="btn btn-primary btn-sm" style="margin-top:12px">Nueva solicitud</a>
     </div>
     {% endif %}
 </div>
+
+{% if puede_aprobar %}
+<!-- Modal Aprobar -->
+<div class="modal-overlay" id="modalAprobarVac">
+    <div class="modal" style="max-width:460px">
+        <div class="modal-header">
+            <h2>¿Aprobar solicitud de vacaciones?</h2>
+            <button type="button" class="btn-icon" data-close-modal><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <p class="modal-intro">
+            Está por aprobar la solicitud de <strong id="aprobarEmpleadoNombre"></strong>.
+            El empleado recibirá un correo notificando la aprobación.
+        </p>
+        <form method="POST" id="formAprobarVac">
+            <div class="form-group">
+                <label class="form-label">Observaciones (opcional)</label>
+                <textarea name="observaciones" class="form-input" rows="2"
+                          placeholder="Ej: Aprobado para las fechas indicadas. Recuerde coordinar entrega de cargo..."></textarea>
+            </div>
+            <div class="form-actions" style="display:flex;gap:12px;justify-content:flex-end">
+                <button type="button" class="btn btn-outline" data-close-modal>Cancelar</button>
+                <button type="submit" class="btn btn-success">
+                    <span class="material-symbols-outlined" style="font-size:18px">check_circle</span>
+                    Sí, aprobar
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal Rechazar -->
+<div class="modal-overlay" id="modalRechazarVac">
+    <div class="modal" style="max-width:460px">
+        <div class="modal-header">
+            <h2>¿Rechazar solicitud de vacaciones?</h2>
+            <button type="button" class="btn-icon" data-close-modal><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <p class="modal-intro">
+            Está por rechazar la solicitud de <strong id="rechazarEmpleadoNombre"></strong>.
+            El empleado recibirá un correo notificando el rechazo.
+        </p>
+        <form method="POST" id="formRechazarVac">
+            <div class="form-group">
+                <label class="form-label">Observaciones (opcional)</label>
+                <textarea name="observaciones" class="form-input" rows="3"
+                          placeholder="Ej: Fechas no disponibles por operación, proponer reprogramación..."></textarea>
+            </div>
+            <div class="form-actions" style="display:flex;gap:12px;justify-content:flex-end">
+                <button type="button" class="btn btn-outline" data-close-modal>Cancelar</button>
+                <button type="submit" class="btn btn-danger">
+                    <span class="material-symbols-outlined" style="font-size:18px">cancel</span>
+                    Sí, rechazar
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<style>
+.vacaciones-header { display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:20px; }
+.vacaciones-header-text { flex:1; min-width:200px; }
+.vacaciones-title { margin:0 0 6px 0; font-size:1.4rem; font-weight:600; color:var(--text, #111827); }
+.vacaciones-intro { margin:0; font-size:0.9rem; color:var(--text-secondary, #6b7280); line-height:1.5; }
+
+.vacaciones-alert { display:flex; align-items:center; gap:10px; padding:12px 16px; margin-bottom:18px;
+    background:#fffbeb; border:1px solid #fde68a; border-radius:8px; font-size:0.9rem; color:#92400e; }
+.vacaciones-alert .material-symbols-outlined { font-size:20px; flex-shrink:0; }
+
+.vacaciones-stats { display:flex; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
+.vac-stat { display:flex; align-items:center; gap:12px; padding:12px 18px; border-radius:10px;
+    background:var(--surface, #fff); box-shadow:var(--shadow-sm, 0 1px 2px rgba(0,0,0,.05));
+    border:1px solid var(--border, #e5e7eb); min-width:150px; }
+.vac-stat .material-symbols-outlined { font-size:28px; opacity:.9; }
+.vac-stat-num { font-size:1.4rem; font-weight:700; color:var(--text, #111827); line-height:1.1; }
+.vac-stat-label { font-size:0.82rem; color:var(--text-secondary, #6b7280); }
+.vac-stat-pendiente .material-symbols-outlined, .vac-stat-pendiente .vac-stat-num { color:#b45309; }
+.vac-stat-aprobado .material-symbols-outlined, .vac-stat-aprobado .vac-stat-num { color:#047857; }
+.vac-stat-rechazado .material-symbols-outlined, .vac-stat-rechazado .vac-stat-num { color:#b91c1c; }
+
+.vac-row-pendiente { background: linear-gradient(to right, #fffbeb 0%, transparent 30%); }
+
+.modal-intro { margin:0 0 18px 0; padding:0; font-size:0.92rem; color:var(--text-secondary, #6b7280); line-height:1.5; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+{% if puede_aprobar %}
+<script>
+(function() {
+    const actionBaseAprobar = "{{ url_for('vacaciones_aprobar', id=0) }}";
+    const actionBaseRechazar = "{{ url_for('vacaciones_rechazar', id=0) }}";
+
+    window.abrirModalAprobar = function(id, nombre) {
+        const form = document.getElementById('formAprobarVac');
+        form.action = actionBaseAprobar.replace(/\/0$/, '/' + id);
+        form.querySelector('textarea[name="observaciones"]').value = '';
+        document.getElementById('aprobarEmpleadoNombre').textContent = nombre;
+        document.getElementById('modalAprobarVac').classList.add('active');
+    };
+
+    window.abrirModalRechazar = function(id, nombre) {
+        const form = document.getElementById('formRechazarVac');
+        form.action = actionBaseRechazar.replace(/\/0$/, '/' + id);
+        form.querySelector('textarea[name="observaciones"]').value = '';
+        document.getElementById('rechazarEmpleadoNombre').textContent = nombre;
+        document.getElementById('modalRechazarVac').classList.add('active');
+    };
+})();
+</script>
+{% endif %}
 {% endblock %}
