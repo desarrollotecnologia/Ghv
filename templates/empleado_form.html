@@ -7,7 +7,36 @@
 {% endblock %}
 
 {% block content %}
-<form method="POST" class="empleado-form" id="empForm" autocomplete="off">
+<form method="POST" class="empleado-form" id="empForm" autocomplete="off" enctype="multipart/form-data">
+    <div class="form-section">
+        <h3 class="form-section-title"><span class="material-symbols-outlined">photo_camera</span> Foto del empleado</h3>
+        <div class="form-row" style="align-items:flex-start;">
+            <div class="form-group" style="flex: 0 0 auto;">
+                <div id="fotoPreviewWrap" style="width:140px; height:140px; border-radius:50%; overflow:hidden; border:2px dashed #cbd5e1; background:#f8fafc; display:flex; align-items:center; justify-content:center; color:#94a3b8;">
+                    {% if emp and emp.foto %}
+                        <img id="fotoPreview" src="{{ url_for('static', filename=emp.foto) }}" alt="Foto" style="width:100%; height:100%; object-fit:cover;">
+                    {% else %}
+                        <img id="fotoPreview" src="" alt="" style="display:none; width:100%; height:100%; object-fit:cover;">
+                        <span id="fotoPlaceholder" class="material-symbols-outlined" style="font-size:56px;">person</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="form-group" style="flex: 1 1 300px;">
+                <label class="form-label">Subir foto (opcional)</label>
+                <input type="file" name="foto" id="fotoInput" class="form-input" accept="image/jpeg,image/png,image/webp">
+                <small style="color:#6b7280; display:block; margin-top:4px;">
+                    Formatos: JPG, PNG o WEBP. Máx. 4&nbsp;MB. Se mostrará en la ficha del empleado.
+                </small>
+                {% if emp and emp.foto %}
+                <small style="color:#059669; display:block; margin-top:4px;">
+                    <span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle;">check_circle</span>
+                    Foto actual cargada. Si sube una nueva, reemplazará la anterior.
+                </small>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
     <div class="form-section">
         <h3 class="form-section-title"><span class="material-symbols-outlined">badge</span> Identificación</h3>
         <div class="form-row">
@@ -394,6 +423,35 @@ document.addEventListener('DOMContentLoaded', () => {
             el.addEventListener('blur', () => { el.value = el.value.toUpperCase(); });
         }
     });
+
+    const fotoInput = document.getElementById('fotoInput');
+    const fotoPreview = document.getElementById('fotoPreview');
+    const fotoPlaceholder = document.getElementById('fotoPlaceholder');
+    if (fotoInput && fotoPreview) {
+        fotoInput.addEventListener('change', (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+            const maxSize = 4 * 1024 * 1024;
+            if (file.size > maxSize) {
+                alert('La foto supera los 4 MB. Use una imagen más liviana.');
+                fotoInput.value = '';
+                return;
+            }
+            const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+            if (!allowed.includes(file.type)) {
+                alert('Formato no permitido. Use JPG, PNG o WEBP.');
+                fotoInput.value = '';
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                fotoPreview.src = ev.target.result;
+                fotoPreview.style.display = '';
+                if (fotoPlaceholder) fotoPlaceholder.style.display = 'none';
+            };
+            reader.readAsDataURL(file);
+        });
+    }
 
     const hijosContainer = document.getElementById('hijosContainer');
     const btnAgregarHijo = document.getElementById('btnAgregarHijo');

@@ -613,6 +613,63 @@ def cambiar_clave_obligatorio():
 AVATAR_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 AVATAR_MAX_SIZE = 2 * 1024 * 1024  # 2 MB
 
+EMPLEADO_FOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+EMPLEADO_FOTO_MAX_SIZE = 4 * 1024 * 1024  # 4 MB
+
+
+def _guardar_foto_empleado(id_cedula, file_storage):
+    """Guarda la foto subida para un empleado dentro de static/empleados/<cedula>.<ext>.
+
+    - Devuelve la ruta relativa (ej. 'empleados/1005123456.jpg') si se guardó
+      correctamente, o None si no se subió nada.
+    - Lanza ValueError con un mensaje descriptivo si el archivo es inválido
+      (extensión o tamaño).
+    """
+    if not file_storage or not getattr(file_storage, "filename", ""):
+        return None
+    nombre_seguro = secure_filename(file_storage.filename)
+    ext = os.path.splitext(nombre_seguro)[1].lower()
+    if ext not in EMPLEADO_FOTO_EXTENSIONS:
+        raise ValueError("Formato de foto no permitido (use JPG, JPEG, PNG o WEBP).")
+    file_storage.seek(0, 2)
+    size = file_storage.tell()
+    file_storage.seek(0)
+    if size > EMPLEADO_FOTO_MAX_SIZE:
+        raise ValueError("La foto no debe superar 4 MB.")
+    static_folder = current_app.static_folder
+    carpeta = os.path.join(static_folder, "empleados")
+    os.makedirs(carpeta, exist_ok=True)
+    # Borrar fotos previas del mismo empleado con otras extensiones
+    for prev_ext in EMPLEADO_FOTO_EXTENSIONS:
+        prev = os.path.join(carpeta, f"{id_cedula}{prev_ext}")
+        if prev_ext != ext and os.path.exists(prev):
+            try:
+                os.remove(prev)
+            except Exception:
+                pass
+    filename = f"{id_cedula}{ext}"
+    filepath = os.path.join(carpeta, filename)
+    file_storage.save(filepath)
+    return f"empleados/{filename}"
+
+
+def _actualizar_foto_empleado_db(id_cedula, ruta_rel):
+    """Intenta actualizar empleado.foto; si la columna aún no existe, avisa."""
+    if not ruta_rel:
+        return True
+    try:
+        execute("UPDATE empleado SET foto = %s WHERE id_cedula = %s", (ruta_rel, id_cedula))
+        return True
+    except Exception as e:
+        if "foto" in str(e).lower():
+            flash(
+                "La foto se guardó en el servidor, pero falta aplicar la migración "
+                "database/migration_foto_empleado.sql para que se asocie al empleado.",
+                "warning",
+            )
+            return False
+        raise
+
 
 @app.route("/perfil/foto", methods=["POST"])
 @login_required
@@ -2757,6 +2814,12 @@ def crear_empleado():
                 execute("UPDATE empleado SET hijos = 'SI' WHERE id_cedula = %s", (cedula,))
         except Exception:
             pass
+        try:
+            ruta_foto = _guardar_foto_empleado(cedula, request.files.get("foto"))
+            if ruta_foto:
+                _actualizar_foto_empleado_db(cedula, ruta_foto)
+        except ValueError as e:
+            flash(str(e), "warning")
         # Crear usuario para portal del empleado (contraseña inicial Colbeef2026*)
         id_user_emp = "EMP-" + cedula
         email_emp = (request.form.get("direccion_email") or "").strip().lower()
@@ -2833,6 +2896,12 @@ def editar_empleado(id):
             execute("UPDATE empleado SET hijos = %s WHERE id_cedula = %s", (estado_hijos, id))
         except Exception:
             pass
+        try:
+            ruta_foto = _guardar_foto_empleado(id, request.files.get("foto"))
+            if ruta_foto:
+                _actualizar_foto_empleado_db(id, ruta_foto)
+        except ValueError as e:
+            flash(str(e), "warning")
         flash("Empleado actualizado exitosamente", "success")
         return redirect(url_for("detalle_empleado", id=id))
 
