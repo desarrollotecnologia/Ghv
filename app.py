@@ -719,44 +719,15 @@ def perfil_subir_foto():
 
 @app.route("/empleado/registro", methods=["GET", "POST"])
 def empleado_registro():
-    """Registro para empleados: cédula + correo (el que tengan) + contraseña. Ellos alimentan el sistema con su dato de contacto."""
-    if get_current_user():
-        return redirect(url_for("home"))
-    if request.method == "POST":
-        cedula = (request.form.get("id_cedula") or "").strip()
-        email = (request.form.get("email") or "").strip().lower()
-        password = request.form.get("password") or ""
-        if not cedula or not email or not password:
-            flash("Complete cédula, correo y contraseña.", "error")
-            return redirect(url_for("empleado_registro"))
-        emp = query(
-            "SELECT id_cedula, apellidos_nombre, direccion_email FROM empleado WHERE id_cedula = %s AND estado = 'ACTIVO'",
-            (cedula,), one=True,
-        )
-        if not emp:
-            flash("No hay un empleado activo con esa cédula. Contacte a Gestión Humana.", "error")
-            return redirect(url_for("empleado_registro"))
-        id_user = "EMP-" + cedula
-        existente = query("SELECT id_user, email FROM usuario WHERE id_user = %s", (id_user,), one=True)
-        if existente:
-            flash(
-                f"Ya está registrado. Inicie sesión con el correo {existente.get('email', '')} y la contraseña inicial: Colbeef2026*. Podrá cambiarla al ingresar al portal.",
-                "info",
-            )
-            return redirect(url_for("login"))
-        if query("SELECT id_user FROM usuario WHERE LOWER(email) = %s", (email,), one=True):
-            flash("Ese correo ya está registrado. Use Iniciar sesión o otro correo.", "error")
-            return redirect(url_for("empleado_registro"))
-        password_hash = generate_password_hash(password)
-        execute(
-            "INSERT INTO usuario (id_user, email, password_hash, nombre, rol, estado, id_cedula) VALUES (%s, %s, %s, %s, 'EMPLEADO', 1, %s)",
-            (id_user, email, password_hash, emp["apellidos_nombre"] or cedula, cedula),
-        )
-        # Que el empleado alimente el sistema: guardar su correo en la ficha del empleado (notificaciones de permisos irán ahí)
-        execute("UPDATE empleado SET direccion_email = %s WHERE id_cedula = %s", (email, cedula))
-        flash("Cuenta creada. Ya puede iniciar sesión con su correo y contraseña.", "success")
-        return redirect(url_for("login"))
-    return render_template("empleado_registro.html")
+    """Auto-registro deshabilitado: las cuentas solo las crea Gestión Humana
+    (ADMIN o COORD. GH) desde el módulo Personal. Cualquier intento de entrar
+    a esta URL se redirige al login con un mensaje informativo.
+    """
+    flash(
+        "El auto-registro está deshabilitado. Contacte a Gestión Humana para que le generen su cuenta.",
+        "info",
+    )
+    return redirect(url_for("login"))
 
 
 @app.route("/empleado")
