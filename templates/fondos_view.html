@@ -24,7 +24,7 @@
         </thead>
         <tbody>
             {% for item in fondos_list %}
-            <tr>
+            <tr class="row-clickable" data-href="{{ url_for('fondo_detail', fondo_name=item.fondo) }}">
                 <td>{{ item.fondo }}</td>
                 <td>Related DBases ({{ item.cnt }})</td>
                 <td>

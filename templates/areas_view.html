@@ -94,7 +94,7 @@
                 </td>
             </tr>
             {% for row in data.areas %}
-            <tr class="area-row" data-depto="{{ depto }}" data-area="{{ row.area }}">
+            <tr class="area-row row-clickable" data-depto="{{ depto }}" data-area="{{ row.area }}" data-href="{{ url_for('area_detail', area_id=row.id) }}">
                 <td class="area-name-cell">{{ row.area }}</td>
                 <td style="text-align:center">{{ row.presupuestados }}</td>
                 <td style="text-align:center">{{ row.ejecutados }}</td>

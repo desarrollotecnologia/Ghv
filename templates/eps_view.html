@@ -24,7 +24,7 @@
         </thead>
         <tbody>
             {% for item in eps_list %}
-            <tr>
+            <tr class="row-clickable" data-href="{{ url_for('eps_detail', eps_name=item.eps) }}">
                 <td>{{ item.eps }}</td>
                 <td>Related DBases ({{ item.cnt }})</td>
                 <td>

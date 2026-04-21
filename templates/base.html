@@ -349,8 +349,31 @@
             });
         }
         if (btnCambiarFoto && input) btnCambiarFoto.addEventListener('click', function() { input.click(); });
+
+        document.querySelectorAll('tr.row-clickable[data-href]').forEach(function(tr) {
+            if (tr.dataset.rowClickableBound === '1') return;
+            tr.dataset.rowClickableBound = '1';
+            tr.addEventListener('click', function(ev) {
+                if (ev.target.closest('a, button, input, select, textarea, label, .modal, .btn-icon')) return;
+                var href = tr.getAttribute('data-href');
+                if (!href) return;
+                if (ev.ctrlKey || ev.metaKey) { window.open(href, '_blank'); }
+                else { window.location.href = href; }
+            });
+            tr.addEventListener('auxclick', function(ev) {
+                if (ev.button !== 1) return;
+                var href = tr.getAttribute('data-href');
+                if (href) window.open(href, '_blank');
+            });
+        });
     });
     </script>
+    <style>
+        tr.row-clickable { cursor: pointer; transition: background-color 0.15s ease; }
+        tr.row-clickable:hover { background-color: #f0fdf4 !important; }
+        tr.row-clickable:hover td { color: #065f46; }
+        tr.row-clickable:active { background-color: #dcfce7 !important; }
+    </style>
     {% block scripts %}{% endblock %}
 </body>
 </html>
