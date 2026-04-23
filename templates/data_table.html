@@ -3,10 +3,26 @@
 {% block page_actions %}
 <div style="display:flex;align-items:center;gap:8px">
     {% if export_key is defined and export_key %}
-    <a href="{{ url_for('generic_export', page_key=export_key) }}" class="btn btn-outline btn-sm" title="Exportar a Excel" id="btnExportExcel" data-export-base="{{ url_for('generic_export', page_key=export_key) }}" onclick="return confirmGenericExport(event)">
+    <a href="{{ url_for('generic_export', page_key=export_key) }}" class="btn btn-outline btn-sm" title="Descargar Excel con todos los datos del informe" id="btnExportExcel">
         <span class="material-symbols-outlined" style="font-size:18px;color:var(--colbeef-green)">download</span>
         Exportar
     </a>
+    <script>
+    (function () {
+        var a = document.getElementById('btnExportExcel');
+        if (!a) return;
+        var h = a.getAttribute('href') || '';
+        if (h.indexOf('/export/personal_activo') === -1 && h.indexOf('/export/personal_inactivo') === -1) return;
+        try {
+            var u = new URL(h, window.location.origin);
+            var cur = new URLSearchParams(window.location.search);
+            var d = cur.get('depto'), ar = cur.get('area');
+            if (d) u.searchParams.set('depto', d);
+            if (ar) u.searchParams.set('area', ar);
+            a.href = u.pathname + (u.search || '');
+        } catch (e) {}
+    })();
+    </script>
     {% endif %}
     {% if show_add_btn|default(false) %}
     <a href="{{ add_url|default('#') }}" class="btn btn-primary btn-sm">
@@ -296,86 +312,10 @@
     </div>
     {% endif %}
 </div>
-
-<!-- Modal Exportar -->
-<div class="modal-overlay" id="genericExportModal">
-    <div class="modal" style="max-width:420px">
-        <div class="modal-header">
-            <h2 style="display:flex;align-items:center;gap:8px">
-                <span class="material-symbols-outlined" style="font-size:22px;color:var(--primary)">download</span>
-                Exportar a Excel
-            </h2>
-            <button type="button" class="btn-icon" onclick="document.getElementById('genericExportModal').classList.remove('active')">
-                <span class="material-symbols-outlined">close</span>
-            </button>
-        </div>
-        <div style="padding:4px 0 12px;color:var(--text-secondary);font-size:14px;display:flex;align-items:flex-start;gap:10px">
-            <span class="material-symbols-outlined" style="font-size:36px;color:#22c55e;flex-shrink:0">table_chart</span>
-            <span>Se generará un archivo <strong>.xlsx</strong> con <strong>todos los registros</strong> si deja las fechas vacías. Si indica rango, solo incluirá filas cuya fecha del informe (ingreso, nacimiento, retiro, etc.) caiga en ese intervalo.</span>
-        </div>
-        <div class="export-date-range">
-            <div class="form-group">
-                <label class="form-label" for="exportDesde">Desde</label>
-                <input type="date" id="exportDesde" class="form-input" autocomplete="off">
-            </div>
-            <div class="form-group">
-                <label class="form-label" for="exportHasta">Hasta</label>
-                <input type="date" id="exportHasta" class="form-input" autocomplete="off">
-            </div>
-        </div>
-        <div class="form-actions" style="border-top:1px solid var(--border);padding-top:16px">
-            <button type="button" class="btn btn-primary" id="genericExportBtn" onclick="applyExportWithDates()">
-                <span class="material-symbols-outlined" style="font-size:18px">download</span> Exportar
-            </button>
-            <button type="button" class="btn btn-outline" onclick="document.getElementById('genericExportModal').classList.remove('active')">Cancelar</button>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-function confirmGenericExport(e) {
-    if (e) e.preventDefault();
-    var btn = document.getElementById('btnExportExcel');
-    var modal = document.getElementById('genericExportModal');
-    if (btn) modal.dataset.exportBase = btn.getAttribute('data-export-base') || btn.href || '';
-    document.getElementById('exportDesde').value = '';
-    document.getElementById('exportHasta').value = '';
-    modal.classList.add('active');
-    return false;
-}
-function applyExportWithDates() {
-    var modal = document.getElementById('genericExportModal');
-    var base = modal.dataset.exportBase || '';
-    if (!base) return;
-    var url;
-    try {
-        url = new URL(base, window.location.origin);
-    } catch (e) {
-        url = null;
-    }
-    if (url && /\/export\/personal_(activo|inactivo)(\/|$|\?)/.test(url.pathname)) {
-        var cur = new URLSearchParams(window.location.search);
-        var d = cur.get('depto');
-        var a = cur.get('area');
-        if (d) url.searchParams.set('depto', d);
-        if (a) url.searchParams.set('area', a);
-        base = url.pathname + (url.search ? url.search : '');
-    }
-    var desde = document.getElementById('exportDesde').value.trim();
-    var hasta = document.getElementById('exportHasta').value.trim();
-    var sep = base.indexOf('?') >= 0 ? '&' : '?';
-    if (desde || hasta) {
-        var q = [];
-        if (desde) q.push('desde=' + encodeURIComponent(desde));
-        if (hasta) q.push('hasta=' + encodeURIComponent(hasta));
-        base += sep + q.join('&');
-    }
-    modal.classList.remove('active');
-    window.location.href = base;
-}
-
 document.addEventListener('DOMContentLoaded', () => {
     try {
     // Count-up animation
@@ -580,16 +520,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Stagger animation on first load
     renderPage();
 
-    // Export modal close on overlay click / Escape
-    const exportModal = document.getElementById('genericExportModal');
-    if (exportModal) {
-        exportModal.addEventListener('click', (e) => {
-            if (e.target === exportModal) exportModal.classList.remove('active');
-        });
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') exportModal.classList.remove('active');
-        });
-    }
     } catch (err) { console.warn('data_table init:', err); }
 });
 </script>

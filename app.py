@@ -4562,17 +4562,31 @@ def view_total_hijos():
 # ── GENERIC EXPORT ────────────────────────────────────────────
 
 def _parse_export_date(val):
-    """Convierte valor de celda a date para filtrar exportación. Acepta date, str YYYY-MM-DD o DD/MM/YYYY."""
+    """Convierte valor de celda a date para filtrar exportación (varios formatos usados en BD / Excel)."""
     if val is None:
         return None
-    if isinstance(val, date):
+    if isinstance(val, date) and not isinstance(val, datetime):
         return val
     if isinstance(val, datetime):
         return val.date()
     s = str(val).strip()
     if not s:
         return None
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+    # ISO con hora: 2021-07-26 00:00:00 o 2021-07-26T12:00:00
+    if "T" in s and len(s) >= 10:
+        s = s[:10]
+    elif len(s) >= 10 and s[4] == "-" and s[7] == "-" and s[10:11] in (" ", "T"):
+        s = s[:10]
+    fmts = (
+        "%Y-%m-%d",
+        "%d/%m/%Y",
+        "%d-%m-%Y",
+        "%d/%m/%y",
+        "%m/%d/%Y",
+        "%m/%d/%y",
+        "%Y/%m/%d",
+    )
+    for fmt in fmts:
         try:
             return datetime.strptime(s, fmt).date()
         except ValueError:
@@ -4583,12 +4597,10 @@ def _parse_export_date(val):
 EXPORT_CONFIGS = {
     "personal_activo": {
         "prefix": "Personal_Activo",
-        "date_column": "fecha_ingreso",
         "empleado_estado": "ACTIVO",
     },
     "personal_inactivo": {
         "prefix": "Personal_Inactivo",
-        "date_column": "fecha_ingreso",
         "empleado_estado": "INACTIVO",
     },
     "hijos_activos": {
@@ -4704,7 +4716,10 @@ def generic_export(page_key):
         filtered = []
         for r in rows:
             cell_date = _parse_export_date(r.get(date_col))
+            # Si la fecha de la fila no se puede interpretar, no se excluye el registro
+            # (evita Excel vacío cuando el formato en BD no coincidía con el parser).
             if cell_date is None:
+                filtered.append(r)
                 continue
             if desde and cell_date < desde:
                 continue
