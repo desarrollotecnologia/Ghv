@@ -111,6 +111,29 @@
     border-left: 3px solid #3b82f6;
     color: #1e40af;
 }
+.padre-resultados-dropdown {
+    margin-top: 4px;
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 6px;
+    background: var(--bg-primary, #fff);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    display: none;
+}
+.padre-resultados-dropdown button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 8px 12px;
+    border: none;
+    border-bottom: 1px solid var(--border, #e5e7eb);
+    background: transparent;
+    cursor: pointer;
+    font-size: 13px;
+}
+.padre-resultados-dropdown button:last-child { border-bottom: none; }
+.padre-resultados-dropdown button:hover { background: var(--bg-secondary, #f8fafc); }
 .link-cedula {
     color: var(--colbeef-green, #0f766e);
     font-family: monospace;
@@ -246,17 +269,19 @@
         <form id="hijoForm" method="POST" action="{{ url_for('crear_hijo') }}">
             <input type="hidden" name="redirect_to" value="{{ redirect_to }}">
 
-            <div class="form-group">
-                <label class="form-label">Cédula del Padre <span class="required">*</span></label>
+            <div class="form-group" style="position:relative">
+                <label class="form-label">Nombre del padre (empleado) <span class="required">*</span></label>
+                <input type="hidden" name="id_cedula" id="hijoIdCedulaPadreHidden" value="">
                 <div style="display:flex;gap:8px;align-items:stretch">
-                    <input type="text" name="id_cedula" id="hijoCedulaPadre" class="form-input"
-                           placeholder="Ingrese la cédula del empleado" required autocomplete="off"
-                           oninput="padreLookupDebounced(this.value)">
+                    <input type="text" id="hijoPadreBusqueda" class="form-input"
+                           placeholder="Escriba apellidos y nombre (mín. 2 letras)" autocomplete="off"
+                           oninput="padreLookupDebounced()">
                     <button type="button" class="btn btn-outline btn-sm" onclick="buscarPadre()" style="white-space:nowrap">
                         <span class="material-symbols-outlined" style="font-size:18px">search</span>
                         Buscar
                     </button>
                 </div>
+                <div id="padreResultados" class="padre-resultados-dropdown" role="listbox"></div>
                 <div id="padreInfo" class="padre-info-box" style="display:none"></div>
             </div>
 
@@ -334,15 +359,53 @@
 {% block scripts %}
 <script>
 let padreLookupTimer = null;
-function padreLookupDebounced(cedula) {
+function padreLookupDebounced() {
     clearTimeout(padreLookupTimer);
     padreLookupTimer = setTimeout(() => buscarPadre(), 450);
 }
 
-async function buscarPadre() {
-    const cedula = (document.getElementById('hijoCedulaPadre').value || '').trim();
+function mostrarPadreOk(e) {
     const box = document.getElementById('padreInfo');
-    if (!cedula) {
+    box.style.display = 'block';
+    box.className = 'padre-info-box ok';
+    box.innerHTML =
+        '<strong>' + (e.apellidos_nombre || '') + '</strong>' +
+        '<span style="color:var(--text-secondary, #6b7280); margin-left:8px">' +
+        (e.departamento || '') + ' · ' + (e.area || '') + ' · Estado: ' + (e.estado || '') +
+        '</span>';
+}
+
+function seleccionarPadre(e) {
+    document.getElementById('hijoIdCedulaPadreHidden').value = e.id_cedula;
+    document.getElementById('hijoPadreBusqueda').value = e.apellidos_nombre || '';
+    const res = document.getElementById('padreResultados');
+    res.style.display = 'none';
+    res.innerHTML = '';
+    mostrarPadreOk(e);
+}
+
+async function buscarPadre() {
+    const busq = document.getElementById('hijoPadreBusqueda');
+    if (busq.readOnly) return;
+    const q = (busq.value || '').trim();
+    const box = document.getElementById('padreInfo');
+    const res = document.getElementById('padreResultados');
+    res.style.display = 'none';
+    res.innerHTML = '';
+    if (!q) {
+        document.getElementById('hijoIdCedulaPadreHidden').value = '';
+        box.style.display = 'none';
+        return;
+    }
+    if (/^\d+$/.test(q)) {
+        document.getElementById('hijoIdCedulaPadreHidden').value = '';
+        box.style.display = 'block';
+        box.className = 'padre-info-box error';
+        box.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle">error</span> Busque solo por nombre del empleado, no por cédula.';
+        return;
+    }
+    if (q.length < 2) {
+        document.getElementById('hijoIdCedulaPadreHidden').value = '';
         box.style.display = 'none';
         return;
     }
@@ -350,21 +413,29 @@ async function buscarPadre() {
     box.className = 'padre-info-box loading';
     box.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle">hourglass_top</span> Buscando…';
     try {
-        const res = await fetch(`/api/padre/${encodeURIComponent(cedula)}`);
-        if (res.ok) {
-            const data = await res.json();
-            const e = data.empleado;
-            box.className = 'padre-info-box ok';
-            box.innerHTML = `
-                <strong>${e.apellidos_nombre}</strong>
-                <span style="color:var(--text-secondary, #6b7280); margin-left:8px">
-                    ${e.departamento || ''} · ${e.area || ''} · Estado: ${e.estado || ''}
-                </span>
-            `;
-        } else {
+        const r = await fetch('/api/padre-buscar?q=' + encodeURIComponent(q));
+        const data = await r.json();
+        const lista = data.resultados || [];
+        if (lista.length === 0) {
+            document.getElementById('hijoIdCedulaPadreHidden').value = '';
             box.className = 'padre-info-box error';
-            box.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle">error</span> No existe un empleado con esa cédula.';
+            box.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle">error</span> Sin coincidencias por ese nombre. Pruebe con más letras.';
+            return;
         }
+        if (lista.length === 1) {
+            seleccionarPadre(lista[0]);
+            return;
+        }
+        box.style.display = 'none';
+        lista.forEach(function(e) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = (e.apellidos_nombre || '') + ' — CC ' + (e.id_cedula || '') +
+                ' · ' + (e.departamento || '') + ' / ' + (e.area || '');
+            b.addEventListener('click', function() { seleccionarPadre(e); });
+            res.appendChild(b);
+        });
+        res.style.display = 'block';
     } catch (err) {
         box.className = 'padre-info-box error';
         box.innerHTML = 'Error consultando el servidor.';
@@ -374,31 +445,39 @@ async function buscarPadre() {
 function openHijoModalNuevo() {
     document.getElementById('hijoModalTitle').textContent = 'Agregar Hijo';
     document.getElementById('hijoForm').action = '{{ url_for("crear_hijo") }}';
-    document.getElementById('hijoCedulaPadre').value = '';
-    document.getElementById('hijoCedulaPadre').disabled = false;
+    document.getElementById('hijoIdCedulaPadreHidden').value = '';
+    const busq = document.getElementById('hijoPadreBusqueda');
+    busq.value = '';
+    busq.readOnly = false;
     document.getElementById('hijoNombre').value = '';
     document.getElementById('hijoIdentificacion').value = '';
     document.getElementById('hijoFecha').value = '';
     document.getElementById('hijoSexo').value = '';
     document.getElementById('hijoEstado').value = 'ACTIVO';
     document.getElementById('padreInfo').style.display = 'none';
+    document.getElementById('padreResultados').style.display = 'none';
+    document.getElementById('padreResultados').innerHTML = '';
     document.getElementById('hijoModal').classList.add('active');
 }
 
 function openHijoModalEditar(idHijo, cedulaPadre, nombrePadre, identHijo, nombreHijo, fecha, sexo, estado) {
     document.getElementById('hijoModalTitle').textContent = 'Editar Hijo';
     document.getElementById('hijoForm').action = '/hijo/' + idHijo + '/editar';
-    document.getElementById('hijoCedulaPadre').value = cedulaPadre;
-    document.getElementById('hijoCedulaPadre').disabled = true;
+    document.getElementById('hijoIdCedulaPadreHidden').value = cedulaPadre;
+    const busq = document.getElementById('hijoPadreBusqueda');
+    busq.value = nombrePadre || '';
+    busq.readOnly = true;
     document.getElementById('hijoNombre').value = nombreHijo;
     document.getElementById('hijoIdentificacion').value = identHijo;
     document.getElementById('hijoFecha').value = fecha;
     document.getElementById('hijoSexo').value = sexo;
     document.getElementById('hijoEstado').value = estado || 'ACTIVO';
+    document.getElementById('padreResultados').style.display = 'none';
+    document.getElementById('padreResultados').innerHTML = '';
     const box = document.getElementById('padreInfo');
     box.style.display = 'block';
     box.className = 'padre-info-box ok';
-    box.innerHTML = `<strong>${nombrePadre}</strong>`;
+    box.innerHTML = '<strong>' + (nombrePadre || '') + '</strong> <span style="color:var(--text-secondary)">· Cédula ' + cedulaPadre + '</span>';
     document.getElementById('hijoModal').classList.add('active');
 }
 
@@ -409,10 +488,17 @@ function confirmDeleteHijo(idHijo, nombre) {
 }
 
 document.getElementById('hijoForm').addEventListener('submit', function(e) {
-    const cedulaField = document.getElementById('hijoCedulaPadre');
-    if (cedulaField.disabled) {
-        cedulaField.disabled = false;
-        setTimeout(() => { cedulaField.disabled = true; }, 0);
+    if (!document.getElementById('hijoIdCedulaPadreHidden').value.trim()) {
+        e.preventDefault();
+        alert('Busque y seleccione al padre por nombre.');
+    }
+});
+document.addEventListener('click', function(ev) {
+    const modal = document.getElementById('hijoModal');
+    if (!modal || !modal.classList.contains('active')) return;
+    const res = document.getElementById('padreResultados');
+    if (res && res.style.display === 'block' && !res.contains(ev.target) && ev.target.id !== 'hijoPadreBusqueda') {
+        res.style.display = 'none';
     }
 });
 </script>

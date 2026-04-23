@@ -36,19 +36,77 @@
 <script>
 (function() {
     var base = {{ (personal_activo_url or '')|tojson }};
+    function personalQuerySuffix() {
+        var qs = new URLSearchParams(window.location.search);
+        var p = [];
+        var d = qs.get('depto');
+        var a = qs.get('area');
+        if (d) p.push('depto=' + encodeURIComponent(d));
+        if (a) p.push('area=' + encodeURIComponent(a));
+        return p.length ? '&' + p.join('&') : '';
+    }
     function applyPersonalFilter(ev) {
         var ckActivos = document.getElementById('personalCheckActivos');
         var ckInactivos = document.getElementById('personalCheckInactivos');
+        var extra = personalQuerySuffix();
         if (ev.target.id === 'personalCheckActivos') {
             ckInactivos.checked = false;
-            window.location = base + (ckActivos.checked ? '?activos=1' : '?inactivos=1');
+            window.location = base + (ckActivos.checked ? '?activos=1' : '?inactivos=1') + extra;
         } else {
             ckActivos.checked = false;
-            window.location = base + (ckInactivos.checked ? '?inactivos=1' : '?activos=1');
+            window.location = base + (ckInactivos.checked ? '?inactivos=1' : '?activos=1') + extra;
         }
     }
     document.getElementById('personalCheckActivos').addEventListener('change', applyPersonalFilter);
     document.getElementById('personalCheckInactivos').addEventListener('change', applyPersonalFilter);
+})();
+</script>
+{% endif %}
+{% if personal_filter_deptos is defined %}
+<div class="personal-tipo-bar" style="margin-top:{% if personal_tipo_selector is defined and personal_tipo_selector %}-8px{% else %}0{% endif %};padding-top:0;border-top:none">
+    <div class="stats-extra-filter" style="margin:0;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;width:100%">
+        <div class="form-group" style="margin:0;min-width:200px">
+            <label class="stats-extra-label" for="personalFilterDepto">Departamento</label>
+            <select id="personalFilterDepto" class="form-input form-input-sm">
+                <option value="">Todos</option>
+                {% for d in personal_filter_deptos %}
+                <option value="{{ d }}" {{ 'selected' if personal_selected_depto == d else '' }}>{{ d }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group" style="margin:0;min-width:200px">
+            <label class="stats-extra-label" for="personalFilterArea">Área</label>
+            <select id="personalFilterArea" class="form-input form-input-sm">
+                <option value="">Todas</option>
+                {% for ar in personal_filter_areas %}
+                <option value="{{ ar }}" {{ 'selected' if personal_selected_area == ar else '' }}>{{ ar }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="button" class="btn btn-outline btn-sm" id="personalFilterClear" style="margin-bottom:2px">Limpiar filtros</button>
+    </div>
+</div>
+<script>
+(function() {
+    var base = {{ (personal_filter_base_url or personal_activo_url or '')|tojson }};
+    function navigate(depto, area) {
+        var p = new URLSearchParams();
+        {% if personal_tipo_selector is defined and personal_tipo_selector %}
+        var qs = new URLSearchParams(window.location.search);
+        if (qs.get('inactivos')) p.set('inactivos', '1');
+        else p.set('activos', '1');
+        {% endif %}
+        if (depto) p.set('depto', depto);
+        if (area) p.set('area', area);
+        var s = p.toString();
+        window.location = base + (s ? '?' + s : '');
+    }
+    var selD = document.getElementById('personalFilterDepto');
+    var selA = document.getElementById('personalFilterArea');
+    if (selD) selD.addEventListener('change', function() { navigate(selD.value, selA ? selA.value : ''); });
+    if (selA) selA.addEventListener('change', function() { navigate(selD ? selD.value : '', selA.value); });
+    var clr = document.getElementById('personalFilterClear');
+    if (clr) clr.addEventListener('click', function() { navigate('', ''); });
 })();
 </script>
 {% endif %}
@@ -253,7 +311,7 @@
         </div>
         <div style="padding:4px 0 12px;color:var(--text-secondary);font-size:14px;display:flex;align-items:flex-start;gap:10px">
             <span class="material-symbols-outlined" style="font-size:36px;color:#22c55e;flex-shrink:0">table_chart</span>
-            <span>Se generará un archivo <strong>.xlsx</strong>. Opcionalmente filtre por rango de fechas (según el informe: ingreso, nacimiento, retiro, etc.).</span>
+            <span>Se generará un archivo <strong>.xlsx</strong> con <strong>todos los registros</strong> si deja las fechas vacías. Si indica rango, solo incluirá filas cuya fecha del informe (ingreso, nacimiento, retiro, etc.) caiga en ese intervalo.</span>
         </div>
         <div class="export-date-range">
             <div class="form-group">
@@ -291,16 +349,31 @@ function applyExportWithDates() {
     var modal = document.getElementById('genericExportModal');
     var base = modal.dataset.exportBase || '';
     if (!base) return;
+    var url;
+    try {
+        url = new URL(base, window.location.origin);
+    } catch (e) {
+        url = null;
+    }
+    if (url && /\/export\/personal_(activo|inactivo)(\/|$|\?)/.test(url.pathname)) {
+        var cur = new URLSearchParams(window.location.search);
+        var d = cur.get('depto');
+        var a = cur.get('area');
+        if (d) url.searchParams.set('depto', d);
+        if (a) url.searchParams.set('area', a);
+        base = url.pathname + (url.search ? url.search : '');
+    }
     var desde = document.getElementById('exportDesde').value.trim();
     var hasta = document.getElementById('exportHasta').value.trim();
-    var url = base;
+    var sep = base.indexOf('?') >= 0 ? '&' : '?';
     if (desde || hasta) {
-        url += (base.indexOf('?') >= 0 ? '&' : '?');
-        if (desde) url += 'desde=' + encodeURIComponent(desde);
-        if (hasta) url += (desde ? '&' : '') + 'hasta=' + encodeURIComponent(hasta);
+        var q = [];
+        if (desde) q.push('desde=' + encodeURIComponent(desde));
+        if (hasta) q.push('hasta=' + encodeURIComponent(hasta));
+        base += sep + q.join('&');
     }
     modal.classList.remove('active');
-    window.location.href = url;
+    window.location.href = base;
 }
 
 document.addEventListener('DOMContentLoaded', () => {

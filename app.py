@@ -2517,52 +2517,55 @@ def personal_activo():
     # Solo un modo: inactivos=1 en la URL → inactivos; si no → activos
     show_inactivos = request.args.get("inactivos", "").strip().lower() in ("1", "true", "yes")
     show_activos = not show_inactivos
-    if show_inactivos:
-        rows = query(
-            "SELECT id_cedula, apellidos_nombre, tipo_documento, departamento, "
-            "area, sexo, fecha_ingreso, celular, eps, estado "
-            "FROM empleado WHERE estado = 'INACTIVO' ORDER BY apellidos_nombre"
-        )
-        columns = [
-            {"key": "id_cedula",        "label": "Cédula"},
-            {"key": "apellidos_nombre", "label": "Nombre"},
-            {"key": "tipo_documento",   "label": "Tipo Doc"},
-            {"key": "departamento",     "label": "Departamento", "type": "dept"},
-            {"key": "area",             "label": "Área"},
-            {"key": "sexo",             "label": "Sexo", "type": "sex"},
-            {"key": "fecha_ingreso",    "label": "Fecha Ingreso"},
-            {"key": "celular",          "label": "Celular"},
-            {"key": "eps",              "label": "EPS"},
-        ]
-        filter_columns = [
-            {"index": 3, "label": "Departamento"},
-            {"index": 5, "label": "Sexo"},
-            {"index": 8, "label": "EPS"},
-        ]
-    else:
-        rows = query(
-            "SELECT id_cedula, apellidos_nombre, tipo_documento, departamento, "
-            "area, sexo, fecha_ingreso, celular, eps, estado "
-            "FROM empleado WHERE estado = 'ACTIVO' ORDER BY apellidos_nombre"
-        )
-        columns = [
-            {"key": "id_cedula",        "label": "Cédula"},
-            {"key": "apellidos_nombre", "label": "Nombre"},
-            {"key": "tipo_documento",   "label": "Tipo Doc"},
-            {"key": "departamento",     "label": "Departamento", "type": "dept"},
-            {"key": "area",             "label": "Área"},
-            {"key": "sexo",             "label": "Sexo", "type": "sex"},
-            {"key": "fecha_ingreso",    "label": "Fecha Ingreso"},
-            {"key": "celular",          "label": "Celular"},
-            {"key": "eps",              "label": "EPS"},
-        ]
-        filter_columns = [
-            {"index": 3, "label": "Departamento"},
-            {"index": 5, "label": "Sexo"},
-            {"index": 8, "label": "EPS"},
-        ]
-    sex_m = sum(1 for r in rows if r.get("sexo") == "M")
-    sex_f = sum(1 for r in rows if r.get("sexo") == "F")
+    estado = "INACTIVO" if show_inactivos else "ACTIVO"
+    filtro_depto = request.args.get("depto", "").strip()
+    filtro_area = request.args.get("area", "").strip()
+
+    deptos_opts = query(
+        "SELECT DISTINCT departamento AS d FROM empleado WHERE estado = %s "
+        "AND departamento IS NOT NULL AND TRIM(departamento) <> '' ORDER BY departamento",
+        (estado,),
+    )
+    personal_filter_deptos = [r["d"] for r in (deptos_opts or []) if r.get("d")]
+    areas_opts = query(
+        "SELECT DISTINCT area AS a FROM empleado WHERE estado = %s "
+        "AND area IS NOT NULL AND TRIM(area) <> '' ORDER BY area",
+        (estado,),
+    )
+    personal_filter_areas = [r["a"] for r in (areas_opts or []) if r.get("a")]
+
+    where = ["estado = %s"]
+    params = [estado]
+    if filtro_depto:
+        where.append("departamento = %s")
+        params.append(filtro_depto)
+    if filtro_area:
+        where.append("area = %s")
+        params.append(filtro_area)
+    sql = (
+        "SELECT id_cedula, apellidos_nombre, tipo_documento, departamento, "
+        "area, sexo, fecha_ingreso, celular, eps, estado "
+        "FROM empleado WHERE " + " AND ".join(where) + " ORDER BY apellidos_nombre"
+    )
+    rows = query(sql, tuple(params))
+
+    columns = [
+        {"key": "id_cedula",        "label": "Cédula"},
+        {"key": "apellidos_nombre", "label": "Nombre"},
+        {"key": "tipo_documento",   "label": "Tipo Doc"},
+        {"key": "departamento",     "label": "Departamento", "type": "dept"},
+        {"key": "area",             "label": "Área"},
+        {"key": "sexo",             "label": "Sexo", "type": "sex"},
+        {"key": "fecha_ingreso",    "label": "Fecha Ingreso"},
+        {"key": "celular",          "label": "Celular"},
+        {"key": "eps",              "label": "EPS"},
+    ]
+    filter_columns = [
+        {"index": 3, "label": "Departamento"},
+        {"index": 4, "label": "Área"},
+        {"index": 5, "label": "Sexo"},
+        {"index": 8, "label": "EPS"},
+    ]
     deptos = len(set(r["departamento"] for r in rows if r.get("departamento")))
     n_activos = sum(1 for r in rows if r.get("estado") == "ACTIVO")
     n_inactivos = sum(1 for r in rows if r.get("estado") == "INACTIVO")
@@ -2575,15 +2578,21 @@ def personal_activo():
     user = get_current_user()
     perm = get_role_permission(user["rol"] or "") if user else "READ"
     show_add_btn = perm in ("WRITE", "ALL")  # Solo Contratación, Coord. GH y Admin pueden agregar
+    export_key = "personal_inactivo" if show_inactivos else "personal_activo"
     return render_template(
         "data_table.html", active_page="Personal Activo",
         rows=rows, columns=columns, stats=stats,
         detail_route="detalle_empleado", pk="id_cedula",
-        export_key="personal_activo", filter_columns=filter_columns,
+        export_key=export_key, filter_columns=filter_columns,
         personal_tipo_selector=True,
         personal_show_activos=show_activos,
         personal_show_inactivos=show_inactivos,
         personal_activo_url=url_for("personal_activo"),
+        personal_filter_deptos=personal_filter_deptos,
+        personal_filter_areas=personal_filter_areas,
+        personal_selected_depto=filtro_depto,
+        personal_selected_area=filtro_area,
+        personal_filter_base_url=url_for("personal_activo"),
         show_add_btn=show_add_btn, add_url=url_for("crear_empleado"),
     )
 
@@ -2615,6 +2624,11 @@ EMPLEADO_FIELDS = [
     {"key": "telefono_contacto",    "label": "Tel. Contacto"},
     {"key": "parentezco",           "label": "Parentesco"},
     {"key": "estado",               "label": "Estado", "type": "badge"},
+]
+
+# Columnas export Excel personal (completo + perfil ocupacional)
+_PERSONAL_EXPORT_COLS = [(f["key"], f["label"]) for f in EMPLEADO_FIELDS] + [
+    ("id_perfil_ocupacional", "ID perfil ocupacional"),
 ]
 
 
@@ -3063,11 +3077,35 @@ def eliminar_retirado(id):
 @login_required
 @module_required("personal_inactivo")
 def personal_inactivo():
-    rows = query(
+    estado = "INACTIVO"
+    filtro_depto = request.args.get("depto", "").strip()
+    filtro_area = request.args.get("area", "").strip()
+    deptos_opts = query(
+        "SELECT DISTINCT departamento AS d FROM empleado WHERE estado = %s "
+        "AND departamento IS NOT NULL AND TRIM(departamento) <> '' ORDER BY departamento",
+        (estado,),
+    )
+    personal_filter_deptos = [r["d"] for r in (deptos_opts or []) if r.get("d")]
+    areas_opts = query(
+        "SELECT DISTINCT area AS a FROM empleado WHERE estado = %s "
+        "AND area IS NOT NULL AND TRIM(area) <> '' ORDER BY area",
+        (estado,),
+    )
+    personal_filter_areas = [r["a"] for r in (areas_opts or []) if r.get("a")]
+    where = ["estado = %s"]
+    params = [estado]
+    if filtro_depto:
+        where.append("departamento = %s")
+        params.append(filtro_depto)
+    if filtro_area:
+        where.append("area = %s")
+        params.append(filtro_area)
+    sql = (
         "SELECT id_cedula, apellidos_nombre, tipo_documento, departamento, "
         "area, sexo, fecha_ingreso, celular, eps, estado "
-        "FROM empleado WHERE estado = 'INACTIVO' ORDER BY apellidos_nombre"
+        "FROM empleado WHERE " + " AND ".join(where) + " ORDER BY apellidos_nombre"
     )
+    rows = query(sql, tuple(params))
     sex_m = sum(1 for r in rows if r.get("sexo") == "M")
     sex_f = sum(1 for r in rows if r.get("sexo") == "F")
     columns = [
@@ -3088,6 +3126,7 @@ def personal_inactivo():
     ]
     filter_columns = [
         {"index": 3, "label": "Departamento"},
+        {"index": 4, "label": "Área"},
         {"index": 5, "label": "Sexo"},
     ]
     return render_template(
@@ -3095,6 +3134,11 @@ def personal_inactivo():
         rows=rows, columns=columns, stats=stats,
         detail_route="detalle_empleado", pk="id_cedula",
         export_key="personal_inactivo", filter_columns=filter_columns,
+        personal_filter_deptos=personal_filter_deptos,
+        personal_filter_areas=personal_filter_areas,
+        personal_selected_depto=filtro_depto,
+        personal_selected_area=filtro_area,
+        personal_filter_base_url=url_for("personal_inactivo"),
     )
 
 
@@ -3161,7 +3205,7 @@ def hijos_inactivos():
     return redirect(url_for("hijos_activos", estado="INACTIVO"))
 
 
-# ── API para autocompletar nombre del padre al escribir cedula ──
+# ── API por cédula exacta (otros flujos); en hijos-gestión el padre se busca solo por nombre ──
 @app.route("/api/padre/<id_cedula>", methods=["GET"])
 @login_required
 @module_required("familia")
@@ -3174,6 +3218,24 @@ def api_padre_por_cedula(id_cedula):
     if not emp:
         return jsonify({"ok": False, "error": "No existe un empleado con esa cédula"}), 404
     return jsonify({"ok": True, "empleado": emp})
+
+
+@app.route("/api/padre-buscar", methods=["GET"])
+@login_required
+@module_required("familia")
+def api_padre_buscar_por_nombre():
+    """Búsqueda solo por nombre (LIKE) para asignar padre al crear hijo; solo empleados ACTIVO."""
+    q = request.args.get("q", "").strip()
+    if len(q) < 2 or q.isdigit():
+        return jsonify({"ok": True, "resultados": []})
+    like = f"%{q}%"
+    rows = query(
+        "SELECT id_cedula, apellidos_nombre, departamento, area, estado "
+        "FROM empleado WHERE estado = 'ACTIVO' AND apellidos_nombre LIKE %s "
+        "ORDER BY apellidos_nombre LIMIT 25",
+        (like,),
+    )
+    return jsonify({"ok": True, "resultados": rows or []})
 
 
 # ── GESTION DE HIJOS (vista dedicada con busqueda + CRUD) ────
@@ -4520,24 +4582,14 @@ def _parse_export_date(val):
 
 EXPORT_CONFIGS = {
     "personal_activo": {
-        "sql": "SELECT id_cedula, apellidos_nombre, tipo_documento, departamento, area, sexo, fecha_ingreso, celular, eps, estado FROM empleado WHERE estado = 'ACTIVO' ORDER BY apellidos_nombre",
-        "columns": [
-            ("id_cedula", "Cédula"), ("apellidos_nombre", "Nombre"), ("tipo_documento", "Tipo Doc"),
-            ("departamento", "Departamento"), ("area", "Área"), ("sexo", "Sexo"),
-            ("fecha_ingreso", "Fecha Ingreso"), ("celular", "Celular"), ("eps", "EPS"), ("estado", "Estado"),
-        ],
         "prefix": "Personal_Activo",
         "date_column": "fecha_ingreso",
+        "empleado_estado": "ACTIVO",
     },
     "personal_inactivo": {
-        "sql": "SELECT id_cedula, apellidos_nombre, tipo_documento, departamento, area, sexo, fecha_ingreso, celular, eps, estado FROM empleado WHERE estado = 'INACTIVO' ORDER BY apellidos_nombre",
-        "columns": [
-            ("id_cedula", "Cédula"), ("apellidos_nombre", "Nombre"), ("tipo_documento", "Tipo Doc"),
-            ("departamento", "Departamento"), ("area", "Área"), ("sexo", "Sexo"),
-            ("fecha_ingreso", "Fecha Ingreso"), ("celular", "Celular"), ("eps", "EPS"), ("estado", "Estado"),
-        ],
         "prefix": "Personal_Inactivo",
         "date_column": "fecha_ingreso",
+        "empleado_estado": "INACTIVO",
     },
     "hijos_activos": {
         "sql": (
@@ -4613,6 +4665,21 @@ EXPORT_CONFIGS = {
 }
 
 
+def _export_rows_personal_empleado(estado, depto=None, area=None):
+    """SELECT completo de empleado por estado y filtros opcionales departamento/área."""
+    cols_sql = ", ".join(k for k, _ in _PERSONAL_EXPORT_COLS)
+    sql = f"SELECT {cols_sql} FROM empleado WHERE estado = %s"
+    params = [estado]
+    if depto:
+        sql += " AND departamento = %s"
+        params.append(depto)
+    if area:
+        sql += " AND area = %s"
+        params.append(area)
+    sql += " ORDER BY apellidos_nombre"
+    return query(sql, tuple(params))
+
+
 @app.route("/export/<page_key>")
 @login_required
 def generic_export(page_key):
@@ -4620,7 +4687,14 @@ def generic_export(page_key):
     if not cfg:
         flash("Exportación no disponible", "error")
         return redirect(url_for("home"))
-    rows = query(cfg["sql"])
+    if cfg.get("empleado_estado"):
+        depto = request.args.get("depto", "").strip()
+        area = request.args.get("area", "").strip()
+        rows = _export_rows_personal_empleado(cfg["empleado_estado"], depto or None, area or None)
+        columns = _PERSONAL_EXPORT_COLS
+    else:
+        rows = query(cfg["sql"])
+        columns = cfg["columns"]
     date_col = cfg.get("date_column")
     desde_str = request.args.get("desde", "").strip()
     hasta_str = request.args.get("hasta", "").strip()
@@ -4638,7 +4712,7 @@ def generic_export(page_key):
                 continue
             filtered.append(r)
         rows = filtered
-    return export_excel_response_generic(rows, cfg["columns"], cfg["prefix"])
+    return export_excel_response_generic(rows, columns, cfg["prefix"])
 
 
 # ── TELEMETRÍA / AUDITORÍA (reportes empresariales) ─────────────
