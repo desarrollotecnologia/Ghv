@@ -240,7 +240,7 @@
 
     window.abrirModalAprobar = function(id, nombre) {
         const form = document.getElementById('formAprobarVac');
-        form.action = actionBaseAprobar.replace(/\/0$/, '/' + id);
+        form.action = actionBaseAprobar.replace('/0/', '/' + id + '/');
         form.querySelector('textarea[name="observaciones"]').value = '';
         document.getElementById('aprobarEmpleadoNombre').textContent = nombre;
         document.getElementById('modalAprobarVac').classList.add('active');
@@ -248,7 +248,7 @@
 
     window.abrirModalRechazar = function(id, nombre) {
         const form = document.getElementById('formRechazarVac');
-        form.action = actionBaseRechazar.replace(/\/0$/, '/' + id);
+        form.action = actionBaseRechazar.replace('/0/', '/' + id + '/');
         form.querySelector('textarea[name="observaciones"]').value = '';
         document.getElementById('rechazarEmpleadoNombre').textContent = nombre;
         document.getElementById('modalRechazarVac').classList.add('active');
