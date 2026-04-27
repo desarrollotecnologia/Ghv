@@ -888,6 +888,47 @@ def format_record_dates(record, keys):
     return record
 
 
+def parse_fecha_evento(fecha_str):
+    """Parser para eventos (cumpleaños/aniversario).
+
+    Regla:
+    - Si es ambiguo con '/', usa MM/DD/YYYY por compatibilidad con cargues legacy.
+    - Si no es ambiguo, respeta el formato detectado.
+    """
+    if not fecha_str:
+        return None
+    if isinstance(fecha_str, date):
+        return fecha_str
+    s = str(fecha_str).strip()
+    if not s:
+        return None
+    try:
+        # ISO o datetime iso
+        return datetime.fromisoformat(s).date()
+    except Exception:
+        pass
+
+    if "/" in s:
+        parts = s.split("/")
+        if len(parts) == 3:
+            try:
+                a = int(parts[0])
+                b = int(parts[1])
+                y = int(parts[2])
+                if y < 100:
+                    y += 2000 if y < 50 else 1900
+                # Desambiguación por rango:
+                if a > 12 and b <= 12:
+                    return date(y, b, a)  # DD/MM
+                if b > 12 and a <= 12:
+                    return date(y, a, b)  # MM/DD
+                # Ambiguo (a<=12 y b<=12): preferir MM/DD por histórico legacy.
+                return date(y, a, b)
+            except Exception:
+                pass
+    return parse_fecha(s)
+
+
 @app.template_filter("fecha_display")
 def fecha_display_filter(value):
     """Filtro Jinja para pintar fechas en formato DD/MM/YYYY."""
@@ -1210,7 +1251,7 @@ def api_cumpleanos():
     tipo_map, nivel_map, prof_map = _calendar_label_maps()
     results = []
     for r in rows:
-        bd = parse_fecha(r["fecha_nacimiento"])
+        bd = parse_fecha_evento(r["fecha_nacimiento"])
         if bd and bd.month == month:
             try:
                 cumple_date = date(year, bd.month, bd.day)
@@ -1219,7 +1260,7 @@ def api_cumpleanos():
             item = {
                 "id_cedula": r["id_cedula"],
                 "apellidos_nombre": r["apellidos_nombre"],
-                "fecha_nacimiento": r["fecha_nacimiento"],
+                "fecha_nacimiento": bd.strftime("%d/%m/%Y"),
                 "departamento": r["departamento"] or "",
                 "area": r["area"] or "",
                 "sexo": r["sexo"] or "",
@@ -1258,7 +1299,7 @@ def cumpleanos_tarjeta():
              "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre")
     lista = []
     for r in rows:
-        bd = parse_fecha(r["fecha_nacimiento"])
+        bd = parse_fecha_evento(r["fecha_nacimiento"])
         if not bd or bd.month != month:
             continue
         try:
@@ -2496,7 +2537,7 @@ def api_aniversario():
 
     results = []
     for r in rows:
-        fi = parse_fecha(r["fecha_ingreso"])
+        fi = parse_fecha_evento(r["fecha_ingreso"])
         if fi and fi.month == month:
             try:
                 aniv_date = date(year, fi.month, fi.day)
@@ -2506,7 +2547,7 @@ def api_aniversario():
 
             perfil = perfil_map.get(str(r["id_perfil_ocupacional"] or "").strip(), "")
 
-            bd = parse_fecha(r["fecha_nacimiento"])
+            bd = parse_fecha_evento(r["fecha_nacimiento"])
             mes_cumple = bd.month if bd else ""
             cumple_str = ""
             if bd:
@@ -2518,7 +2559,7 @@ def api_aniversario():
             item = {
                 "id_cedula": r["id_cedula"],
                 "apellidos_nombre": r["apellidos_nombre"],
-                "fecha_ingreso": r["fecha_ingreso"],
+                "fecha_ingreso": fi.strftime("%d/%m/%Y"),
                 "departamento": r["departamento"] or "",
                 "area": r["area"] or "",
                 "perfil_ocupacional": perfil,
