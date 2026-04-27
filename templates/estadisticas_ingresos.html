@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="cal-breadcrumb" style="margin-bottom:16px">
+    <a href="{{ url_for('home') }}">Home</a> &rsaquo;
+    <a href="{{ url_for('view_total_personal') }}">Dashboard</a> &rsaquo;
+    <span>Estadísticas de ingresos</span>
+</div>
+
+<section class="stats-grid" style="margin-bottom:20px">
+    <div class="stat-card">
+        <div class="stat-icon blue"><span class="material-symbols-outlined">login</span></div>
+        <div class="stat-info">
+            <h3>{{ resumen.total_ingresos|default(0) }}</h3>
+            <p>Total ingresos registrados</p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon green"><span class="material-symbols-outlined">group</span></div>
+        <div class="stat-info">
+            <h3>{{ resumen.usuarios_unicos|default(0) }}</h3>
+            <p>Usuarios que han ingresado</p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon orange"><span class="material-symbols-outlined">today</span></div>
+        <div class="stat-info">
+            <h3>{{ resumen.ingresos_hoy|default(0) }}</h3>
+            <p>Ingresos hoy</p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon green"><span class="material-symbols-outlined">date_range</span></div>
+        <div class="stat-info">
+            <h3>{{ resumen.ingresos_7_dias|default(0) }}</h3>
+            <p>Ingresos últimos 7 días</p>
+        </div>
+    </div>
+</section>
+
+<section class="dash-card" style="margin-bottom:20px">
+    <div class="dash-card-header">
+        <span class="dash-card-title">Usuarios con más ingresos</span>
+    </div>
+    <div class="table-wrapper" style="overflow-x:auto;max-width:100%">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Usuario</th>
+                    <th>ID</th>
+                    <th>Ingresos</th>
+                    <th>Último ingreso</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if top_usuarios %}
+                    {% for row in top_usuarios %}
+                    <tr>
+                        <td>{{ row.nombre or "—" }}</td>
+                        <td>{{ row.id_user or "—" }}</td>
+                        <td>{{ row.ingresos or 0 }}</td>
+                        <td>{{ row.ultimo_ingreso_str or "—" }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr><td colspan="4" style="text-align:center;color:var(--text-secondary)">Sin datos de ingresos todavía.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="dash-card">
+    <div class="dash-card-header">
+        <span class="dash-card-title">Ingresos recientes</span>
+    </div>
+    <div class="table-wrapper" style="overflow-x:auto;max-width:100%">
+        <table class="data-table" id="tablaIngresosRecientes">
+            <thead>
+                <tr>
+                    <th>Fecha y hora</th>
+                    <th>Usuario</th>
+                    <th>Rol</th>
+                    <th>Email</th>
+                    <th>ID</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if ingresos_recientes %}
+                    {% for row in ingresos_recientes %}
+                    <tr>
+                        <td>{{ row.fecha_str or "—" }}</td>
+                        <td>{{ row.nombre or "—" }}</td>
+                        <td>{{ row.rol or "—" }}</td>
+                        <td>{{ row.email or "—" }}</td>
+                        <td>{{ row.id_user or "—" }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr><td colspan="5" style="text-align:center;color:var(--text-secondary)">Sin datos de ingresos todavía.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

@@ -1,5 +1,14 @@
 {% extends "base.html" %}
 
+{% block page_actions %}
+{% if can_view_login_stats %}
+<a href="{{ url_for('estadisticas_ingresos') }}" class="btn btn-primary btn-sm">
+    <span class="material-symbols-outlined" style="font-size:18px">query_stats</span>
+    Estadísticas de ingresos
+</a>
+{% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="dashboard-wrap">
     {% if ultima_actualizacion is defined and ultima_actualizacion %}

@@ -383,6 +383,19 @@ def _is_locker_user(user):
     return _rol_match(user.get("rol")) == "GESTOR DE CONTRATACION"
 
 
+def _is_gerencia_user(user):
+    """Acceso exclusivo de gerencia para estadísticas sensibles."""
+    if not user:
+        return False
+    email = _normalize_email(user.get("email"))
+    mail_gerencia = _normalize_email(app.config.get("MAIL_GERENCIA") or "gerencia@colbeef.com")
+    if mail_gerencia and email == mail_gerencia:
+        return True
+    if email in {"gerencia@colbeef", "gerencia@colbeef.com"}:
+        return True
+    return "GERENCIA" in _normalize_rol(user.get("rol"))
+
+
 def _get_effective_modules(rol):
     """Calcula el mapa completo de módulos visibles para un rol.
     Usa _ROLE_MODULES como base; la BD solo puede sumar visibilidad (no quitar), así
@@ -510,6 +523,11 @@ def login():
             session.clear()
             session["user_id"] = user["id_user"]
             session.permanent = True
+            registrar_audit(
+                "Inicio de sesión",
+                "auth",
+                f"id_user={user.get('id_user', '')} ip={request.remote_addr or ''}",
+            )
             # Obligar a cambiar la clave de una vez: si tiene flag en BD o si entró con la estándar
             if user.get("debe_cambiar_clave") or (password.strip() == PASSWORD_ESTANDAR):
                 if password.strip() == PASSWORD_ESTANDAR:
@@ -4860,10 +4878,91 @@ def _get_actividad_reciente(limite=10):
         return []
 
 
+def _get_login_stats(limit_top=10, limit_recent=50):
+    """Resumen y detalle de ingresos al sistema (acciones de login)."""
+    resumen = {
+        "total_ingresos": 0,
+        "usuarios_unicos": 0,
+        "ingresos_hoy": 0,
+        "ingresos_7_dias": 0,
+    }
+    top_usuarios = []
+    ingresos_recientes = []
+
+    try:
+        r = query(
+            "SELECT "
+            "COUNT(*) AS total_ingresos, "
+            "COUNT(DISTINCT id_user) AS usuarios_unicos, "
+            "SUM(CASE WHEN DATE(fecha_hora)=CURDATE() THEN 1 ELSE 0 END) AS ingresos_hoy, "
+            "SUM(CASE WHEN fecha_hora >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS ingresos_7_dias "
+            "FROM audit_log "
+            "WHERE accion = 'Inicio de sesión' AND modulo = 'auth'",
+            one=True,
+        ) or {}
+        resumen = {
+            "total_ingresos": int(r.get("total_ingresos") or 0),
+            "usuarios_unicos": int(r.get("usuarios_unicos") or 0),
+            "ingresos_hoy": int(r.get("ingresos_hoy") or 0),
+            "ingresos_7_dias": int(r.get("ingresos_7_dias") or 0),
+        }
+    except Exception:
+        pass
+
+    try:
+        rows_top = query(
+            "SELECT a.id_user, COALESCE(u.nombre, a.id_user) AS nombre, "
+            "COUNT(*) AS ingresos, MAX(a.fecha_hora) AS ultimo_ingreso "
+            "FROM audit_log a "
+            "LEFT JOIN usuario u ON u.id_user = a.id_user "
+            "WHERE a.accion = 'Inicio de sesión' AND a.modulo = 'auth' "
+            "GROUP BY a.id_user, nombre "
+            "ORDER BY ingresos DESC, ultimo_ingreso DESC "
+            "LIMIT %s",
+            (limit_top,),
+        ) or []
+        for row in rows_top:
+            ultimo = row.get("ultimo_ingreso")
+            row["ultimo_ingreso_str"] = (
+                ultimo.strftime("%d/%m/%Y %H:%M")
+                if hasattr(ultimo, "strftime")
+                else (str(ultimo)[:16] if ultimo else "—")
+            )
+        top_usuarios = rows_top
+    except Exception:
+        top_usuarios = []
+
+    try:
+        rows_recent = query(
+            "SELECT a.fecha_hora, a.id_user, COALESCE(u.nombre, a.id_user) AS nombre, "
+            "COALESCE(u.rol, '') AS rol, COALESCE(u.email, '') AS email, COALESCE(a.detalle, '') AS detalle "
+            "FROM audit_log a "
+            "LEFT JOIN usuario u ON u.id_user = a.id_user "
+            "WHERE a.accion = 'Inicio de sesión' AND a.modulo = 'auth' "
+            "ORDER BY a.fecha_hora DESC "
+            "LIMIT %s",
+            (limit_recent,),
+        ) or []
+        for row in rows_recent:
+            fh = row.get("fecha_hora")
+            row["fecha_str"] = (
+                fh.strftime("%d/%m/%Y %H:%M")
+                if hasattr(fh, "strftime")
+                else (str(fh)[:16] if fh else "—")
+            )
+        ingresos_recientes = rows_recent
+    except Exception:
+        ingresos_recientes = []
+
+    return resumen, top_usuarios, ingresos_recientes
+
+
 @app.route("/view-total-personal")
 @login_required
 @module_required("dashboard")
 def view_total_personal():
+    user = get_current_user()
+    can_view_login_stats = _is_gerencia_user(user)
     charts_data = {}
     for key, cfg in DASHBOARD_CHARTS.items():
         rows = query(cfg["query"])
@@ -4923,6 +5022,24 @@ def view_total_personal():
         retiros_mes_values=retiros_mes_values,
         actividad_reciente=actividad_reciente,
         ultima_actualizacion=ultima_actualizacion,
+        can_view_login_stats=can_view_login_stats,
+    )
+
+
+@app.route("/estadisticas-ingresos")
+@login_required
+@module_required("dashboard")
+def estadisticas_ingresos():
+    if not _is_gerencia_user(get_current_user()):
+        flash("Este reporte está disponible solo para Gerencia.", "error")
+        return redirect(url_for("view_total_personal"))
+    resumen, top_usuarios, ingresos_recientes = _get_login_stats(limit_top=12, limit_recent=80)
+    return render_template(
+        "estadisticas_ingresos.html",
+        active_page="Dashboard",
+        resumen=resumen,
+        top_usuarios=top_usuarios,
+        ingresos_recientes=ingresos_recientes,
     )
 
 
