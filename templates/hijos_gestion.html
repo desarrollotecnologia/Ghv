@@ -206,6 +206,7 @@
         </thead>
         <tbody>
             {% for h in rows %}
+            {% set h_fecha = (h.fecha_nacimiento|fecha_display) if h.fecha_nacimiento else '' %}
             <tr>
                 <td>
                     <a href="{{ url_for('detalle_empleado', id=h.id_cedula) }}" class="link-cedula" title="Ver ficha del empleado">
@@ -215,7 +216,7 @@
                 <td>{{ h.nombre_padre }}</td>
                 <td>{{ h.nombre_hijo }}</td>
                 <td>{{ h.identificacion_hijo or '—' }}</td>
-                <td>{{ h.fecha_nacimiento or '—' }}</td>
+                <td>{{ h_fecha or '—' }}</td>
                 <td>{{ h.sexo or '—' }}</td>
                 <td>
                     {% if (h.estado_hijo or '')|upper == 'ACTIVO' %}
@@ -228,7 +229,7 @@
                 <td>
                     <div style="display:flex;gap:4px">
                         <button class="btn-icon" title="Editar"
-                                onclick="openHijoModalEditar('{{ h.id_hijo }}','{{ h.id_cedula }}','{{ h.nombre_padre|replace("'", "\\'") }}','{{ h.identificacion_hijo or '' }}','{{ h.nombre_hijo|replace("'", "\\'") }}','{{ h.fecha_nacimiento or '' }}','{{ h.sexo or '' }}','{{ h.estado_hijo or 'ACTIVO' }}')">
+                                onclick="openHijoModalEditar('{{ h.id_hijo }}','{{ h.id_cedula }}','{{ h.nombre_padre|replace("'", "\\'") }}','{{ h.identificacion_hijo or '' }}','{{ h.nombre_hijo|replace("'", "\\'") }}','{{ h_fecha }}','{{ h.sexo or '' }}','{{ h.estado_hijo or 'ACTIVO' }}')">
                             <span class="material-symbols-outlined" style="font-size:16px">edit</span>
                         </button>
                         <button class="btn-icon" title="Eliminar" style="color:#ef4444"

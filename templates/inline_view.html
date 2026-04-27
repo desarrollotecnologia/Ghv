@@ -42,6 +42,8 @@
                         <span class="inline-icon-cell">{{ val }} <span class="material-symbols-outlined" style="font-size:14px;color:var(--gray-400);cursor:pointer" title="Enviar mensaje">mail</span></span>
                         {% elif key == 'departamento' %}
                         <span class="badge-dept">{{ val }}</span>
+                        {% elif 'fecha' in ((key|string)|lower) %}
+                        {{ val|fecha_display }}
                         {% elif key in ('related_hijos', 'related_retirados') and val %}
                         <span class="related-link">{{ val }}</span>
                         {% else %}

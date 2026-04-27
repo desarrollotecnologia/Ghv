@@ -252,6 +252,8 @@
                         {% endif %}
                     {% elif col.type|default('') == 'dept' %}
                         <span class="badge-dept">{{ val }}</span>
+                    {% elif 'fecha' in ((col.key|string)|lower) %}
+                        {{ val|fecha_display }}
                     {% elif col.type|default('') == 'sex' %}
                         {% if val == 'M' %}
                         <span class="badge-sex male"><span class="material-symbols-outlined" style="font-size:14px">male</span> M</span>

@@ -51,6 +51,8 @@
                     {% else %}
                         <span class="badge badge-inactive">{{ val }}</span>
                     {% endif %}
+                {% elif 'fecha' in ((field.key|string)|lower) %}
+                    {{ val|fecha_display }}
                 {% else %}
                     {{ val }}
                 {% endif %}
@@ -107,10 +109,11 @@
         </thead>
         <tbody>
             {% for h in children %}
+            {% set h_fecha = (h.fecha_nacimiento|fecha_display) if h.fecha_nacimiento else '' %}
             <tr>
                 <td>{{ h.apellidos_nombre }}</td>
                 <td>{{ h.identificacion_hijo or '—' }}</td>
-                <td>{{ h.fecha_nacimiento or '—' }}</td>
+                <td>{{ h_fecha or '—' }}</td>
                 <td>{{ h.sexo or '—' }}</td>
                 <td>
                     {% if h.estado == 'ACTIVO' %}
@@ -122,7 +125,7 @@
                 {% if can_write %}
                 <td>
                     <div style="display:flex;gap:4px">
-                        <button class="btn-icon" title="Editar" onclick="editHijo('{{ h.id_hijo }}','{{ h.identificacion_hijo or '' }}','{{ h.apellidos_nombre }}','{{ h.fecha_nacimiento or '' }}','{{ h.sexo or '' }}','{{ h.estado or 'ACTIVO' }}')">
+                        <button class="btn-icon" title="Editar" onclick="editHijo('{{ h.id_hijo }}','{{ h.identificacion_hijo or '' }}','{{ h.apellidos_nombre }}','{{ h_fecha }}','{{ h.sexo or '' }}','{{ h.estado or 'ACTIVO' }}')">
                             <span class="material-symbols-outlined" style="font-size:16px">edit</span>
                         </button>
                         <button class="btn-icon" title="Eliminar" style="color:#ef4444" onclick="confirmDelete('{{ url_for('eliminar_hijo', id=h.id_hijo, redirect_cedula=data.id_cedula) }}', '{{ h.apellidos_nombre }}')">
@@ -161,7 +164,7 @@
         <tbody>
             {% for r in retirados %}
             <tr>
-                <td>{{ r.fecha_retiro or '—' }}</td>
+                <td>{{ (r.fecha_retiro|fecha_display) if r.fecha_retiro else '—' }}</td>
                 <td>{{ r.tipo_retiro or '—' }}</td>
                 <td>{{ r.dias_laborados or '—' }}</td>
                 <td>{{ r.motivo or '—' }}</td>

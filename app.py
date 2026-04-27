@@ -888,6 +888,12 @@ def format_record_dates(record, keys):
     return record
 
 
+@app.template_filter("fecha_display")
+def fecha_display_filter(value):
+    """Filtro Jinja para pintar fechas en formato DD/MM/YYYY."""
+    return format_fecha_display(value)
+
+
 def _calendar_label_maps():
     """Mapas id -> etiqueta para tipo_documento, nivel_educativo, profesion (para mostrar en calendario)."""
     def _s(v):
