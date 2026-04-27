@@ -4860,30 +4860,35 @@ def enrich_retirados(rows):
 
 
 def _get_retiros_por_mes():
-    """Últimos 12 meses con cantidad de retiros (para gráfica de barras)."""
-    from datetime import datetime, date
+    """Últimos 12 meses con cantidad de retiros (soporta fecha en texto o DATE)."""
+    from datetime import date
     try:
-        end = date.today()
-        rows = query(
-            "SELECT YEAR(fecha_retiro) AS y, MONTH(fecha_retiro) AS m, COUNT(*) AS cnt "
-            "FROM retirado WHERE fecha_retiro >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) "
-            "GROUP BY y, m ORDER BY y, m",
-        )
-        by_month = {(r["y"], r["m"]): int(r["cnt"]) for r in rows}
+        rows = query("SELECT fecha_retiro FROM retirado")
+        by_month = {}
+        for r in rows or []:
+            fr = parse_fecha(r.get("fecha_retiro"))
+            if not fr:
+                continue
+            key = (fr.year, fr.month)
+            by_month[key] = by_month.get(key, 0) + 1
+
+        end = date.today().replace(day=1)
+        months = []
+        d = end
+        for _ in range(12):
+            months.append(d)
+            if d.month == 1:
+                d = date(d.year - 1, 12, 1)
+            else:
+                d = date(d.year, d.month - 1, 1)
+        months.reverse()  # de más antiguo a más reciente
+
         labels = []
         values = []
         meses_nombres = ("Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic")
-        for i in range(11, -1, -1):
-            d = date(end.year, end.month, 1)
-            for _ in range(i):
-                if d.month == 1:
-                    d = date(d.year - 1, 12, 1)
-                else:
-                    d = date(d.year, d.month - 1, 1)
+        for d in months:
             labels.append(meses_nombres[d.month - 1] + " " + str(d.year))
             values.append(by_month.get((d.year, d.month), 0))
-        labels.reverse()
-        values.reverse()
         return labels, values
     except Exception:
         return [], []
@@ -5010,15 +5015,8 @@ def view_total_personal():
         kpi_activos = query("SELECT COUNT(*) AS c FROM empleado WHERE estado = 'ACTIVO'", one=True)["c"]
     except Exception:
         kpi_activos = 0
-    try:
-        from datetime import date
-        hoy = date.today()
-        kpi_retiros_mes = query(
-            "SELECT COUNT(*) AS c FROM retirado WHERE YEAR(fecha_retiro)=%s AND MONTH(fecha_retiro)=%s",
-            (hoy.year, hoy.month), one=True,
-        )["c"]
-    except Exception:
-        kpi_retiros_mes = 0
+    retiros_mes_labels, retiros_mes_values = _get_retiros_por_mes()
+    kpi_retiros_mes = int(retiros_mes_values[-1]) if retiros_mes_values else 0
     try:
         kpi_solicitudes_pend = query(
             "SELECT COUNT(*) AS c FROM solicitud_permiso WHERE estado = 'PENDIENTE'",
@@ -5036,7 +5034,6 @@ def view_total_personal():
     except Exception:
         kpi_resueltas_hoy = 0
 
-    retiros_mes_labels, retiros_mes_values = _get_retiros_por_mes()
     actividad_reciente = _get_actividad_reciente(10)
     from datetime import datetime
     ultima_actualizacion = datetime.now().strftime("%d/%m/%Y %H:%M")
