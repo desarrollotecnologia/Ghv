@@ -864,6 +864,30 @@ def parse_fecha(fecha_str):
     return None
 
 
+def format_fecha_display(value):
+    """Convierte fechas a DD/MM/YYYY para pintar en UI."""
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.strftime("%d/%m/%Y")
+    if isinstance(value, date):
+        return value.strftime("%d/%m/%Y")
+    d = parse_fecha(value)
+    if d:
+        return d.strftime("%d/%m/%Y")
+    return str(value).strip()
+
+
+def format_record_dates(record, keys):
+    """Formatea en sitio las llaves de fecha indicadas dentro de un dict."""
+    if not record:
+        return record
+    for k in keys:
+        if k in record and record.get(k) not in (None, ""):
+            record[k] = format_fecha_display(record.get(k))
+    return record
+
+
 def _calendar_label_maps():
     """Mapas id -> etiqueta para tipo_documento, nivel_educativo, profesion (para mostrar en calendario)."""
     def _s(v):
@@ -2779,6 +2803,11 @@ def detalle_empleado(id):
         "SELECT id_retiro, fecha_retiro, tipo_retiro, dias_laborados, motivo "
         "FROM retirado WHERE id_cedula = %s ORDER BY fecha_retiro DESC", (id,)
     )
+    format_record_dates(emp, ["fecha_expedicion", "fecha_nacimiento", "fecha_ingreso"])
+    for h in hijos or []:
+        format_record_dates(h, ["fecha_nacimiento"])
+    for r in retirados or []:
+        format_record_dates(r, ["fecha_retiro", "fecha_ingreso"])
     encargado_info = None
     if emp.get("id_user_encargado"):
         try:
@@ -3552,6 +3581,11 @@ def area_empleado_detail(area_id, cedula):
         "id_perfil_ocupacional, fecha_ingreso, fecha_retiro, dias_laborados, tipo_retiro "
         "FROM retirado WHERE id_cedula = %s", (cedula,),
     )
+    format_record_dates(emp, ["fecha_expedicion", "fecha_nacimiento", "fecha_ingreso"])
+    for h in hijos or []:
+        format_record_dates(h, ["fecha_nacimiento"])
+    for r in retirados or []:
+        format_record_dates(r, ["fecha_retiro", "fecha_ingreso"])
 
     perfil_nombre = ""
     if emp.get("id_perfil_ocupacional"):
@@ -3705,6 +3739,8 @@ def eps_detail(eps_name):
         "FROM empleado WHERE eps = %s ORDER BY apellidos_nombre",
         (eps_name,),
     )
+    for e in empleados or []:
+        format_record_dates(e, ["fecha_expedicion"])
     return render_template(
         "eps_detail.html", active_page="EPS",
         eps_name=eps_name, empleados=empleados,
@@ -3766,6 +3802,11 @@ def eps_empleado_detail(eps_name, cedula):
         "id_perfil_ocupacional, fecha_ingreso, fecha_retiro, dias_laborados, tipo_retiro "
         "FROM retirado WHERE id_cedula = %s", (cedula,),
     )
+    format_record_dates(emp, ["fecha_expedicion", "fecha_nacimiento", "fecha_ingreso"])
+    for h in hijos or []:
+        format_record_dates(h, ["fecha_nacimiento"])
+    for r in retirados or []:
+        format_record_dates(r, ["fecha_retiro", "fecha_ingreso"])
 
     bd = parse_fecha(emp.get("fecha_nacimiento", ""))
     fi = parse_fecha(emp.get("fecha_ingreso", ""))
@@ -3864,6 +3905,8 @@ def fondo_detail(fondo_name):
         "FROM empleado WHERE fondo_pensiones = %s ORDER BY apellidos_nombre",
         (fondo_name,),
     )
+    for e in empleados or []:
+        format_record_dates(e, ["fecha_expedicion"])
     return render_template(
         "fondo_detail.html", active_page="Fondo de Pensiones",
         fondo_name=fondo_name, empleados=empleados,
@@ -3925,6 +3968,11 @@ def fondo_empleado_detail(fondo_name, cedula):
         "id_perfil_ocupacional, fecha_ingreso, fecha_retiro, dias_laborados, tipo_retiro "
         "FROM retirado WHERE id_cedula = %s", (cedula,),
     )
+    format_record_dates(emp, ["fecha_expedicion", "fecha_nacimiento", "fecha_ingreso"])
+    for h in hijos or []:
+        format_record_dates(h, ["fecha_nacimiento"])
+    for r in retirados or []:
+        format_record_dates(r, ["fecha_retiro", "fecha_ingreso"])
 
     bd = parse_fecha(emp.get("fecha_nacimiento", ""))
     fi = parse_fecha(emp.get("fecha_ingreso", ""))
