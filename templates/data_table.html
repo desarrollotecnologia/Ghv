@@ -194,7 +194,7 @@
     <div class="toolbar-left">
         <div class="search-filter">
             <span class="material-symbols-outlined" style="font-size:18px;color:var(--text-secondary)">search</span>
-            <input type="text" id="tableFilter" placeholder="Buscar en {{ rows|length }} registros..." autocomplete="off">
+            <input type="text" id="tableFilter" placeholder="Buscar en {{ (stats[0].value if (personal_tipo_selector is defined and personal_tipo_selector and stats and stats|length > 0) else rows|length) }} registros..." autocomplete="off">
         </div>
         {% if filter_columns is defined and filter_columns %}
         <div class="column-filter">
@@ -211,7 +211,7 @@
         {% endif %}
     </div>
     <div class="toolbar-right">
-        <span class="table-info" id="tableInfo">{{ rows|length }} registros</span>
+        <span class="table-info" id="tableInfo">{{ (stats[0].value if (personal_tipo_selector is defined and personal_tipo_selector and stats and stats|length > 0) else rows|length) }} registros</span>
         <div class="page-size-select">
             <select id="pageSizeSelect">
                 <option value="25">25</option>

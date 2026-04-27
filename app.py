@@ -1008,7 +1008,7 @@ def enrich_empleados(empleados):
         if bd:
             try:
                 d = date(today.year, bd.month, bd.day)
-                emp["cumpleanos"] = f"{d.month}/{d.day}/{d.year}"
+                emp["cumpleanos"] = d.strftime("%d/%m/%Y")
             except ValueError:
                 pass
         emp["aniversario_laboral"] = ""
@@ -1016,7 +1016,7 @@ def enrich_empleados(empleados):
         if fi:
             try:
                 d = date(today.year, fi.month, fi.day)
-                emp["aniversario_laboral"] = f"{d.month}/{d.day}/{d.year}"
+                emp["aniversario_laboral"] = d.strftime("%d/%m/%Y")
             except ValueError:
                 pass
             emp["antiguedad"] = today.year - fi.year
@@ -1098,6 +1098,11 @@ def export_excel_response_generic(rows, columns, filename_prefix):
             val = row.get(key, "")
             if val is None:
                 val = ""
+            # Estandarizar fechas a formato Colombia para evitar MM/DD/YYYY en Excel.
+            if isinstance(val, datetime):
+                val = val.strftime("%d/%m/%Y %H:%M")
+            elif isinstance(val, date):
+                val = val.strftime("%d/%m/%Y")
             cell = ws.cell(row=r, column=c, value=val)
             cell.font = cell_font
             cell.alignment = cell_align
@@ -2567,6 +2572,26 @@ def personal_activo():
     )
     rows = query(sql, tuple(params))
 
+    # KPIs de estados: calcularlos sin filtrar por estado seleccionado,
+    # para que Activos/Inactivos siempre muestren ambos conteos reales.
+    where_counts = []
+    params_counts = []
+    if filtro_depto:
+        where_counts.append("departamento = %s")
+        params_counts.append(filtro_depto)
+    if filtro_area:
+        where_counts.append("area = %s")
+        params_counts.append(filtro_area)
+    sql_counts = (
+        "SELECT "
+        "SUM(CASE WHEN estado = 'ACTIVO' THEN 1 ELSE 0 END) AS activos, "
+        "SUM(CASE WHEN estado = 'INACTIVO' THEN 1 ELSE 0 END) AS inactivos "
+        "FROM empleado"
+    )
+    if where_counts:
+        sql_counts += " WHERE " + " AND ".join(where_counts)
+    counts = query(sql_counts, tuple(params_counts), one=True) or {}
+
     columns = [
         {"key": "id_cedula",        "label": "Cédula"},
         {"key": "apellidos_nombre", "label": "Nombre"},
@@ -2585,10 +2610,11 @@ def personal_activo():
         {"index": 8, "label": "EPS"},
     ]
     deptos = len(set(r["departamento"] for r in rows if r.get("departamento")))
-    n_activos = sum(1 for r in rows if r.get("estado") == "ACTIVO")
-    n_inactivos = sum(1 for r in rows if r.get("estado") == "INACTIVO")
+    n_activos = int(counts.get("activos") or 0)
+    n_inactivos = int(counts.get("inactivos") or 0)
+    total_general = n_activos + n_inactivos
     stats = [
-        {"value": len(rows), "label": "Total",           "icon": "group",      "color": "green"},
+        {"value": total_general, "label": "Total",       "icon": "group",      "color": "green"},
         {"value": n_activos, "label": "Activos",         "icon": "person_check", "color": "green"},
         {"value": n_inactivos, "label": "Inactivos",     "icon": "person_off", "color": "orange"},
         {"value": deptos,    "label": "Departamentos",   "icon": "business",   "color": "blue"},
