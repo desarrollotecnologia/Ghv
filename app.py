@@ -1124,13 +1124,15 @@ def export_excel_response_generic(rows, columns, filename_prefix):
         cell.border = thin_border
 
     for r, row in enumerate(rows, 2):
-        for c, (key, _) in enumerate(columns, 1):
+        for c, (key, label) in enumerate(columns, 1):
             val = row.get(key, "")
             if val is None:
                 val = ""
             key_l = str(key or "").lower()
+            label_l = str(label or "").lower()
+            is_fecha_col = ("fecha" in key_l) or ("fecha" in label_l)
             # Estandarizar fechas a formato Colombia para evitar MM/DD/YYYY en Excel.
-            if "fecha" in key_l:
+            if is_fecha_col:
                 if isinstance(val, datetime):
                     val = val.strftime("%d/%m/%Y %H:%M")
                 elif isinstance(val, date):
@@ -1148,6 +1150,9 @@ def export_excel_response_generic(rows, columns, filename_prefix):
             cell.font = cell_font
             cell.alignment = cell_align
             cell.border = thin_border
+            if is_fecha_col:
+                # Forzar texto evita que Excel reinterprete según locale (MM/DD vs DD/MM).
+                cell.number_format = "@"
             if r % 2 == 0:
                 cell.fill = alt_fill
 
