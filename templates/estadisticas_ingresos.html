@@ -6,6 +6,12 @@
     <a href="{{ url_for('view_total_personal') }}">Dashboard</a> &rsaquo;
     <span>Estadísticas de ingresos</span>
 </div>
+{% if (resumen.total_ingresos|default(0)|int) == 0 %}
+<div class="alert alert-info" style="margin-bottom:16px">
+    <span class="material-symbols-outlined alert-icon">info</span>
+    Aún no hay ingresos registrados para este reporte. Para generarlos, cierre sesión e inicie sesión nuevamente.
+</div>
+{% endif %}
 
 <section class="stats-grid" style="margin-bottom:20px">
     <div class="stat-card">

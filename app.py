@@ -4897,7 +4897,7 @@ def _get_login_stats(limit_top=10, limit_recent=50):
             "SUM(CASE WHEN DATE(fecha_hora)=CURDATE() THEN 1 ELSE 0 END) AS ingresos_hoy, "
             "SUM(CASE WHEN fecha_hora >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS ingresos_7_dias "
             "FROM audit_log "
-            "WHERE accion = 'Inicio de sesión' AND modulo = 'auth'",
+            "WHERE modulo = 'auth' AND accion LIKE 'Inicio de sesi%'",
             one=True,
         ) or {}
         resumen = {
@@ -4915,7 +4915,7 @@ def _get_login_stats(limit_top=10, limit_recent=50):
             "COUNT(*) AS ingresos, MAX(a.fecha_hora) AS ultimo_ingreso "
             "FROM audit_log a "
             "LEFT JOIN usuario u ON u.id_user = a.id_user "
-            "WHERE a.accion = 'Inicio de sesión' AND a.modulo = 'auth' "
+            "WHERE a.modulo = 'auth' AND a.accion LIKE 'Inicio de sesi%' "
             "GROUP BY a.id_user, nombre "
             "ORDER BY ingresos DESC, ultimo_ingreso DESC "
             "LIMIT %s",
@@ -4938,7 +4938,7 @@ def _get_login_stats(limit_top=10, limit_recent=50):
             "COALESCE(u.rol, '') AS rol, COALESCE(u.email, '') AS email, COALESCE(a.detalle, '') AS detalle "
             "FROM audit_log a "
             "LEFT JOIN usuario u ON u.id_user = a.id_user "
-            "WHERE a.accion = 'Inicio de sesión' AND a.modulo = 'auth' "
+            "WHERE a.modulo = 'auth' AND a.accion LIKE 'Inicio de sesi%' "
             "ORDER BY a.fecha_hora DESC "
             "LIMIT %s",
             (limit_recent,),
