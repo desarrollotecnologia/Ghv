@@ -3325,11 +3325,41 @@ def retiro_personal():
         "fecha_ingreso, fecha_retiro, dias_laborados, tipo_retiro "
         "FROM retirado ORDER BY fecha_retiro DESC"
     )
-    from collections import Counter
-    tipo_counts = Counter(r.get("tipo_retiro", "") for r in rows)
-    renuncia = tipo_counts.get("RENUNCIA VOLUNTARIA", 0) + tipo_counts.get("RENUNCIA", 0)
-    terminacion = tipo_counts.get("TERMINACION DEL CONTRATO", 0) + tipo_counts.get("TERMINACION", 0)
-    pendiente = tipo_counts.get("PENDIENTE", 0)
+    import unicodedata
+
+    def _norm_tipo(valor):
+        txt = str(valor or "").strip().upper()
+        txt = unicodedata.normalize("NFKD", txt)
+        return "".join(ch for ch in txt if not unicodedata.combining(ch))
+
+    renuncia = 0
+    terminacion = 0
+    pendiente = 0
+    otros_tipos = 0
+
+    for r in rows:
+        tipo = _norm_tipo(r.get("tipo_retiro", ""))
+        if not tipo:
+            continue
+        if "PENDIENT" in tipo:
+            pendiente += 1
+        elif "RENUNC" in tipo:
+            renuncia += 1
+        elif (
+            "TERMIN" in tipo
+            or "FINALIZ" in tipo
+            or "DESPID" in tipo
+            or "VENCIM" in tipo
+            or "JUSTA CAUSA" in tipo
+            or "MUTUO ACUERDO" in tipo
+        ):
+            terminacion += 1
+        else:
+            otros_tipos += 1
+
+    # Fallback: si existen causales no clasificadas, contarlas en terminaciones
+    # para evitar KPI en cero cuando hay datos válidos con nombres distintos.
+    terminacion += otros_tipos
     columns = [
         {"key": "id_cedula",        "label": "Cédula"},
         {"key": "apellidos_nombre", "label": "Nombre"},

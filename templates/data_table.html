@@ -263,15 +263,16 @@
                     {% elif col.type|default('') == 'number' %}
                         <span class="text-number">{{ "{:,}".format(val|int) if val else '—' }}</span>
                     {% elif col.type|default('') == 'retiro' %}
-                        {% if val and 'PENDIENTE' in val|upper %}
+                        {% set retiro_txt = (val|string)|upper if val else '' %}
+                        {% if val and 'PENDIENTE' in retiro_txt %}
                         <span class="badge badge-warning">{{ val }}</span>
-                        {% elif val and 'RENUNCIA' in val|upper %}
+                        {% elif val and 'RENUNCIA' in retiro_txt %}
                         <span class="badge badge-orange">{{ val }}</span>
-                        {% elif val and 'TERMINACION' in val|upper %}
+                        {% elif val and ('TERMINACION' in retiro_txt or 'TERMINACIÓN' in retiro_txt) %}
                         <span class="badge badge-inactive">{{ val }}</span>
-                        {% elif val and 'FINALIZACION' in val|upper %}
+                        {% elif val and ('FINALIZACION' in retiro_txt or 'FINALIZACIÓN' in retiro_txt) %}
                         <span class="badge badge-info">{{ val }}</span>
-                        {% elif val and 'FALLECIMIENTO' in val|upper %}
+                        {% elif val and 'FALLECIMIENTO' in retiro_txt %}
                         <span class="badge badge-dark">{{ val }}</span>
                         {% else %}
                         {{ val or '—' }}
