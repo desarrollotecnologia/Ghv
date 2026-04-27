@@ -1128,11 +1128,22 @@ def export_excel_response_generic(rows, columns, filename_prefix):
             val = row.get(key, "")
             if val is None:
                 val = ""
+            key_l = str(key or "").lower()
             # Estandarizar fechas a formato Colombia para evitar MM/DD/YYYY en Excel.
-            if isinstance(val, datetime):
-                val = val.strftime("%d/%m/%Y %H:%M")
-            elif isinstance(val, date):
-                val = val.strftime("%d/%m/%Y")
+            if "fecha" in key_l:
+                if isinstance(val, datetime):
+                    val = val.strftime("%d/%m/%Y %H:%M")
+                elif isinstance(val, date):
+                    val = val.strftime("%d/%m/%Y")
+                else:
+                    parsed = parse_fecha(val)
+                    if parsed:
+                        val = parsed.strftime("%d/%m/%Y")
+            else:
+                if isinstance(val, datetime):
+                    val = val.strftime("%d/%m/%Y %H:%M")
+                elif isinstance(val, date):
+                    val = val.strftime("%d/%m/%Y")
             cell = ws.cell(row=r, column=c, value=val)
             cell.font = cell_font
             cell.alignment = cell_align
