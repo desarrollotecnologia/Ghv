@@ -169,6 +169,23 @@ def _find_employee_account(user):
         return None
 
 
+_SWITCH_ACCOUNT_ALLOWED_ROLES = {"ADMIN", "COORD. GH", "JEFE INMEDIATO"}
+_SWITCH_ACCOUNT_ALLOWED_EMAILS = {
+    "coordinacion.gestionhumana@colbeef.com",  # Cindy
+    "gestor.contratacion@colbeef.com",         # Magali
+}
+
+
+def _can_use_account_switch(user):
+    """Habilita cambiar de cuenta solo para jefaturas autorizadas."""
+    if not user:
+        return False
+    rol_key = _rol_match(user.get("rol") or "")
+    if rol_key in _SWITCH_ACCOUNT_ALLOWED_ROLES:
+        return True
+    return _normalize_email(user.get("email")) in _SWITCH_ACCOUNT_ALLOWED_EMAILS
+
+
 def _is_api_request():
     """True si la petición espera JSON (rutas /api/ o Accept: application/json)."""
     return request.path.startswith("/api/") or "application/json" in request.accept_mimetypes
@@ -504,9 +521,11 @@ def inject_user():
         show_permisos_menu = vm.get("permisos") is True or (
             "GESTOR" in rol.upper() and "CONTRAT" in rol.upper()
         )
-        if not switched_account and (rol or "").strip().upper() != "EMPLEADO":
-            emp_user = _find_employee_account(user)
-            can_switch_to_employee = bool(emp_user and emp_user.get("id_user") != user.get("id_user"))
+        # Mostrar el botón de cambio de cuenta de forma consistente para
+        # usuarios no-EMPLEADO con cédula vinculada. Si no existe cuenta
+        # EMPLEADO, la ruta informa el motivo con un flash.
+        if not switched_account and (rol or "").strip().upper() != "EMPLEADO" and _can_use_account_switch(user):
+            can_switch_to_employee = bool((user.get("id_cedula") or "").strip())
     return dict(
         current_user=user,
         can_write=can_write,
@@ -597,6 +616,9 @@ def cambiar_a_modo_empleado():
     if (user.get("rol") or "").strip().upper() == "EMPLEADO":
         flash("Ya estás en una cuenta de empleado.", "info")
         return redirect(url_for("empleado_portal"))
+    if not _can_use_account_switch(user):
+        flash("Esta opción solo está habilitada para Coordinación GH, Magali y jefes inmediatos.", "error")
+        return redirect(url_for("home"))
     emp_user = _find_employee_account(user)
     if not emp_user:
         flash("No se encontró cuenta EMPLEADO vinculada a tu cédula. Pide al administrador que la cree/vincule.", "warning")
