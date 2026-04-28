@@ -78,13 +78,16 @@
                             <span class="material-symbols-outlined">photo_camera</span>
                             Cambiar foto
                         </button>
-                        {% if can_switch_to_employee %}
-                        <form method="post" action="{{ url_for('cambiar_a_modo_empleado') }}" style="margin:0">
+                        {% if can_switch_to_employee and switchable_accounts %}
+                        {% for acc in switchable_accounts %}
+                        <form method="post" action="{{ url_for('cambiar_cuenta') }}" style="margin:0">
+                            <input type="hidden" name="target_user_id" value="{{ acc.id_user }}">
                             <button type="submit" class="profile-dropdown-btn" style="width:100%">
                                 <span class="material-symbols-outlined">switch_account</span>
-                                Cambiar a modo empleado
+                                Cambiar a {{ acc.rol }} · {{ acc.nombre }}
                             </button>
                         </form>
+                        {% endfor %}
                         {% endif %}
                         {% if can_switch_back %}
                         <form method="post" action="{{ url_for('volver_cuenta_principal') }}" style="margin:0">

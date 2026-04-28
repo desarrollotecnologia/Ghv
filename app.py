@@ -188,6 +188,25 @@ def _can_use_account_switch(user):
     return _normalize_email(user.get("email")) in _SWITCH_ACCOUNT_ALLOWED_EMAILS
 
 
+def _linked_accounts_for_user(user):
+    """Lista cuentas activas vinculadas por cédula (para switch estilo GitHub)."""
+    if not user:
+        return []
+    id_cedula = str(user.get("id_cedula") or "").strip()
+    if not id_cedula:
+        return []
+    try:
+        rows = query(
+            "SELECT id_user, nombre, email, rol, id_cedula FROM usuario "
+            "WHERE TRIM(COALESCE(id_cedula, '')) = %s AND estado = 1 "
+            "ORDER BY CASE WHEN UPPER(rol)='EMPLEADO' THEN 1 ELSE 0 END, id_user",
+            (id_cedula,),
+        ) or []
+    except Exception:
+        return []
+    return rows
+
+
 def _is_api_request():
     """True si la petición espera JSON (rutas /api/ o Accept: application/json)."""
     return request.path.startswith("/api/") or "application/json" in request.accept_mimetypes
@@ -503,6 +522,7 @@ def inject_user():
     switched_account = bool(session.get("switch_back_user_id"))
     can_switch_back = switched_account
     can_switch_to_employee = False
+    switchable_accounts = []
     if user:
         rol = user.get("rol") or ""
         perm = get_role_permission(rol)
@@ -526,8 +546,10 @@ def inject_user():
         # Mostrar el botón de cambio de cuenta de forma consistente para
         # usuarios no-EMPLEADO con cédula vinculada. Si no existe cuenta
         # EMPLEADO, la ruta informa el motivo con un flash.
-        if not switched_account and (rol or "").strip().upper() != "EMPLEADO":
-            can_switch_to_employee = _can_use_account_switch(user)
+        if _can_use_account_switch(user):
+            linked = _linked_accounts_for_user(user)
+            switchable_accounts = [a for a in linked if (a.get("id_user") or "") != (user.get("id_user") or "")]
+            can_switch_to_employee = bool(switchable_accounts)
     return dict(
         current_user=user,
         can_write=can_write,
@@ -537,6 +559,7 @@ def inject_user():
         switched_account=switched_account,
         can_switch_back=can_switch_back,
         can_switch_to_employee=can_switch_to_employee,
+        switchable_accounts=switchable_accounts,
     )
 
 
@@ -640,6 +663,47 @@ def cambiar_a_modo_empleado():
     )
     flash("Ahora estás en modo empleado. Tus solicitudes irán a tu jefe inmediato.", "success")
     return redirect(url_for("empleado_portal"))
+
+
+@app.route("/cuenta/cambiar", methods=["POST"])
+@login_required
+def cambiar_cuenta():
+    """Cambio de cuenta vinculado por cédula (estilo GitHub)."""
+    user = get_current_user()
+    if not user:
+        flash("No hay sesión activa.", "error")
+        return redirect(url_for("login"))
+    if not _can_use_account_switch(user):
+        flash("Esta opción solo está habilitada para Coordinación GH, Magali y jefes inmediatos.", "error")
+        return redirect(url_for("home"))
+    target_id = (request.form.get("target_user_id") or "").strip()
+    if not target_id:
+        flash("Selecciona una cuenta válida para cambiar.", "error")
+        return redirect(url_for("home"))
+    linked = _linked_accounts_for_user(user)
+    allowed_ids = {str(r.get("id_user") or "").strip() for r in linked}
+    if target_id not in allowed_ids:
+        flash("La cuenta seleccionada no está vinculada a tu perfil.", "error")
+        return redirect(url_for("home"))
+    if target_id == (user.get("id_user") or ""):
+        flash("Ya estás usando esa cuenta.", "info")
+        return redirect(url_for("home"))
+
+    # Guarda origen solo la primera vez.
+    if not session.get("switch_back_user_id"):
+        session["switch_back_user_id"] = user.get("id_user")
+    session["user_id"] = target_id
+
+    target = next((r for r in linked if (r.get("id_user") or "") == target_id), None)
+    registrar_audit(
+        "Cambio de cuenta",
+        "auth",
+        f"from={user.get('id_user','')} to={target_id}",
+    )
+    flash(f"Ahora estás usando la cuenta: {(target or {}).get('nombre', target_id)}.", "success")
+    if ((target or {}).get("rol") or "").strip().upper() == "EMPLEADO":
+        return redirect(url_for("empleado_portal"))
+    return redirect(url_for("home"))
 
 
 @app.route("/cuenta/volver-principal", methods=["POST"])
