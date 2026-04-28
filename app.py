@@ -188,6 +188,11 @@ def _can_use_account_switch(user):
     return _normalize_email(user.get("email")) in _SWITCH_ACCOUNT_ALLOWED_EMAILS
 
 
+def _can_employee_vacation_mode(user):
+    """Modo empleado (permisos + vacaciones) para jefes administrativos y admins."""
+    return _can_use_account_switch(user)
+
+
 def _linked_accounts_for_user(user):
     """Lista cuentas activas vinculadas por cédula (para switch estilo GitHub)."""
     if not user:
@@ -523,6 +528,8 @@ def inject_user():
     can_switch_back = switched_account
     can_switch_to_employee = False
     switchable_accounts = []
+    employee_vac_mode = bool(session.get("employee_mode") or session.get("employee_vac_mode"))
+    can_enter_employee_vac_mode = False
     if user:
         rol = user.get("rol") or ""
         perm = get_role_permission(rol)
@@ -550,6 +557,12 @@ def inject_user():
             linked = _linked_accounts_for_user(user)
             switchable_accounts = [a for a in linked if (a.get("id_user") or "") != (user.get("id_user") or "")]
             can_switch_to_employee = bool(switchable_accounts)
+        can_enter_employee_vac_mode = _can_employee_vacation_mode(user)
+        if employee_vac_mode and can_enter_employee_vac_mode:
+            for k in list(vm.keys()):
+                vm[k] = False
+            vm["permisos"] = True
+            show_permisos_menu = True
     return dict(
         current_user=user,
         can_write=can_write,
@@ -560,6 +573,8 @@ def inject_user():
         can_switch_back=can_switch_back,
         can_switch_to_employee=can_switch_to_employee,
         switchable_accounts=switchable_accounts,
+        employee_vac_mode=employee_vac_mode,
+        can_enter_employee_vac_mode=can_enter_employee_vac_mode,
     )
 
 
@@ -703,6 +718,33 @@ def cambiar_cuenta():
     flash(f"Ahora estás usando la cuenta: {(target or {}).get('nombre', target_id)}.", "success")
     if ((target or {}).get("rol") or "").strip().upper() == "EMPLEADO":
         return redirect(url_for("empleado_portal"))
+    return redirect(url_for("home"))
+
+
+@app.route("/empleado/vacaciones-modo", methods=["POST"])
+@login_required
+@module_required("permisos")
+def activar_modo_empleado_vacaciones():
+    """Activa modo empleado simplificado (solicitar permisos y vacaciones)."""
+    user = get_current_user()
+    if not _can_employee_vacation_mode(user):
+        flash("Esta opción solo está habilitada para jefes administrativos y administradores.", "error")
+        return redirect(url_for("home"))
+    if not str((user or {}).get("id_cedula") or "").strip():
+        flash("Tu cuenta no tiene cédula vinculada.", "warning")
+        return redirect(url_for("home"))
+    session["employee_mode"] = True
+    session.pop("employee_vac_mode", None)  # compatibilidad con bandera anterior
+    flash("Modo empleado activado: solicita permisos y vacaciones a tu jefe inmediato.", "info")
+    return redirect(url_for("permiso_solicitar"))
+
+
+@app.route("/empleado/vacaciones-modo/salir", methods=["POST"])
+@login_required
+def desactivar_modo_empleado_vacaciones():
+    session.pop("employee_mode", None)
+    session.pop("employee_vac_mode", None)
+    flash("Modo empleado desactivado.", "info")
     return redirect(url_for("home"))
 
 
@@ -1761,8 +1803,11 @@ _ROLES_SOLICITAR_PARA_SI = (
 def permiso_solicitar():
     """Formulario GH-FR-007: permiso o licencia (área, remunerado/no, hora inicio/fin)."""
     user = get_current_user()
+    modo_empleado = bool(session.get("employee_mode") or session.get("employee_vac_mode")) and _can_employee_vacation_mode(user)
+    if session.get("employee_mode") and not modo_empleado:
+        session.pop("employee_mode", None)
     rol = (user.get("rol") or "").strip().upper()
-    is_empleado = rol == "EMPLEADO"
+    is_empleado = rol == "EMPLEADO" or modo_empleado
     # Cualquier usuario con id_cedula (todos los roles) usa flujo "para sí" con campos bloqueados y validación en servidor
     id_cedula_empleado = (user.get("id_cedula") or "").strip() or None
 
@@ -1916,7 +1961,11 @@ def vacaciones_solicitar():
     """Formulario Solicitud de vacaciones (Gestión Humana - Colbeef)."""
     user = get_current_user()
     rol = (user.get("rol") or "").strip().upper()
-    is_empleado = rol == "EMPLEADO"
+    modo_empleado_vac = bool(session.get("employee_mode") or session.get("employee_vac_mode")) and _can_employee_vacation_mode(user)
+    if (session.get("employee_mode") or session.get("employee_vac_mode")) and not modo_empleado_vac:
+        session.pop("employee_mode", None)
+        session.pop("employee_vac_mode", None)
+    is_empleado = rol == "EMPLEADO" or modo_empleado_vac
     # Cualquier usuario con id_cedula (todos los roles) usa flujo "para sí" con validación en servidor
     id_cedula_empleado = (user.get("id_cedula") or "").strip() or None
 

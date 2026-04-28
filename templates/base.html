@@ -78,22 +78,19 @@
                             <span class="material-symbols-outlined">photo_camera</span>
                             Cambiar foto
                         </button>
-                        {% if can_switch_to_employee and switchable_accounts %}
-                        {% for acc in switchable_accounts %}
-                        <form method="post" action="{{ url_for('cambiar_cuenta') }}" style="margin:0">
-                            <input type="hidden" name="target_user_id" value="{{ acc.id_user }}">
+                        {% if can_enter_employee_vac_mode and not employee_vac_mode %}
+                        <form method="post" action="{{ url_for('activar_modo_empleado_vacaciones') }}" style="margin:0">
                             <button type="submit" class="profile-dropdown-btn" style="width:100%">
-                                <span class="material-symbols-outlined">switch_account</span>
-                                Cambiar a {{ acc.rol }} · {{ acc.nombre }}
+                                <span class="material-symbols-outlined">person</span>
+                                Modo empleado (permisos y vacaciones)
                             </button>
                         </form>
-                        {% endfor %}
                         {% endif %}
-                        {% if can_switch_back %}
-                        <form method="post" action="{{ url_for('volver_cuenta_principal') }}" style="margin:0">
+                        {% if can_enter_employee_vac_mode and employee_vac_mode %}
+                        <form method="post" action="{{ url_for('desactivar_modo_empleado_vacaciones') }}" style="margin:0">
                             <button type="submit" class="profile-dropdown-btn" style="width:100%">
                                 <span class="material-symbols-outlined">undo</span>
-                                Volver a cuenta principal
+                                Salir de modo empleado
                             </button>
                         </form>
                         {% endif %}
@@ -219,6 +216,7 @@
                 <span class="material-symbols-outlined">beach_access</span>
                 <span class="nav-label">Solicitud de vacaciones</span>
             </a>
+            {% if not employee_vac_mode %}
             <a href="{{ url_for('vacaciones_index') }}" class="nav-item {{ 'active' if active_page == 'Listado vacaciones' }}">
                 <span class="material-symbols-outlined">list</span>
                 <span class="nav-label">Listado vacaciones</span>
@@ -227,6 +225,7 @@
                 <span class="material-symbols-outlined">event_note</span>
                 <span class="nav-label">Mis vacaciones</span>
             </a>
+            {% endif %}
         </div>
         {% endif %}
 
