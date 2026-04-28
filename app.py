@@ -524,8 +524,8 @@ def inject_user():
         # Mostrar el botón de cambio de cuenta de forma consistente para
         # usuarios no-EMPLEADO con cédula vinculada. Si no existe cuenta
         # EMPLEADO, la ruta informa el motivo con un flash.
-        if not switched_account and (rol or "").strip().upper() != "EMPLEADO" and _can_use_account_switch(user):
-            can_switch_to_employee = bool((user.get("id_cedula") or "").strip())
+        if not switched_account and (rol or "").strip().upper() != "EMPLEADO":
+            can_switch_to_employee = _can_use_account_switch(user)
     return dict(
         current_user=user,
         can_write=can_write,
@@ -618,6 +618,9 @@ def cambiar_a_modo_empleado():
         return redirect(url_for("empleado_portal"))
     if not _can_use_account_switch(user):
         flash("Esta opción solo está habilitada para Coordinación GH, Magali y jefes inmediatos.", "error")
+        return redirect(url_for("home"))
+    if not str(user.get("id_cedula") or "").strip():
+        flash("Tu cuenta principal no tiene cédula vinculada. Pide al administrador vincular id_cedula.", "warning")
         return redirect(url_for("home"))
     emp_user = _find_employee_account(user)
     if not emp_user:
