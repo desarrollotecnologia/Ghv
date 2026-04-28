@@ -32,13 +32,21 @@
                 <span class="material-symbols-outlined" style="font-size:20px">home</span>
                 Inicio
             </a>
-            <a href="{{ url_for('permiso_solicitar') }}">
+            <a href="{{ url_for('permiso_solicitar') }}" class="{{ 'active' if active_page == 'Solicitud de permiso' else '' }}">
                 <span class="material-symbols-outlined" style="font-size:20px">edit_document</span>
                 Solicitud de permiso
+            </a>
+            <a href="{{ url_for('vacaciones_solicitar') }}" class="{{ 'active' if active_page == 'Solicitud de vacaciones' else '' }}">
+                <span class="material-symbols-outlined" style="font-size:20px">beach_access</span>
+                Solicitud de vacaciones
             </a>
             <a href="{{ url_for('empleado_mis_solicitudes') }}" class="{{ 'active' if active_page == 'Mis solicitudes' else '' }}">
                 <span class="material-symbols-outlined" style="font-size:20px">list</span>
                 Mis solicitudes
+            </a>
+            <a href="{{ url_for('vacaciones_mis_solicitudes') }}" class="{{ 'active' if active_page == 'Mis solicitudes de vacaciones' else '' }}">
+                <span class="material-symbols-outlined" style="font-size:20px">event_note</span>
+                Mis vacaciones
             </a>
             <a href="{{ url_for('empleado_cambiar_password') }}" class="{{ 'active' if active_page == 'Cambiar contraseña' else '' }}">
                 <span class="material-symbols-outlined" style="font-size:20px">lock</span>

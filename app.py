@@ -193,6 +193,14 @@ def _can_employee_vacation_mode(user):
     return _can_use_account_switch(user)
 
 
+def _is_employee_mode(user=None):
+    """True cuando está activo el modo empleado temporal."""
+    user = user or get_current_user()
+    if not user:
+        return False
+    return bool(session.get("employee_mode") or session.get("employee_vac_mode")) and _can_employee_vacation_mode(user)
+
+
 def _linked_accounts_for_user(user):
     """Lista cuentas activas vinculadas por cédula (para switch estilo GitHub)."""
     if not user:
@@ -1713,6 +1721,8 @@ def permisos_index():
     """Listado de solicitudes de permiso. ADMIN y COORD. GH ven todas; otros roles
     (jefes/encargados) ven solo las de los empleados asignados a ellos.
     """
+    if _is_employee_mode():
+        return redirect(url_for("permiso_solicitar"))
     if not _puede_ver_listado_solicitudes():
         flash("No tiene solicitudes asignadas para revisar.", "info")
         return redirect(url_for("home"))
@@ -2062,6 +2072,8 @@ def vacaciones_index():
     """Listado de solicitudes de vacaciones.
     ADMIN y COORD. GH ven TODAS. Otros roles (encargados) ven solo las de sus empleados asignados.
     """
+    if _is_employee_mode():
+        return redirect(url_for("vacaciones_solicitar"))
     if not _puede_ver_listado_solicitudes():
         return redirect(url_for("vacaciones_solicitar"))
     sql = (
@@ -2099,6 +2111,9 @@ def vacaciones_index():
 @login_required
 @module_required("permisos")
 def vacaciones_aprobar(id):
+    if _is_employee_mode():
+        flash("En modo empleado no se pueden aprobar solicitudes.", "error")
+        return redirect(url_for("vacaciones_solicitar"))
     observaciones = (request.form.get("observaciones") or "").strip()
     solicitud = query("SELECT * FROM solicitud_vacaciones WHERE id = %s", (id,), one=True)
     if not solicitud:
@@ -2148,6 +2163,9 @@ def vacaciones_aprobar(id):
 @login_required
 @module_required("permisos")
 def vacaciones_rechazar(id):
+    if _is_employee_mode():
+        flash("En modo empleado no se pueden rechazar solicitudes.", "error")
+        return redirect(url_for("vacaciones_solicitar"))
     observaciones = (request.form.get("observaciones") or "").strip()
     solicitud = query("SELECT * FROM solicitud_vacaciones WHERE id = %s", (id,), one=True)
     if not solicitud:
@@ -2221,6 +2239,11 @@ def vacaciones_mis_solicitudes():
 @login_required
 @module_required("permisos")
 def permiso_aprobar(id):
+    if _is_employee_mode():
+        flash("En modo empleado no se pueden aprobar solicitudes.", "error")
+        if _is_api_request() or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify(ok=False, error="Modo empleado sin permisos de aprobación."), 403
+        return redirect(url_for("permiso_solicitar"))
     observaciones = (request.form.get("observaciones") or "").strip()
     solicitud = query("SELECT * FROM solicitud_permiso WHERE id = %s", (id,), one=True)
     if solicitud and not _puede_resolver_solicitud(solicitud):
@@ -2352,6 +2375,11 @@ def permiso_aprobar(id):
 @login_required
 @module_required("permisos")
 def permiso_rechazar(id):
+    if _is_employee_mode():
+        flash("En modo empleado no se pueden rechazar solicitudes.", "error")
+        if _is_api_request() or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify(ok=False, error="Modo empleado sin permisos de aprobación."), 403
+        return redirect(url_for("permiso_solicitar"))
     observaciones = (request.form.get("observaciones") or "").strip()
     solicitud = query("SELECT * FROM solicitud_permiso WHERE id = %s", (id,), one=True)
     if solicitud and not _puede_resolver_solicitud(solicitud):
