@@ -155,16 +155,18 @@ def _find_employee_account(user):
     """Devuelve el usuario EMPLEADO vinculado por id_cedula (si existe)."""
     if not user:
         return None
-    id_cedula = (user.get("id_cedula") or "").strip()
+    id_cedula = str(user.get("id_cedula") or "").strip()
     if not id_cedula:
         return None
     try:
-        return query(
-            "SELECT * FROM usuario WHERE id_cedula = %s AND UPPER(rol) = 'EMPLEADO' AND estado = 1 "
-            "ORDER BY id_user LIMIT 1",
+        rows = query(
+            "SELECT * FROM usuario WHERE TRIM(COALESCE(id_cedula, '')) = %s AND estado = 1 ORDER BY id_user",
             (id_cedula,),
-            one=True,
-        )
+        ) or []
+        for r in rows:
+            if _normalize_rol(r.get("rol")) == "EMPLEADO":
+                return r
+        return None
     except Exception:
         return None
 
