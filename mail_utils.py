@@ -269,6 +269,41 @@ def _strip_html(html):
     return t
 
 
+def _parse_emails(value):
+    """Normaliza string/list de correos y devuelve lista única."""
+    if not value:
+        return []
+    raw = [value] if isinstance(value, str) else list(value)
+    out = []
+    seen = set()
+    for item in raw:
+        for part in str(item).split(","):
+            e = part.strip().lower()
+            if not e or e in seen:
+                continue
+            seen.add(e)
+            out.append(e)
+    return out
+
+
+def _gh_recipients(app):
+    """Destinatarios GH:
+    - MAIL_GH_PERMISOS: coordinación (aprueba/rechaza)
+    - MAIL_GH_INFORMADA: control/nomina (informativo)
+    Permite configurar varios correos separados por coma en cada variable.
+    """
+    gh = _parse_emails(app.config.get("MAIL_GH_PERMISOS"))
+    informada = _parse_emails(app.config.get("MAIL_GH_INFORMADA"))
+    control = []
+    seen = set()
+    for email in gh + informada:
+        if email in seen:
+            continue
+        seen.add(email)
+        control.append(email)
+    return gh, informada, control
+
+
 def notificar_nueva_solicitud_permiso(app, solicitud, empleado_nombre, empleado_email, evidencia_path=None):
     """
     Notifica por separado:
@@ -288,7 +323,7 @@ def notificar_nueva_solicitud_permiso(app, solicitud, empleado_nombre, empleado_
     nota_evidencia = "<p><strong>Se adjunta la evidencia</strong> enviada por el empleado (permiso no remunerado).</p>" if attachments else ""
 
     # Correo a Coordinación GH (quien aprueba/rechaza)
-    gh = (app.config.get("MAIL_GH_PERMISOS") or "").strip()
+    gh, informada, _control = _gh_recipients(app)
     if gh:
         subject_gh = f"Solicitud de permiso – {solicitud.get('fecha_desde', '')} – {empleado_nombre}"
         body_gh_content = f"""
@@ -306,8 +341,8 @@ def notificar_nueva_solicitud_permiso(app, solicitud, empleado_nombre, empleado_
             ok = True
 
     # Correo a GH Informada (solo informativa; coordinación es quien aprueba/rechaza)
-    informada = (app.config.get("MAIL_GH_INFORMADA") or "").strip()
-    if informada:
+    informada_only = [e for e in informada if e not in set(gh)]
+    if informada_only:
         subject_inf = f"Solicitud de permiso (informativo) – {solicitud.get('fecha_desde', '')} – {empleado_nombre}"
         body_inf_content = f"""
         <p>Estimado/a Gestión Humana,</p>
@@ -320,11 +355,11 @@ def notificar_nueva_solicitud_permiso(app, solicitud, empleado_nombre, empleado_
         """
         body_inf = _wrap_html(body_inf_content, title=subject_inf, subtitle="Nueva solicitud de permiso (informativo)")
         plain_inf = _strip_html(body_inf_content)
-        if send_mail(informada, subject_inf, body_inf, body_text=plain_inf, app=app, attachments=attachments):
+        if send_mail(informada_only, subject_inf, body_inf, body_text=plain_inf, app=app, attachments=attachments):
             ok = True
 
     if app and hasattr(app, "logger"):
-        app.logger.info(f"[Permisos] Notificación nueva solicitud: GH={bool(gh)}, Informada={bool(informada)}, enviados_ok={ok}")
+        app.logger.info(f"[Permisos] Notificación nueva solicitud: GH={len(gh)}, Informada={len(informada_only)}, enviados_ok={ok}")
     return ok
 
 
@@ -566,14 +601,17 @@ def notificar_resolucion_vacaciones(app, solicitud, empleado_nombre, empleado_em
 
 
 def notificar_nueva_solicitud_vacaciones(app, solicitud, empleado_nombre):
-    """Avisa a Coordinación GH que llegó una nueva solicitud de vacaciones.
-    Opcional: se dispara desde la ruta de solicitar si se desea. No falla si no hay config."""
-    gh = (app.config.get("MAIL_GH_PERMISOS") or "").strip()
-    if not gh:
+    """Avisa a GH cuando llega una solicitud de vacaciones.
+    - MAIL_GH_PERMISOS (coordinación): acción requerida.
+    - MAIL_GH_INFORMADA (control/nomina): solo informativo.
+    """
+    gh, informada, _control = _gh_recipients(app)
+    if not gh and not informada:
         return False
+    ok = False
     subject = f"Nueva solicitud de vacaciones – {empleado_nombre}"
     tabla = _tabla_detalle_vacaciones(solicitud, empleado_nombre=empleado_nombre, incluir_empleado=True)
-    body_content = f"""
+    body_gh_content = f"""
     <p>Estimada Coordinación Gestión Humana,</p>
     <p>Se ha registrado una <strong>nueva solicitud de vacaciones</strong> en el sistema. Por favor revise y resuelva (aprobar o rechazar).</p>
     {tabla}
@@ -581,9 +619,27 @@ def notificar_nueva_solicitud_vacaciones(app, solicitud, empleado_nombre):
     <p>Ingrese al sistema para resolver esta solicitud.</p>
     <p>Saludos cordiales,<br/><strong>Sistema de Gestión Humana – Colbeef</strong></p>
     """
-    body = _wrap_html(body_content, title=subject, subtitle="Nueva solicitud de vacaciones")
-    plain = _strip_html(body_content)
-    return send_mail(gh, subject, body, body_text=plain, app=app)
+    body_gh = _wrap_html(body_gh_content, title=subject, subtitle="Nueva solicitud de vacaciones")
+    plain_gh = _strip_html(body_gh_content)
+    if gh and send_mail(gh, subject, body_gh, body_text=plain_gh, app=app):
+        ok = True
+
+    informada_only = [e for e in informada if e not in set(gh)]
+    if informada_only:
+        subject_inf = f"Nueva solicitud de vacaciones (informativo) – {empleado_nombre}"
+        body_inf_content = f"""
+    <p>Estimada Gestión Humana,</p>
+    <p>Se ha registrado una <strong>nueva solicitud de vacaciones</strong> en el sistema. A continuación el detalle:</p>
+    {tabla}
+    <div class="mail-divider"></div>
+    <p><strong>Este correo es solo informativo.</strong> Coordinación Gestión Humana es quien resuelve esta solicitud.</p>
+    <p>Saludos cordiales,<br/><strong>Sistema de Gestión Humana – Colbeef</strong></p>
+    """
+        body_inf = _wrap_html(body_inf_content, title=subject_inf, subtitle="Nueva solicitud de vacaciones (informativo)")
+        plain_inf = _strip_html(body_inf_content)
+        if send_mail(informada_only, subject_inf, body_inf, body_text=plain_inf, app=app):
+            ok = True
+    return ok
 
 
 def notificar_gh_resolucion_por_jefe(app, solicitud, empleado_nombre, tipo, aprobado, jefe_nombre, observaciones=None):
@@ -591,10 +647,10 @@ def notificar_gh_resolucion_por_jefe(app, solicitud, empleado_nombre, tipo, apro
     se envía un correo INFORMATIVO a Coordinación GH para que quede enterada.
 
     tipo: "permiso" o "vacaciones".
-    Se envía a MAIL_GH_INFORMADA si está configurado; si no, a MAIL_GH_PERMISOS.
+    Se envía a los correos de control GH: MAIL_GH_INFORMADA + MAIL_GH_PERMISOS.
     """
-    destino = (app.config.get("MAIL_GH_INFORMADA") or app.config.get("MAIL_GH_PERMISOS") or "").strip()
-    if not destino:
+    _gh, _informada, control = _gh_recipients(app)
+    if not control:
         return False
     tipo_norm = (tipo or "").strip().lower()
     estado_label = "Aprobada" if aprobado else "Rechazada"
@@ -625,7 +681,7 @@ def notificar_gh_resolucion_por_jefe(app, solicitud, empleado_nombre, tipo, apro
     """
     body = _wrap_html(body_content, title=subject, subtitle=subtitle)
     plain = _strip_html(body_content)
-    return send_mail(destino, subject, body, body_text=plain, app=app)
+    return send_mail(control, subject, body, body_text=plain, app=app)
 
 
 def notificar_encargado_nueva_solicitud(app, solicitud, empleado_nombre, encargado_email, encargado_nombre, tipo="permiso", evidencia_path=None):

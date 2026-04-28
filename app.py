@@ -151,6 +151,24 @@ def get_current_user():
     return g._user
 
 
+def _find_employee_account(user):
+    """Devuelve el usuario EMPLEADO vinculado por id_cedula (si existe)."""
+    if not user:
+        return None
+    id_cedula = (user.get("id_cedula") or "").strip()
+    if not id_cedula:
+        return None
+    try:
+        return query(
+            "SELECT * FROM usuario WHERE id_cedula = %s AND UPPER(rol) = 'EMPLEADO' AND estado = 1 "
+            "ORDER BY id_user LIMIT 1",
+            (id_cedula,),
+            one=True,
+        )
+    except Exception:
+        return None
+
+
 def _is_api_request():
     """True si la petición espera JSON (rutas /api/ o Accept: application/json)."""
     return request.path.startswith("/api/") or "application/json" in request.accept_mimetypes
@@ -463,6 +481,9 @@ def inject_user():
     can_admin = False
     vm = dict(_DEFAULT_MODULES)
     show_permisos_menu = False
+    switched_account = bool(session.get("switch_back_user_id"))
+    can_switch_back = switched_account
+    can_switch_to_employee = False
     if user:
         rol = user.get("rol") or ""
         perm = get_role_permission(rol)
@@ -483,12 +504,18 @@ def inject_user():
         show_permisos_menu = vm.get("permisos") is True or (
             "GESTOR" in rol.upper() and "CONTRAT" in rol.upper()
         )
+        if not switched_account and (rol or "").strip().upper() != "EMPLEADO":
+            emp_user = _find_employee_account(user)
+            can_switch_to_employee = bool(emp_user and emp_user.get("id_user") != user.get("id_user"))
     return dict(
         current_user=user,
         can_write=can_write,
         can_admin=can_admin,
         vm=vm,
         show_permisos_menu=show_permisos_menu,
+        switched_account=switched_account,
+        can_switch_back=can_switch_back,
+        can_switch_to_employee=can_switch_to_employee,
     )
 
 
@@ -554,6 +581,63 @@ def logout():
     session.clear()
     flash("Sesión cerrada", "info")
     return redirect(url_for("login"))
+
+
+@app.route("/cuenta/cambiar-a-empleado", methods=["POST"])
+@login_required
+def cambiar_a_modo_empleado():
+    """Permite cambiar temporalmente a la cuenta EMPLEADO vinculada por cédula."""
+    user = get_current_user()
+    if not user:
+        flash("No hay sesión activa.", "error")
+        return redirect(url_for("login"))
+    if session.get("switch_back_user_id"):
+        flash("Ya estás usando modo empleado.", "info")
+        return redirect(url_for("empleado_portal"))
+    if (user.get("rol") or "").strip().upper() == "EMPLEADO":
+        flash("Ya estás en una cuenta de empleado.", "info")
+        return redirect(url_for("empleado_portal"))
+    emp_user = _find_employee_account(user)
+    if not emp_user:
+        flash("No se encontró cuenta EMPLEADO vinculada a tu cédula. Pide al administrador que la cree/vincule.", "warning")
+        return redirect(url_for("home"))
+    if emp_user.get("id_user") == user.get("id_user"):
+        flash("Ya estás en tu cuenta de empleado.", "info")
+        return redirect(url_for("empleado_portal"))
+    session["switch_back_user_id"] = user.get("id_user")
+    session["user_id"] = emp_user.get("id_user")
+    registrar_audit(
+        "Cambio de cuenta a modo empleado",
+        "auth",
+        f"from={user.get('id_user','')} to={emp_user.get('id_user','')}",
+    )
+    flash("Ahora estás en modo empleado. Tus solicitudes irán a tu jefe inmediato.", "success")
+    return redirect(url_for("empleado_portal"))
+
+
+@app.route("/cuenta/volver-principal", methods=["POST"])
+@login_required
+def volver_cuenta_principal():
+    """Regresa a la cuenta original luego de usar modo empleado."""
+    back_id = session.get("switch_back_user_id")
+    if not back_id:
+        flash("No hay una cuenta principal para restaurar.", "info")
+        return redirect(url_for("home"))
+    back_user = query("SELECT * FROM usuario WHERE id_user = %s AND estado = 1", (back_id,), one=True)
+    if not back_user:
+        session.pop("switch_back_user_id", None)
+        flash("La cuenta principal ya no está disponible.", "error")
+        return redirect(url_for("home"))
+    current = get_current_user() or {}
+    session["user_id"] = back_user.get("id_user")
+    session.pop("switch_back_user_id", None)
+    registrar_audit(
+        "Volver a cuenta principal",
+        "auth",
+        f"from={current.get('id_user','')} to={back_user.get('id_user','')}",
+    )
+    flash("Volviste a tu cuenta principal.", "success")
+    return redirect(url_for("home"))
 
 
 @app.route("/locker")

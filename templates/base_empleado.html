@@ -47,6 +47,13 @@
         </nav>
         <div class="emp-user">
             <span class="nombre">{{ current_user.nombre if current_user else '' }}</span>
+            {% if can_switch_back %}
+            <form method="post" action="{{ url_for('volver_cuenta_principal') }}" style="display:inline; margin:0;">
+                <button type="submit" title="Volver a cuenta principal" style="padding:6px 10px; border-radius:8px; border:1px solid #d1d5db; background:#fff; color:#374151; cursor:pointer;">
+                    <span class="material-symbols-outlined" style="font-size:20px; vertical-align:middle;">undo</span>
+                </button>
+            </form>
+            {% endif %}
             <a href="{{ url_for('logout') }}" style="padding:6px 10px; border-radius:8px; color:#6b7280; text-decoration:none;" title="Cerrar sesion">
                 <span class="material-symbols-outlined" style="font-size:22px">logout</span>
             </a>
