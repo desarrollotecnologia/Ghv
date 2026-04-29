@@ -6,6 +6,13 @@
     <span class="material-symbols-outlined" style="font-size:18px">person_add</span> Nuevo Usuario
 </button>
 {% endif %}
+{% if can_reset|default(false) %}
+<form method="POST" action="{{ url_for('usuarios_reset_password_estandar_todos') }}" id="resetAllPwdForm" style="display:inline">
+    <button type="submit" class="btn btn-outline btn-sm" title="Restablecer contraseñas de todos los usuarios">
+        <span class="material-symbols-outlined" style="font-size:18px">key</span> Reiniciar todas las contraseñas
+    </button>
+</form>
+{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -465,6 +472,14 @@ document.addEventListener('DOMContentLoaded', function() {
         var rol = (this.rol && this.rol.value || '').trim();
         if (!nombre || !rol) return;
         if (!confirm('¿Crear usuario "' + nombre + '" con rol "' + rol + '"?')) {
+            ev.preventDefault();
+        }
+    });
+
+    // Confirmación de reseteo masivo a contraseña estándar
+    var formResetAll = document.getElementById('resetAllPwdForm');
+    if (formResetAll) formResetAll.addEventListener('submit', function(ev) {
+        if (!confirm('¿Seguro que deseas reiniciar TODAS las contraseñas a la estándar (Colbeef2026*)? Esta acción afecta a todos los usuarios.')) {
             ev.preventDefault();
         }
     });

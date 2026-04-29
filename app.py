@@ -4868,6 +4868,42 @@ def usuario_reset_password_estandar(id):
     return redirect(url_for("usuarios"))
 
 
+@app.route("/users/reset-password-estandar-todos", methods=["POST"])
+@login_required
+@module_required("admin_usuarios")
+def usuarios_reset_password_estandar_todos():
+    """Restablece en masa la contraseña estándar para todos los usuarios."""
+    if not _user_management_allowed("reset"):
+        flash("No tienes permiso para restablecer contraseñas.", "error")
+        return redirect(url_for("usuarios"))
+    total = query("SELECT COUNT(*) AS c FROM usuario", one=True)
+    total_usuarios = int((total or {}).get("c") or 0)
+    if total_usuarios <= 0:
+        flash("No hay usuarios para restablecer.", "info")
+        return redirect(url_for("usuarios"))
+    hash_estandar = generate_password_hash(PASSWORD_ESTANDAR)
+    try:
+        execute(
+            "UPDATE usuario SET password_hash=%s, debe_cambiar_clave=1",
+            (hash_estandar,),
+        )
+    except Exception as e:
+        if "debe_cambiar_clave" in str(e):
+            execute(
+                "UPDATE usuario SET password_hash=%s",
+                (hash_estandar,),
+            )
+        else:
+            raise
+    registrar_audit("Contraseña restablecida en masa a estándar", "admin", f"usuarios={total_usuarios}")
+    flash(
+        f"Se restablecieron {total_usuarios} usuarios a la contraseña estándar. "
+        "Todos deberán cambiarla al iniciar sesión.",
+        "success",
+    )
+    return redirect(url_for("usuarios"))
+
+
 # ── CATÁLOGOS (tipo documento, nivel educativo, profesión, motivo retiro) ──
 
 @app.route("/admin/catalogos")
