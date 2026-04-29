@@ -104,6 +104,20 @@ INSERT INTO cfg_escalamiento (email_solicitante, email_aprobador) VALUES
     -- Gerencia general -> junta directiva (opcional)
     ('gerencia.general@colbeef.com',       'gerencia@colbeef.com');
 
+-- Regla solicitada: Jefe de Produccion y Jefe de Calidad reportan a Director Planta (Filomena).
+-- Queda dinamico segun cfg_aprobadores.clave='director_planta'.
+UPDATE cfg_escalamiento ce
+JOIN cfg_aprobadores jp ON jp.clave = 'jefe_produccion'
+JOIN cfg_aprobadores dp ON dp.clave = 'director_planta'
+SET ce.email_aprobador = dp.email
+WHERE LOWER(TRIM(ce.email_solicitante)) = LOWER(TRIM(jp.email));
+
+UPDATE cfg_escalamiento ce
+JOIN cfg_aprobadores jc ON jc.clave = 'jefe_calidad'
+JOIN cfg_aprobadores dp ON dp.clave = 'director_planta'
+SET ce.email_aprobador = dp.email
+WHERE LOWER(TRIM(ce.email_solicitante)) = LOWER(TRIM(jc.email));
+
 -- ------------------------------------------------------------
 -- B) Auditoria de correos de aprobadores
 -- ------------------------------------------------------------
