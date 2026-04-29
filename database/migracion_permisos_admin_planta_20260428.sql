@@ -55,6 +55,7 @@ INSERT INTO cfg_aprobadores (clave, email) VALUES
     ('jefe_produccion',             'coordinacion.linea@colbeef.com'),
     ('jefe_calidad',                'gerencia.calidad@colbeef.com'),
     ('lider_sst',                   'siso@colbeef.com'),
+    ('coordinacion_logistica',      'coordinacion.logistico@colbeef.com'),
     ('lider_logistica_desposte',    'coordinacion.desposte@colbeef.com'),
     ('lider_desposte_porc',         'coordinacion.desposte@colbeef.com'),
     ('supervisor_lad',              'coordinacion.calidad@colbeef.com'),
@@ -171,14 +172,19 @@ SET e.id_user_encargado = a.id_user
 WHERE e.estado = 'ACTIVO'
   AND e.area IN ('LINEA DE SACRIFICIO', 'SUBPRODUCTOS COMESTIBLES', 'DIRECCION PRODUCCION');
 
--- Logistica/Desposte
+-- Logistica base (coordinación logística)
+UPDATE empleado e
+JOIN aprobadores a ON a.clave = 'coordinacion_logistica' AND a.id_user IS NOT NULL
+SET e.id_user_encargado = a.id_user
+WHERE e.estado = 'ACTIVO'
+  AND e.area IN ('LOGISTICA', 'LOGISTICA DESPOSTE');
+
+-- Desposte / corrales asociados
 UPDATE empleado e
 JOIN aprobadores a ON a.clave = 'lider_logistica_desposte' AND a.id_user IS NOT NULL
 SET e.id_user_encargado = a.id_user
 WHERE e.estado = 'ACTIVO'
   AND e.area IN (
-      'LOGISTICA',
-      'LOGISTICA DESPOSTE',
       'RECEPCION Y PESAJE',
       'LINEA DESPOSTE',
       'PRODUCCION DESPOSTE',
@@ -296,6 +302,7 @@ INSERT INTO cfg_escalamiento (email_solicitante, email_aprobador) VALUES
     ('coordinacion.linea@colbeef.com',         'gerencia.produccion@colbeef.com'),
     ('coordinacion.subproductos@colbeef.com',  'gerencia.produccion@colbeef.com'),
     ('coordinacion.corrales@colbeef.com',      'gerencia.produccion@colbeef.com'),
+    ('coordinacion.logistico@colbeef.com',     'gerencia.produccion@colbeef.com'),
     ('coordinacion.desposte@colbeef.com',      'gerencia.produccion@colbeef.com'),
     ('coordinacion.calidad@colbeef.com',       'gerencia.produccion@colbeef.com'),
     ('siso@colbeef.com',                       'gerencia.produccion@colbeef.com'),
