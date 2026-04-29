@@ -4868,11 +4868,14 @@ def usuario_reset_password_estandar(id):
     return redirect(url_for("usuarios"))
 
 
-@app.route("/users/reset-password-estandar-todos", methods=["POST"])
+@app.route("/users/reset-password-estandar-todos", methods=["GET", "POST"])
 @login_required
 @module_required("admin_usuarios")
 def usuarios_reset_password_estandar_todos():
     """Restablece en masa la contraseña estándar para todos los usuarios."""
+    if request.method != "POST":
+        flash("Acción inválida. Usa el botón de reinicio desde Usuarios.", "warning")
+        return redirect(url_for("usuarios"))
     if not _user_management_allowed("reset"):
         flash("No tienes permiso para restablecer contraseñas.", "error")
         return redirect(url_for("usuarios"))
