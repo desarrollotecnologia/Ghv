@@ -4876,31 +4876,41 @@ def usuarios_reset_password_estandar_todos():
     if not _user_management_allowed("reset"):
         flash("No tienes permiso para restablecer contraseñas.", "error")
         return redirect(url_for("usuarios"))
-    total = query("SELECT COUNT(*) AS c FROM usuario", one=True)
-    total_usuarios = int((total or {}).get("c") or 0)
-    if total_usuarios <= 0:
-        flash("No hay usuarios para restablecer.", "info")
-        return redirect(url_for("usuarios"))
-    hash_estandar = generate_password_hash(PASSWORD_ESTANDAR)
     try:
-        execute(
-            "UPDATE usuario SET password_hash=%s, debe_cambiar_clave=1",
-            (hash_estandar,),
-        )
-    except Exception as e:
-        if "debe_cambiar_clave" in str(e):
+        total = query("SELECT COUNT(*) AS c FROM usuario", one=True)
+        total_usuarios = int((total or {}).get("c") or 0)
+        if total_usuarios <= 0:
+            flash("No hay usuarios para restablecer.", "info")
+            return redirect(url_for("usuarios"))
+
+        hash_estandar = generate_password_hash(PASSWORD_ESTANDAR)
+        try:
             execute(
-                "UPDATE usuario SET password_hash=%s",
+                "UPDATE usuario SET password_hash=%s, debe_cambiar_clave=1",
                 (hash_estandar,),
             )
-        else:
-            raise
-    registrar_audit("Contraseña restablecida en masa a estándar", "admin", f"usuarios={total_usuarios}")
-    flash(
-        f"Se restablecieron {total_usuarios} usuarios a la contraseña estándar. "
-        "Todos deberán cambiarla al iniciar sesión.",
-        "success",
-    )
+        except Exception as e:
+            # Compatibilidad: bases antiguas sin columna debe_cambiar_clave.
+            if "debe_cambiar_clave" in str(e).lower():
+                execute(
+                    "UPDATE usuario SET password_hash=%s",
+                    (hash_estandar,),
+                )
+            else:
+                raise
+
+        registrar_audit("Contraseña restablecida en masa a estándar", "admin", f"usuarios={total_usuarios}")
+        flash(
+            f"Se restablecieron {total_usuarios} usuarios a la contraseña estándar. "
+            "Todos deberán cambiarla al iniciar sesión.",
+            "success",
+        )
+    except Exception as e:
+        try:
+            current_app.logger.exception("Error en reseteo masivo de contraseñas")
+        except Exception:
+            pass
+        flash(f"No se pudo completar el reinicio masivo: {e}", "error")
     return redirect(url_for("usuarios"))
 
 
