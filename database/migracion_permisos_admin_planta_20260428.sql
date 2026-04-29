@@ -338,6 +338,30 @@ JOIN cfg_aprobadores dp ON dp.clave = 'director_planta'
 SET ce.email_aprobador = dp.email
 WHERE LOWER(TRIM(ce.email_solicitante)) = LOWER(TRIM(jc.email));
 
+-- Regla solicitada: jefaturas administrativas reportan al Director Admin/Financiero (Diego).
+-- Queda dinamico segun cfg_aprobadores.clave='director_admin'.
+UPDATE cfg_escalamiento ce
+JOIN cfg_aprobadores ja
+  ON ja.clave IN (
+      'jefe_compras',
+      'jefe_gh',
+      'jefe_contabilidad',
+      'jefe_tesoreria_cartera',
+      'jefe_tics',
+      'jefe_planeacion_financiera',
+      'supervisor_vigilancia_admin'
+  )
+JOIN cfg_aprobadores da ON da.clave = 'director_admin'
+SET ce.email_aprobador = da.email
+WHERE LOWER(TRIM(ce.email_solicitante)) = LOWER(TRIM(ja.email));
+
+-- Director Admin/Financiero (Diego) escala a Gerencia General.
+UPDATE cfg_escalamiento ce
+JOIN cfg_aprobadores da ON da.clave = 'director_admin'
+JOIN cfg_aprobadores gg ON gg.clave = 'gerencia_general'
+SET ce.email_aprobador = gg.email
+WHERE LOWER(TRIM(ce.email_solicitante)) = LOWER(TRIM(da.email));
+
 -- Aplicar escalamiento explicitamente a empleados vinculados por id_cedula
 UPDATE empleado e
 JOIN usuario u_s ON u_s.id_cedula = e.id_cedula
