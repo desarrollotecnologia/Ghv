@@ -2114,6 +2114,10 @@ def vacaciones_aprobar(id):
     if _is_employee_mode():
         flash("En modo empleado no se pueden aprobar solicitudes.", "error")
         return redirect(url_for("vacaciones_solicitar"))
+    cur_user = get_current_user()
+    if not cur_user:
+        flash("Tu sesión expiró. Inicia sesión de nuevo.", "error")
+        return redirect(url_for("login"))
     observaciones = (request.form.get("observaciones") or "").strip()
     solicitud = query("SELECT * FROM solicitud_vacaciones WHERE id = %s", (id,), one=True)
     if not solicitud:
@@ -2128,7 +2132,7 @@ def vacaciones_aprobar(id):
     execute(
         "UPDATE solicitud_vacaciones SET estado = 'APROBADO', observaciones = %s, "
         "resuelto_por = %s, fecha_resolucion = NOW() WHERE id = %s",
-        (observaciones or None, get_current_user()["id_user"], id),
+        (observaciones or None, cur_user["id_user"], id),
     )
     registrar_audit("Solicitud de vacaciones aprobada", "vacaciones", f"id={id} cédula={solicitud.get('id_cedula')}")
     emp = query(
@@ -2166,6 +2170,10 @@ def vacaciones_rechazar(id):
     if _is_employee_mode():
         flash("En modo empleado no se pueden rechazar solicitudes.", "error")
         return redirect(url_for("vacaciones_solicitar"))
+    cur_user = get_current_user()
+    if not cur_user:
+        flash("Tu sesión expiró. Inicia sesión de nuevo.", "error")
+        return redirect(url_for("login"))
     observaciones = (request.form.get("observaciones") or "").strip()
     solicitud = query("SELECT * FROM solicitud_vacaciones WHERE id = %s", (id,), one=True)
     if not solicitud:
@@ -2180,7 +2188,7 @@ def vacaciones_rechazar(id):
     execute(
         "UPDATE solicitud_vacaciones SET estado = 'RECHAZADO', observaciones = %s, "
         "resuelto_por = %s, fecha_resolucion = NOW() WHERE id = %s",
-        (observaciones or None, get_current_user()["id_user"], id),
+        (observaciones or None, cur_user["id_user"], id),
     )
     registrar_audit("Solicitud de vacaciones rechazada", "vacaciones", f"id={id} cédula={solicitud.get('id_cedula')}")
     emp = query(
@@ -2244,6 +2252,12 @@ def permiso_aprobar(id):
         if _is_api_request() or request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return jsonify(ok=False, error="Modo empleado sin permisos de aprobación."), 403
         return redirect(url_for("permiso_solicitar"))
+    cur_user = get_current_user()
+    if not cur_user:
+        flash("Tu sesión expiró. Inicia sesión de nuevo.", "error")
+        if _is_api_request() or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify(ok=False, error="Sesión expirada."), 401
+        return redirect(url_for("login"))
     observaciones = (request.form.get("observaciones") or "").strip()
     solicitud = query("SELECT * FROM solicitud_permiso WHERE id = %s", (id,), one=True)
     if solicitud and not _puede_resolver_solicitud(solicitud):
@@ -2272,7 +2286,7 @@ def permiso_aprobar(id):
         return redirect(url_for("permisos_index"))
     execute(
         "UPDATE solicitud_permiso SET estado = 'APROBADO', observaciones = %s, resuelto_por = %s, fecha_resolucion = NOW() WHERE id = %s",
-        (observaciones, get_current_user()["id_user"], id),
+        (observaciones, cur_user["id_user"], id),
     )
     registrar_audit("Solicitud aprobada", "permisos", f"id={id} cédula={solicitud.get('id_cedula')}")
     emp = query("SELECT apellidos_nombre, direccion_email FROM empleado WHERE id_cedula = %s", (solicitud["id_cedula"],), one=True)
@@ -2380,6 +2394,12 @@ def permiso_rechazar(id):
         if _is_api_request() or request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return jsonify(ok=False, error="Modo empleado sin permisos de aprobación."), 403
         return redirect(url_for("permiso_solicitar"))
+    cur_user = get_current_user()
+    if not cur_user:
+        flash("Tu sesión expiró. Inicia sesión de nuevo.", "error")
+        if _is_api_request() or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify(ok=False, error="Sesión expirada."), 401
+        return redirect(url_for("login"))
     observaciones = (request.form.get("observaciones") or "").strip()
     solicitud = query("SELECT * FROM solicitud_permiso WHERE id = %s", (id,), one=True)
     if solicitud and not _puede_resolver_solicitud(solicitud):
@@ -2408,7 +2428,7 @@ def permiso_rechazar(id):
         return redirect(url_for("permisos_index"))
     execute(
         "UPDATE solicitud_permiso SET estado = 'RECHAZADO', observaciones = %s, resuelto_por = %s, fecha_resolucion = NOW() WHERE id = %s",
-        (observaciones, get_current_user()["id_user"], id),
+        (observaciones, cur_user["id_user"], id),
     )
     registrar_audit("Solicitud rechazada", "permisos", f"id={id} cédula={solicitud.get('id_cedula')}")
     emp = query("SELECT apellidos_nombre, direccion_email FROM empleado WHERE id_cedula = %s", (solicitud["id_cedula"],), one=True)
