@@ -4879,35 +4879,122 @@ def usuarios_reset_password_estandar_todos():
     if not _user_management_allowed("reset"):
         flash("No tienes permiso para restablecer contraseñas.", "error")
         return redirect(url_for("usuarios"))
+
+    def _is_lock_error(err):
+        msg = str(err).lower()
+        return ("lock wait timeout" in msg) or ("deadlock" in msg) or ("1205" in msg) or ("1213" in msg)
+
     try:
-        total = query("SELECT COUNT(*) AS c FROM usuario", one=True)
-        total_usuarios = int((total or {}).get("c") or 0)
+        users = query("SELECT id_user FROM usuario ORDER BY id_user") or []
+        total_usuarios = len(users)
         if total_usuarios <= 0:
             flash("No hay usuarios para restablecer.", "info")
             return redirect(url_for("usuarios"))
 
         hash_estandar = generate_password_hash(PASSWORD_ESTANDAR)
+        reseteados = 0
+        bloqueados = 0
+        errores = 0
+        muestra_error = None
+        usa_debe_cambiar = True
+
         try:
             execute(
                 "UPDATE usuario SET password_hash=%s, debe_cambiar_clave=1",
                 (hash_estandar,),
             )
+            reseteados = total_usuarios
         except Exception as e:
+            msg = str(e).lower()
             # Compatibilidad: bases antiguas sin columna debe_cambiar_clave.
-            if "debe_cambiar_clave" in str(e).lower():
+            if "debe_cambiar_clave" in msg:
+                usa_debe_cambiar = False
                 execute(
                     "UPDATE usuario SET password_hash=%s",
                     (hash_estandar,),
                 )
+                reseteados = total_usuarios
+            elif _is_lock_error(e):
+                # Fallback tolerante a bloqueo: reintenta por usuario y omite los bloqueados.
+                conn = get_db()
+                cursor = conn.cursor()
+                try:
+                    try:
+                        cursor.execute("SET SESSION innodb_lock_wait_timeout = 2")
+                    except Exception:
+                        pass
+                    for u in users:
+                        uid = u.get("id_user")
+                        if not uid:
+                            continue
+                        try:
+                            if usa_debe_cambiar:
+                                cursor.execute(
+                                    "UPDATE usuario SET password_hash=%s, debe_cambiar_clave=1 WHERE id_user=%s",
+                                    (hash_estandar, uid),
+                                )
+                            else:
+                                cursor.execute(
+                                    "UPDATE usuario SET password_hash=%s WHERE id_user=%s",
+                                    (hash_estandar, uid),
+                                )
+                            conn.commit()
+                            reseteados += 1
+                        except Exception as row_err:
+                            conn.rollback()
+                            row_msg = str(row_err).lower()
+                            if usa_debe_cambiar and "debe_cambiar_clave" in row_msg:
+                                usa_debe_cambiar = False
+                                try:
+                                    cursor.execute(
+                                        "UPDATE usuario SET password_hash=%s WHERE id_user=%s",
+                                        (hash_estandar, uid),
+                                    )
+                                    conn.commit()
+                                    reseteados += 1
+                                    continue
+                                except Exception as row_err2:
+                                    conn.rollback()
+                                    row_err = row_err2
+                                    row_msg = str(row_err2).lower()
+                            if _is_lock_error(row_err):
+                                bloqueados += 1
+                            else:
+                                errores += 1
+                                if not muestra_error:
+                                    muestra_error = str(row_err)
+                finally:
+                    cursor.close()
+                    conn.close()
             else:
                 raise
 
-        registrar_audit("Contraseña restablecida en masa a estándar", "admin", f"usuarios={total_usuarios}")
-        flash(
-            f"Se restablecieron {total_usuarios} usuarios a la contraseña estándar. "
-            "Todos deberán cambiarla al iniciar sesión.",
-            "success",
+        registrar_audit(
+            "Contraseña restablecida en masa a estándar",
+            "admin",
+            f"total={total_usuarios} ok={reseteados} bloqueados={bloqueados} errores={errores}",
         )
+
+        if reseteados == total_usuarios and errores == 0 and bloqueados == 0:
+            flash(
+                f"Se restablecieron {total_usuarios} usuarios a la contraseña estándar. "
+                "Todos deberán cambiarla al iniciar sesión.",
+                "success",
+            )
+        elif reseteados > 0:
+            msg = (
+                f"Reinicio parcial completado: {reseteados}/{total_usuarios} usuarios actualizados."
+            )
+            if bloqueados:
+                msg += f" Bloqueados por BD: {bloqueados}."
+            if errores:
+                msg += f" Con error: {errores}."
+            if muestra_error:
+                msg += f" Ejemplo de error: {muestra_error}"
+            flash(msg, "warning")
+        else:
+            detalle = muestra_error or "Sin detalle adicional."
+            flash(f"No se pudo completar el reinicio masivo. Detalle: {detalle}", "error")
     except Exception as e:
         try:
             current_app.logger.exception("Error en reseteo masivo de contraseñas")
