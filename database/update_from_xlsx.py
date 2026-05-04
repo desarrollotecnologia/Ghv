@@ -4,6 +4,7 @@ Truncates and re-imports all tables to ensure data is in sync.
 """
 import os
 import sys
+import argparse
 from datetime import datetime, date
 import openpyxl
 import mysql.connector
@@ -371,13 +372,19 @@ def import_usuarios(cursor, wb):
     print(f"  usuario: {len(data)} rows (upserted)")
 
 
-def main():
-    if not os.path.isfile(XLSX_PATH):
-        print(f"ERROR: No existe el Excel:\n  {XLSX_PATH}")
+def _resolve_xlsx_path(cli_xlsx_path=None):
+    path = (cli_xlsx_path or XLSX_PATH or "").strip()
+    return path
+
+
+def main(xlsx_path=None):
+    path = _resolve_xlsx_path(xlsx_path)
+    if not os.path.isfile(path):
+        print(f"ERROR: No existe el Excel:\n  {path}")
         print('En .env: BDATOS_XLSX_PATH="ruta\\completa\\archivo.xlsx"')
         sys.exit(1)
-    print(f"Opening: {XLSX_PATH}")
-    wb = openpyxl.load_workbook(XLSX_PATH, data_only=True)
+    print(f"Opening: {path}")
+    wb = openpyxl.load_workbook(path, data_only=True)
 
     print("Connecting to database...")
     conn = mysql.connector.connect(**DB_CONFIG)
@@ -421,4 +428,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Actualiza la base de datos desde Excel maestro.")
+    parser.add_argument("--xlsx", dest="xlsx_path", default=None, help="Ruta del archivo .xlsx a procesar")
+    args = parser.parse_args()
+    main(args.xlsx_path)

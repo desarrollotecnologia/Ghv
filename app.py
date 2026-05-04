@@ -7,6 +7,8 @@ from werkzeug.utils import secure_filename
 from functools import wraps
 import re
 import os
+import sys
+import subprocess
 import mysql.connector
 import io
 from datetime import datetime, date, timedelta
@@ -5613,6 +5615,74 @@ def estadisticas_ingresos():
         top_usuarios=top_usuarios,
         ingresos_recientes=ingresos_recientes,
     )
+
+
+@app.route("/gerencia/cargar-maestro-xlsx", methods=["POST"])
+@login_required
+@module_required("dashboard")
+def gerencia_cargar_maestro_xlsx():
+    """Carga Excel maestro desde Gerencia y actualiza la BD."""
+    if not _is_gerencia_user(get_current_user()):
+        flash("Esta acción está disponible solo para Gerencia.", "error")
+        return redirect(url_for("view_total_personal"))
+
+    f = request.files.get("archivo_maestro")
+    if not f or not (f.filename or "").strip():
+        flash("Debes seleccionar un archivo Excel (.xlsx).", "error")
+        return redirect(url_for("estadisticas_ingresos"))
+
+    original_name = secure_filename(f.filename or "")
+    ext = os.path.splitext(original_name)[1].lower()
+    if ext != ".xlsx":
+        flash("Archivo inválido. Solo se permite .xlsx", "error")
+        return redirect(url_for("estadisticas_ingresos"))
+
+    uploads_dir = os.path.join(current_app.instance_path, "uploads", "gerencia_xlsx")
+    os.makedirs(uploads_dir, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    temp_name = f"maestro_{ts}_{original_name or 'archivo.xlsx'}"
+    xlsx_path = os.path.join(uploads_dir, temp_name)
+
+    try:
+        f.save(xlsx_path)
+        script_path = os.path.join(current_app.root_path, "database", "update_from_xlsx.py")
+        if not os.path.isfile(script_path):
+            flash("No se encontró el script de actualización (database/update_from_xlsx.py).", "error")
+            return redirect(url_for("estadisticas_ingresos"))
+
+        proc = subprocess.run(
+            [sys.executable, script_path, "--xlsx", xlsx_path],
+            cwd=current_app.root_path,
+            capture_output=True,
+            text=True,
+            timeout=60 * 30,  # 30 minutos
+        )
+        out = (proc.stdout or "").strip()
+        err = (proc.stderr or "").strip()
+        if proc.returncode == 0:
+            registrar_audit("Carga de Excel maestro", "gerencia", f"archivo={original_name}")
+            flash("Archivo procesado correctamente. La base de datos fue actualizada.", "success")
+        else:
+            detalle = err or out or "Sin detalle del proceso."
+            lineas = [ln for ln in detalle.splitlines() if ln.strip()]
+            resumen = lineas[-1] if lineas else detalle
+            flash(f"No se pudo actualizar la base de datos. Detalle: {resumen}", "error")
+    except subprocess.TimeoutExpired:
+        flash("La carga tardó demasiado y fue cancelada (timeout).", "error")
+    except Exception as e:
+        try:
+            current_app.logger.exception("Error en carga de Excel maestro de Gerencia")
+        except Exception:
+            pass
+        flash(f"Error al procesar el archivo: {e}", "error")
+    finally:
+        try:
+            if os.path.isfile(xlsx_path):
+                os.unlink(xlsx_path)
+        except Exception:
+            pass
+
+    return redirect(url_for("estadisticas_ingresos"))
 
 
 @app.route("/dashboard/<chart_key>")

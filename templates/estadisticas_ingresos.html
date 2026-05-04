@@ -13,6 +13,22 @@
 </div>
 {% endif %}
 
+<section class="dash-card" style="margin-bottom:20px">
+    <div class="dash-card-header">
+        <span class="dash-card-title">Actualización masiva desde Excel (solo Gerencia)</span>
+    </div>
+    <form method="POST" action="{{ url_for('gerencia_cargar_maestro_xlsx') }}" enctype="multipart/form-data" id="formCargaMaestroXlsx" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <input type="file" name="archivo_maestro" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required class="form-input" style="max-width:420px">
+        <button type="submit" class="btn btn-primary" id="btnCargaMaestroXlsx">
+            <span class="material-symbols-outlined" style="font-size:18px">upload_file</span>
+            Cargar Excel y actualizar BD
+        </button>
+    </form>
+    <p class="form-hint" style="margin-top:10px;font-size:12px;color:var(--text-secondary)">
+        Puedes cargar el archivo desde cualquier PC. El sistema lo sube al servidor, ejecuta la actualización y elimina el archivo temporal.
+    </p>
+</section>
+
 <section class="stats-grid" style="margin-bottom:20px">
     <div class="stat-card">
         <div class="stat-icon blue"><span class="material-symbols-outlined">login</span></div>
@@ -109,4 +125,23 @@
         </table>
     </div>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var form = document.getElementById('formCargaMaestroXlsx');
+    var btn = document.getElementById('btnCargaMaestroXlsx');
+    if (!form || !btn) return;
+    form.addEventListener('submit', function(ev) {
+        var ok = confirm('¿Confirmas actualizar la base de datos desde este Excel maestro?');
+        if (!ok) {
+            ev.preventDefault();
+            return;
+        }
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px">progress_activity</span> Procesando...';
+    });
+});
+</script>
 {% endblock %}
