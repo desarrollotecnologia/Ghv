@@ -24,7 +24,7 @@
             <div class="form-group">
                 <label class="form-label">Fecha de Retiro<span class="required">*</span></label>
                 <input type="date" name="fecha_retiro" id="fechaRetiro" class="form-input" required
-                       value="{{ ret.fecha_retiro | replace('/', '-') if ret.fecha_retiro else '' }}">
+                       value="{{ ret.fecha_retiro_iso or '' }}">
             </div>
             <div class="form-group">
                 <label class="form-label">Tipo de Retiro<span class="required">*</span></label>
@@ -67,7 +67,17 @@ document.addEventListener('DOMContentLoaded', () => {
     function parseFecha(str) {
         if (!str) return null;
         const parts = str.split('/');
-        if (parts.length === 3) return new Date(parts[2], parts[1]-1, parts[0]);
+        if (parts.length === 3) {
+            const a = parseInt(parts[0], 10);
+            const b = parseInt(parts[1], 10);
+            const y = parseInt(parts[2], 10);
+            if (!Number.isNaN(a) && !Number.isNaN(b) && !Number.isNaN(y)) {
+                // Si es ambiguo, preferimos DD/MM (estándar Colombia).
+                if (a > 12 && b <= 12) return new Date(y, b - 1, a);
+                if (b > 12 && a <= 12) return new Date(y, a - 1, b);
+                return new Date(y, b - 1, a);
+            }
+        }
         const d = new Date(str);
         return isNaN(d) ? null : d;
     }
@@ -81,12 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Convert stored DD/MM/YYYY to YYYY-MM-DD for date input
-    const rawFecha = '{{ ret.fecha_retiro or "" }}';
-    if (rawFecha && rawFecha.includes('/')) {
-        const p = rawFecha.split('/');
-        if (p.length === 3) fechaRetiro.value = `${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`;
-    }
+    // Ya viene listo en ISO desde backend (ret.fecha_retiro_iso).
 });
 </script>
 {% endblock %}

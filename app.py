@@ -1119,7 +1119,7 @@ def parse_fecha_evento(fecha_str):
     """Parser para eventos (cumpleaños/aniversario).
 
     Regla:
-    - Si es ambiguo con '/', usa MM/DD/YYYY por compatibilidad con cargues legacy.
+    - Si es ambiguo con '/', usa DD/MM/YYYY (estándar Colombia/Latam).
     - Si no es ambiguo, respeta el formato detectado.
     """
     if not fecha_str:
@@ -1149,8 +1149,8 @@ def parse_fecha_evento(fecha_str):
                     return date(y, b, a)  # DD/MM
                 if b > 12 and a <= 12:
                     return date(y, a, b)  # MM/DD
-                # Ambiguo (a<=12 y b<=12): preferir MM/DD por histórico legacy.
-                return date(y, a, b)
+                # Ambiguo (a<=12 y b<=12): preferir DD/MM (estándar Colombia/Latam).
+                return date(y, b, a)
             except Exception:
                 pass
     return parse_fecha(s)
@@ -3370,6 +3370,8 @@ def retirar_empleado(id):
         flash(f"Retiro registrado. Empleado {emp['apellidos_nombre']} marcado como INACTIVO", "success")
         return redirect(url_for("detalle_empleado", id=id))
 
+    # Homogeneiza visualización (DD/MM/YYYY) sin alterar lo almacenado.
+    format_record_dates(emp, ["fecha_ingreso"])
     motivos = query("SELECT tipo_retiro FROM motivo_retiro ORDER BY tipo_retiro")
     return render_template(
         "retirar_form.html", active_page="Personal Activo",
@@ -4403,6 +4405,10 @@ def editar_retirado(id):
         if redirect_cedula:
             return redirect(url_for("detalle_empleado", id=redirect_cedula))
         return redirect(url_for("retiro_personal"))
+    # Estandariza fechas para UI y arma valor ISO para input[type=date].
+    format_record_dates(ret, ["fecha_ingreso", "fecha_retiro"])
+    fecha_retiro_d = parse_fecha(ret.get("fecha_retiro"))
+    ret["fecha_retiro_iso"] = fecha_retiro_d.strftime("%Y-%m-%d") if fecha_retiro_d else ""
     motivos = query("SELECT tipo_retiro FROM motivo_retiro ORDER BY tipo_retiro")
     redirect_cedula = request.args.get("redirect_cedula", ret.get("id_cedula", ""))
     return render_template(

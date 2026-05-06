@@ -80,7 +80,17 @@ document.addEventListener('DOMContentLoaded', () => {
     function parseFecha(str) {
         if (!str) return null;
         const parts = str.split('/');
-        if (parts.length === 3) return new Date(parts[2], parts[1]-1, parts[0]);
+        if (parts.length === 3) {
+            const a = parseInt(parts[0], 10);
+            const b = parseInt(parts[1], 10);
+            const y = parseInt(parts[2], 10);
+            if (!Number.isNaN(a) && !Number.isNaN(b) && !Number.isNaN(y)) {
+                // Si es ambiguo, preferimos DD/MM (estándar Colombia).
+                if (a > 12 && b <= 12) return new Date(y, b - 1, a);
+                if (b > 12 && a <= 12) return new Date(y, a - 1, b);
+                return new Date(y, b - 1, a);
+            }
+        }
         const d = new Date(str);
         return isNaN(d) ? null : d;
     }
