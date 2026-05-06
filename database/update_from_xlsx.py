@@ -59,13 +59,13 @@ def clean_int(val):
 
 
 def clean_date_str(val):
-    """Convert datetime/date/string to 'M/D/YYYY' string for VARCHAR storage."""
+    """Convert datetime/date/string to 'D/M/YYYY' string for VARCHAR storage."""
     if val is None:
         return None
     if isinstance(val, datetime):
-        return f"{val.month}/{val.day}/{val.year}"
+        return f"{val.day}/{val.month}/{val.year}"
     if isinstance(val, date):
-        return f"{val.month}/{val.day}/{val.year}"
+        return f"{val.day}/{val.month}/{val.year}"
     s = str(val).strip()
     if not s or s in ('None', 'nan'):
         return None
