@@ -79,30 +79,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function parseFecha(str) {
         if (!str) return null;
-        const parts = str.split('/');
-        if (parts.length === 3) {
-            const a = parseInt(parts[0], 10);
-            const b = parseInt(parts[1], 10);
-            const y = parseInt(parts[2], 10);
-            if (!Number.isNaN(a) && !Number.isNaN(b) && !Number.isNaN(y)) {
-                // Si es ambiguo, preferimos DD/MM (estándar Colombia).
-                if (a > 12 && b <= 12) return new Date(y, b - 1, a);
-                if (b > 12 && a <= 12) return new Date(y, a - 1, b);
-                return new Date(y, b - 1, a);
-            }
+        const s = String(str).trim();
+        if (!s) return null;
+
+        // YYYY-MM-DD
+        const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (iso) {
+            const y = parseInt(iso[1], 10);
+            const m = parseInt(iso[2], 10);
+            const d = parseInt(iso[3], 10);
+            return new Date(y, m - 1, d);
         }
-        const d = new Date(str);
-        return isNaN(d) ? null : d;
+
+        // DD/MM/YYYY o MM/DD/YYYY
+        const slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+        if (slash) {
+            const a = parseInt(slash[1], 10);
+            const b = parseInt(slash[2], 10);
+            const yRaw = parseInt(slash[3], 10);
+            const y = yRaw < 100 ? 2000 + yRaw : yRaw;
+            if (a > 12 && b <= 12) return new Date(y, b - 1, a);
+            if (b > 12 && a <= 12) return new Date(y, a - 1, b);
+            return new Date(y, b - 1, a);
+        }
+
+        return null;
     }
 
-    fechaRetiro.addEventListener('change', () => {
+    function recalcularDias() {
         const fi = parseFecha(fechaIngreso);
-        const fr = new Date(fechaRetiro.value);
-        if (fi && fr && !isNaN(fr)) {
+        const fr = parseFecha(fechaRetiro.value);
+        if (fi && fr && !Number.isNaN(fi.getTime()) && !Number.isNaN(fr.getTime())) {
             const diff = Math.round((fr - fi) / (1000 * 60 * 60 * 24));
             diasLaborados.value = diff > 0 ? diff : 0;
         }
-    });
+    }
+
+    fechaRetiro.addEventListener('change', recalcularDias);
+    fechaRetiro.addEventListener('input', recalcularDias);
 });
 </script>
 {% endblock %}
