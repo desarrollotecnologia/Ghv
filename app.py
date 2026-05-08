@@ -1279,6 +1279,81 @@ def _resolve_calendar_ids_in_results(results):
                 item["nivel_educativo"] = nivel_by_id[n]
 
 
+def resolve_empleado_catalogos(records):
+    """Resuelve IDs almacenados en empleado.tipo_documento, empleado.nivel_educativo
+    y empleado.profesion al nombre legible del catálogo.
+
+    Acepta un dict (un solo empleado) o una lista de dicts. Modifica en sitio
+    los registros cuyos valores coincidan con un id del catálogo, dejando
+    intactos los que ya son nombres. Esto cubre el caso (visible en la UI)
+    en que los datos importados guardaron el id (p. ej. "PR" para nivel
+    educativo o "8b666250" para profesión) en vez del nombre del catálogo.
+    """
+    if not records:
+        return records
+    items = records if isinstance(records, list) else [records]
+    if not items:
+        return records
+
+    tipo_map, nivel_map, prof_map = _calendar_label_maps()
+
+    # Fallback: ids que no estén precargados (catálogo recién creado, etc.)
+    missing_tipo = set()
+    missing_nivel = set()
+    missing_prof = set()
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        t = str(it.get("tipo_documento") or "").strip()
+        if t and t not in tipo_map and _looks_like_id(t) and len(t) <= 50:
+            missing_tipo.add(t)
+        n = str(it.get("nivel_educativo") or "").strip()
+        if n and n not in nivel_map and _looks_like_id(n):
+            missing_nivel.add(n)
+        p = str(it.get("profesion") or "").strip()
+        if p and p not in prof_map and _looks_like_id(p):
+            missing_prof.add(p)
+
+    if missing_tipo:
+        rows = query(
+            "SELECT id_tipo_documento, tipo_documento FROM tipo_documento "
+            "WHERE id_tipo_documento IN (" + ",".join(["%s"] * len(missing_tipo)) + ")",
+            tuple(missing_tipo),
+        )
+        for r in rows:
+            tipo_map[str(r["id_tipo_documento"]).strip()] = r["tipo_documento"]
+    if missing_nivel:
+        rows = query(
+            "SELECT id_nivel, nivel FROM nivel_educativo "
+            "WHERE id_nivel IN (" + ",".join(["%s"] * len(missing_nivel)) + ")",
+            tuple(missing_nivel),
+        )
+        for r in rows:
+            nivel_map[str(r["id_nivel"]).strip()] = r["nivel"]
+    if missing_prof:
+        rows = query(
+            "SELECT id_profesion, profesion FROM profesion "
+            "WHERE id_profesion IN (" + ",".join(["%s"] * len(missing_prof)) + ")",
+            tuple(missing_prof),
+        )
+        for r in rows:
+            prof_map[str(r["id_profesion"]).strip()] = r["profesion"]
+
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        t = str(it.get("tipo_documento") or "").strip()
+        if t and t in tipo_map:
+            it["tipo_documento"] = tipo_map[t]
+        n = str(it.get("nivel_educativo") or "").strip()
+        if n and n in nivel_map:
+            it["nivel_educativo"] = nivel_map[n]
+        p = str(it.get("profesion") or "").strip()
+        if p and p in prof_map:
+            it["profesion"] = prof_map[p]
+    return records
+
+
 def enrich_empleados(empleados):
     """Add calculated fields, related hijos count and related retirados count."""
     today = date.today()
@@ -1323,6 +1398,10 @@ def enrich_empleados(empleados):
         emp["related_hijos"] = f"Related Hijos ({h_cnt})" if h_cnt else ""
         r_cnt = ret_map.get(cid, 0)
         emp["related_retirados"] = f"Related Retirados ({r_cnt})" if r_cnt else ""
+        # Fechas legibles DD/MM/YYYY (vienen como VARCHAR o date)
+        format_record_dates(emp, ["fecha_expedicion", "fecha_nacimiento", "fecha_ingreso"])
+    # Resolver IDs de catálogos a sus nombres legibles
+    resolve_empleado_catalogos(empleados)
     return empleados
 
 
@@ -3141,6 +3220,7 @@ def detalle_empleado(id):
         "FROM retirado WHERE id_cedula = %s ORDER BY fecha_retiro DESC", (id,)
     )
     format_record_dates(emp, ["fecha_expedicion", "fecha_nacimiento", "fecha_ingreso"])
+    resolve_empleado_catalogos(emp)
     for h in hijos or []:
         format_record_dates(h, ["fecha_nacimiento"])
     for r in retirados or []:
@@ -3921,6 +4001,7 @@ def area_empleado_detail(area_id, cedula):
         "FROM retirado WHERE id_cedula = %s", (cedula,),
     )
     format_record_dates(emp, ["fecha_expedicion", "fecha_nacimiento", "fecha_ingreso"])
+    resolve_empleado_catalogos(emp)
     for h in hijos or []:
         format_record_dates(h, ["fecha_nacimiento"])
     for r in retirados or []:
@@ -4142,6 +4223,7 @@ def eps_empleado_detail(eps_name, cedula):
         "FROM retirado WHERE id_cedula = %s", (cedula,),
     )
     format_record_dates(emp, ["fecha_expedicion", "fecha_nacimiento", "fecha_ingreso"])
+    resolve_empleado_catalogos(emp)
     for h in hijos or []:
         format_record_dates(h, ["fecha_nacimiento"])
     for r in retirados or []:
@@ -4308,6 +4390,7 @@ def fondo_empleado_detail(fondo_name, cedula):
         "FROM retirado WHERE id_cedula = %s", (cedula,),
     )
     format_record_dates(emp, ["fecha_expedicion", "fecha_nacimiento", "fecha_ingreso"])
+    resolve_empleado_catalogos(emp)
     for h in hijos or []:
         format_record_dates(h, ["fecha_nacimiento"])
     for r in retirados or []:
