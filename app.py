@@ -3174,6 +3174,7 @@ EMPLEADO_FIELDS = [
     {"key": "fondo_pensiones",      "label": "Fondo Pensiones"},
     {"key": "nivel_educativo",      "label": "Nivel Educativo"},
     {"key": "profesion",            "label": "Profesión"},
+    {"key": "perfil_ocupacional_nombre", "label": "Ocupación / Cargo"},
     {"key": "hijos",                "label": "¿Tiene Hijos?"},
     {"key": "contacto_emergencia",  "label": "Contacto Emergencia"},
     {"key": "telefono_contacto",    "label": "Tel. Contacto"},
