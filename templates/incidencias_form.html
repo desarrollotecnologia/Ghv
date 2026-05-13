@@ -29,11 +29,16 @@
                 </div>
                 <div class="form-group">
                     <label>Tipo de evento</label>
+                    {% set _te = incidencia.tipo_evento if incidencia else '' %}
+                    {% set _te_nuevos = ['Leve', 'Severo', 'Grave', 'Mortal'] %}
                     <select name="tipo_evento" class="form-input">
                         <option value="">— Seleccionar —</option>
-                        <option value="Incidente" {{ 'selected' if incidencia and incidencia.tipo_evento == 'Incidente' else '' }}>Incidente</option>
-                        <option value="Accidente" {{ 'selected' if incidencia and incidencia.tipo_evento == 'Accidente' else '' }}>Accidente</option>
-                        <option value="Enfermedad laboral" {{ 'selected' if incidencia and incidencia.tipo_evento == 'Enfermedad laboral' else '' }}>Enfermedad laboral</option>
+                        {% for opt in _te_nuevos %}
+                        <option value="{{ opt }}" {{ 'selected' if _te == opt else '' }}>{{ opt }}</option>
+                        {% endfor %}
+                        {% if _te and _te not in _te_nuevos %}
+                        <option value="{{ _te }}" selected>{{ _te }} (anterior)</option>
+                        {% endif %}
                     </select>
                 </div>
             </div>
@@ -48,7 +53,11 @@
                 </div>
                 <div class="form-group">
                     <label>Cédula</label>
-                    <input type="text" name="cedula" class="form-input" value="{{ incidencia.cedula or '' }}">
+                    <input type="text" name="cedula" id="cedula_input" class="form-input" value="{{ incidencia.cedula or '' }}">
+                    <div id="historial_trabajador" class="historial-box" style="display:none">
+                        <span class="material-symbols-outlined">history</span>
+                        <span id="historial_msg">—</span>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Género</label>
@@ -135,7 +144,38 @@
             </div>
             <div class="form-group">
                 <label>Causas</label>
-                <textarea name="causas" class="form-input" rows="2">{{ incidencia.causas or '' }}</textarea>
+                {% set _causas_actual = (incidencia.causas or '') if incidencia else '' %}
+                {% set _causas_opts = ['Acto inseguro', 'Condición insegura', 'Factor personal', 'Factor trabajo'] %}
+                <div class="causas-checks">
+                    {% for c in _causas_opts %}
+                    <label class="causa-check">
+                        <input type="checkbox" name="causas" value="{{ c }}"
+                               {{ 'checked' if c in _causas_actual else '' }}>
+                        <span>{{ c }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+                {# Si hay un valor antiguo que no coincide con ninguna opción, lo mantenemos en un hidden + aviso #}
+                {% set _causas_legacy = [] %}
+                {% if _causas_actual %}
+                    {% for token in _causas_actual.split(',') %}
+                        {% set t = token.strip() %}
+                        {% if t and t not in _causas_opts %}
+                            {% set _ = _causas_legacy.append(t) %}
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+                {% if _causas_legacy %}
+                <div class="causas-legacy">
+                    <small>Valor anterior conservado: <strong>{{ _causas_legacy | join(', ') }}</strong></small>
+                    <input type="hidden" name="causas_legacy" value="{{ _causas_legacy | join(', ') }}">
+                </div>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label>Descripción de causas</label>
+                <textarea name="descripcion_causas" class="form-input" rows="3"
+                          placeholder="Describe en detalle las causas seleccionadas...">{{ (incidencia.descripcion_causas if incidencia else '') or '' }}</textarea>
             </div>
             <div class="form-group">
                 <label>Seguimiento clínico</label>
@@ -155,5 +195,74 @@
 .form-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:1rem; }
 .form-group label { display:block; font-size:0.875rem; color:#4b5563; margin-bottom:4px; }
 .form-input { width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; }
+
+.causas-checks { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:0.5rem; padding:0.5rem 0; }
+.causa-check { display:flex; align-items:center; gap:8px; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; background:#fff; cursor:pointer; transition:all .15s; font-size:0.9rem; }
+.causa-check:hover { border-color:#16a34a; background:#f0fdf4; }
+.causa-check input[type=checkbox] { width:16px; height:16px; accent-color:#16a34a; cursor:pointer; }
+.causa-check input[type=checkbox]:checked + span { font-weight:600; color:#15803d; }
+.causas-legacy { margin-top:0.5rem; padding:6px 10px; background:#fef3c7; border-radius:6px; color:#92400e; }
+
+.historial-box { display:flex; align-items:center; gap:6px; margin-top:6px; padding:6px 10px; border-radius:8px; font-size:0.85rem; }
+.historial-box .material-symbols-outlined { font-size:18px; }
+.historial-box.ok    { background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }
+.historial-box.warn  { background:#fffbeb; color:#92400e; border:1px solid #fde68a; }
+.historial-box.danger{ background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; }
+.historial-box.info  { background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }
+.historial-list { margin:6px 0 0 24px; padding:0; list-style:disc; font-size:0.82rem; }
 </style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    var input = document.getElementById('cedula_input');
+    var box = document.getElementById('historial_trabajador');
+    var msg = document.getElementById('historial_msg');
+    if (!input || !box || !msg) return;
+
+    var currentId = {{ incidencia.id if incidencia else 'null' }};
+    var timer = null;
+
+    function setBox(state, html) {
+        box.className = 'historial-box ' + state;
+        msg.innerHTML = html;
+        box.style.display = 'flex';
+    }
+
+    function consultar() {
+        var ced = (input.value || '').trim();
+        if (!ced) { box.style.display = 'none'; return; }
+        setBox('info', 'Consultando historial...');
+        var url = "{{ url_for('incidencias_api_historial', cedula='__CED__') }}".replace('__CED__', encodeURIComponent(ced));
+        if (currentId) url += '?excluir=' + currentId;
+        fetch(url, { credentials: 'same-origin' })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (!d || d.ok !== true) { box.style.display = 'none'; return; }
+                var total = d.total || 0;
+                var nombre = d.nombre || '';
+                if (total === 0) {
+                    setBox('ok', 'Sin accidentes previos registrados' + (nombre ? ' para <strong>' + nombre + '</strong>' : '') + '.');
+                    return;
+                }
+                var state = total >= 3 ? 'danger' : (total >= 1 ? 'warn' : 'ok');
+                var items = (d.lista || []).map(function(it) {
+                    return '<li>' + (it.fecha || 'sin fecha') + ' — ' + (it.tipo_evento || '—') + (it.dias_incapacidad ? ' (' + it.dias_incapacidad + ' días inc.)' : '') + '</li>';
+                }).join('');
+                var html = '<strong>' + total + '</strong> accidente' + (total !== 1 ? 's' : '') + ' previo' + (total !== 1 ? 's' : '') + (nombre ? ' de <strong>' + nombre + '</strong>' : '') + '.';
+                if (items) html += '<ul class="historial-list">' + items + '</ul>';
+                setBox(state, html);
+            })
+            .catch(function() { box.style.display = 'none'; });
+    }
+
+    input.addEventListener('input', function() {
+        clearTimeout(timer);
+        timer = setTimeout(consultar, 450);
+    });
+    input.addEventListener('blur', consultar);
+    if (input.value && input.value.trim()) consultar();
+})();
+</script>
 {% endblock %}

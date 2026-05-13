@@ -2575,7 +2575,12 @@ def incidencias_index():
     """Listado de incidencias (accidentes, incidentes, enfermedades laborales). Solo SISO."""
     try:
         rows = query(
-            "SELECT * FROM incidencia_at ORDER BY COALESCE(fecha_accidente, creado_en) DESC, id DESC"
+            """SELECT i.*,
+                      (SELECT COUNT(*) FROM incidencia_at i2
+                       WHERE i2.cedula IS NOT NULL AND i2.cedula <> ''
+                         AND i2.cedula = i.cedula) AS total_trabajador
+               FROM incidencia_at i
+               ORDER BY COALESCE(i.fecha_accidente, i.creado_en) DESC, i.id DESC"""
         )
     except Exception:
         rows = []
@@ -2720,6 +2725,19 @@ def _incidencia_from_form():
             return datetime.strptime(v[:10], "%Y-%m-%d").date()
         except Exception:
             return None
+
+    # Causas: ahora son checkboxes (name="causas") + posible texto legacy en "causas_legacy".
+    causas_seleccionadas = [
+        c.strip() for c in request.form.getlist("causas") if c and c.strip()
+    ]
+    legacy = (request.form.get("causas_legacy") or "").strip()
+    if legacy:
+        # conservar tokens antiguos que no estaban en las opciones nuevas
+        for token in [t.strip() for t in legacy.split(",") if t.strip()]:
+            if token not in causas_seleccionadas:
+                causas_seleccionadas.append(token)
+    causas_str = ", ".join(causas_seleccionadas) if causas_seleccionadas else None
+
     return {
         "numero_registro": int(request.form.get("numero_registro") or 0) or None,
         "mes": _d("mes"),
@@ -2745,7 +2763,8 @@ def _incidencia_from_form():
         "reincidente": _d("reincidente"),
         "descripcion_accidente": _d("descripcion_accidente"),
         "investigado": _d("investigado"),
-        "causas": _d("causas"),
+        "causas": causas_str,
+        "descripcion_causas": _d("descripcion_causas"),
         "seguimiento_clinico": _d("seguimiento_clinico"),
     }
 
@@ -2764,14 +2783,14 @@ def incidencias_nueva():
                 nombre_trabajador, cedula, genero, cargo, fecha_ingreso, antiguedad_meses,
                 area_seccion_ocurrencia, tipo_vinculacion, dias_incapacidad, prorroga,
                 parte_cuerpo_afectada, tipo_lesion, forma_accidente, clasificacion_origen,
-                agente_lesion, reincidente, descripcion_accidente, investigado, causas,
+                agente_lesion, reincidente, descripcion_accidente, investigado, causas, descripcion_causas,
                 seguimiento_clinico, creado_por
             ) VALUES (
                 %(numero_registro)s, %(mes)s, %(fecha_accidente)s, %(dia_semana)s, %(hora_ocurrencia)s, %(tipo_evento)s,
                 %(nombre_trabajador)s, %(cedula)s, %(genero)s, %(cargo)s, %(fecha_ingreso)s, %(antiguedad_meses)s,
                 %(area_seccion_ocurrencia)s, %(tipo_vinculacion)s, %(dias_incapacidad)s, %(prorroga)s,
                 %(parte_cuerpo_afectada)s, %(tipo_lesion)s, %(forma_accidente)s, %(clasificacion_origen)s,
-                %(agente_lesion)s, %(reincidente)s, %(descripcion_accidente)s, %(investigado)s, %(causas)s,
+                %(agente_lesion)s, %(reincidente)s, %(descripcion_accidente)s, %(investigado)s, %(causas)s, %(descripcion_causas)s,
                 %(seguimiento_clinico)s, %(creado_por)s
             )""",
             {**data, "creado_por": user.get("email") or user.get("id_user")},
@@ -2804,13 +2823,65 @@ def incidencias_editar(id):
                 forma_accidente=%(forma_accidente)s, clasificacion_origen=%(clasificacion_origen)s,
                 agente_lesion=%(agente_lesion)s, reincidente=%(reincidente)s,
                 descripcion_accidente=%(descripcion_accidente)s, investigado=%(investigado)s,
-                causas=%(causas)s, seguimiento_clinico=%(seguimiento_clinico)s
+                causas=%(causas)s, descripcion_causas=%(descripcion_causas)s,
+                seguimiento_clinico=%(seguimiento_clinico)s
             WHERE id = %(id)s""",
             {**data, "id": id},
         )
         flash("Incidencia actualizada.", "success")
         return redirect(url_for("incidencias_index"))
     return render_template("incidencias_form.html", incidencia=incidencia, active_page="Editar incidencia")
+
+
+@app.route("/incidencias/api/historial/<path:cedula>")
+@login_required
+@module_required("incidencias")
+def incidencias_api_historial(cedula):
+    """Devuelve el recuento y las últimas incidencias registradas para una cédula.
+
+    Query params:
+        excluir (int, opcional): id de incidencia a excluir (caso editar).
+    Respuesta JSON:
+        { ok, total, nombre, lista: [{id, fecha, tipo_evento, dias_incapacidad}] }
+    """
+    ced = (cedula or "").strip()
+    if not ced:
+        return jsonify({"ok": False, "total": 0, "lista": []})
+    try:
+        excluir_id = int(request.args.get("excluir") or 0) or None
+    except (TypeError, ValueError):
+        excluir_id = None
+    try:
+        params = [ced]
+        where = "WHERE cedula = %s"
+        if excluir_id:
+            where += " AND id <> %s"
+            params.append(excluir_id)
+        total_row = query(
+            "SELECT COUNT(*) AS c FROM incidencia_at " + where,
+            tuple(params),
+            one=True,
+        )
+        total = (total_row or {}).get("c") or 0
+        rows = query(
+            "SELECT id, fecha_accidente, tipo_evento, dias_incapacidad, nombre_trabajador "
+            "FROM incidencia_at " + where + " "
+            "ORDER BY COALESCE(fecha_accidente, creado_en) DESC, id DESC LIMIT 5",
+            tuple(params),
+        ) or []
+        lista = [
+            {
+                "id": r.get("id"),
+                "fecha": r["fecha_accidente"].strftime("%d/%m/%Y") if r.get("fecha_accidente") else None,
+                "tipo_evento": r.get("tipo_evento"),
+                "dias_incapacidad": r.get("dias_incapacidad"),
+            }
+            for r in rows
+        ]
+        nombre = next((r.get("nombre_trabajador") for r in rows if r.get("nombre_trabajador")), None)
+        return jsonify({"ok": True, "total": total, "nombre": nombre, "lista": lista})
+    except Exception:
+        return jsonify({"ok": False, "total": 0, "lista": []})
 
 
 @app.route("/incidencias/<int:id>/eliminar", methods=["POST"])
