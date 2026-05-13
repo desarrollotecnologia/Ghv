@@ -1280,14 +1280,17 @@ def _resolve_calendar_ids_in_results(results):
 
 
 def resolve_empleado_catalogos(records):
-    """Resuelve IDs almacenados en empleado.tipo_documento, empleado.nivel_educativo
-    y empleado.profesion al nombre legible del catálogo.
+    """Resuelve IDs almacenados en empleado.tipo_documento, empleado.nivel_educativo,
+    empleado.profesion y empleado.id_perfil_ocupacional al nombre legible del
+    catálogo correspondiente.
 
     Acepta un dict (un solo empleado) o una lista de dicts. Modifica en sitio
     los registros cuyos valores coincidan con un id del catálogo, dejando
     intactos los que ya son nombres. Esto cubre el caso (visible en la UI)
     en que los datos importados guardaron el id (p. ej. "PR" para nivel
     educativo o "8b666250" para profesión) en vez del nombre del catálogo.
+    Además agrega la clave ``perfil_ocupacional_nombre`` con el nombre del
+    perfil ocupacional asociado a ``id_perfil_ocupacional``.
     """
     if not records:
         return records
@@ -1296,6 +1299,12 @@ def resolve_empleado_catalogos(records):
         return records
 
     tipo_map, nivel_map, prof_map = _calendar_label_maps()
+
+    try:
+        perfil_rows = query("SELECT id_perfil, perfil_ocupacional FROM perfil_ocupacional")
+        perfil_map = {str(r["id_perfil"]).strip(): r["perfil_ocupacional"] for r in (perfil_rows or [])}
+    except Exception:
+        perfil_map = {}
 
     # Fallback: ids que no estén precargados (catálogo recién creado, etc.)
     missing_tipo = set()
@@ -1351,6 +1360,10 @@ def resolve_empleado_catalogos(records):
         p = str(it.get("profesion") or "").strip()
         if p and p in prof_map:
             it["profesion"] = prof_map[p]
+        # Nombre del perfil ocupacional (para mostrar en el detalle como "Ocupación / Cargo")
+        if "perfil_ocupacional_nombre" not in it or not it.get("perfil_ocupacional_nombre"):
+            pid = str(it.get("id_perfil_ocupacional") or "").strip()
+            it["perfil_ocupacional_nombre"] = perfil_map.get(pid, "")
     return records
 
 
