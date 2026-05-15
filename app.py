@@ -5491,7 +5491,10 @@ EXPORT_CONFIGS = {
 
 def _export_rows_personal_empleado(estado, depto=None, area=None):
     """SELECT completo de empleado por estado y filtros opcionales departamento/área."""
-    cols_sql = ", ".join(k for k, _ in _PERSONAL_EXPORT_COLS)
+    # Columnas calculadas en Python (no existen en la tabla empleado).
+    # Se excluyen del SELECT y se resuelven con resolve_empleado_catalogos().
+    _virtual_cols = {"perfil_ocupacional_nombre"}
+    cols_sql = ", ".join(k for k, _ in _PERSONAL_EXPORT_COLS if k not in _virtual_cols)
     sql = f"SELECT {cols_sql} FROM empleado WHERE estado = %s"
     params = [estado]
     if depto:
@@ -5501,7 +5504,10 @@ def _export_rows_personal_empleado(estado, depto=None, area=None):
         sql += " AND area = %s"
         params.append(area)
     sql += " ORDER BY apellidos_nombre"
-    return query(sql, tuple(params))
+    rows = query(sql, tuple(params)) or []
+    # Resolver perfil_ocupacional_nombre y otros catálogos (tipo_documento, nivel, profesion)
+    resolve_empleado_catalogos(rows)
+    return rows
 
 
 @app.route("/export/<page_key>")
