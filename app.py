@@ -1302,9 +1302,26 @@ def resolve_empleado_catalogos(records):
 
     try:
         perfil_rows = query("SELECT id_perfil, perfil_ocupacional FROM perfil_ocupacional")
-        perfil_map = {str(r["id_perfil"]).strip(): r["perfil_ocupacional"] for r in (perfil_rows or [])}
+        perfil_map = {}        # por id (con varias normalizaciones)
+        perfil_name_set = set()  # nombres existentes (case-insensitive)
+        for r in (perfil_rows or []):
+            pid_raw = str(r.get("id_perfil") or "").strip()
+            pname = r.get("perfil_ocupacional") or ""
+            if pid_raw:
+                perfil_map[pid_raw] = pname
+                perfil_map[pid_raw.lower()] = pname
+                perfil_map[pid_raw.upper()] = pname
+                # "5.0" → "5"
+                if pid_raw.endswith(".0"):
+                    perfil_map[pid_raw[:-2]] = pname
+                # "5" → "5.0"
+                if pid_raw.isdigit():
+                    perfil_map[pid_raw + ".0"] = pname
+            if pname:
+                perfil_name_set.add(pname.strip().upper())
     except Exception:
         perfil_map = {}
+        perfil_name_set = set()
 
     # Fallback: ids que no estén precargados (catálogo recién creado, etc.)
     missing_tipo = set()
@@ -1362,8 +1379,25 @@ def resolve_empleado_catalogos(records):
             it["profesion"] = prof_map[p]
         # Nombre del perfil ocupacional (para mostrar en el detalle como "Ocupación / Cargo")
         if "perfil_ocupacional_nombre" not in it or not it.get("perfil_ocupacional_nombre"):
-            pid = str(it.get("id_perfil_ocupacional") or "").strip()
-            it["perfil_ocupacional_nombre"] = perfil_map.get(pid, "")
+            raw = it.get("id_perfil_ocupacional")
+            pid = str(raw or "").strip() if raw is not None else ""
+            nombre = ""
+            if pid:
+                # 1) Búsqueda directa con normalizaciones
+                nombre = (
+                    perfil_map.get(pid)
+                    or perfil_map.get(pid.strip())
+                    or perfil_map.get(pid.lower())
+                    or perfil_map.get(pid.upper())
+                    or ""
+                )
+                # 2) "5.0" guardado en empleado → buscar "5"
+                if not nombre and pid.endswith(".0"):
+                    nombre = perfil_map.get(pid[:-2], "")
+                # 3) Si lo guardaron como nombre directamente
+                if not nombre and pid.upper() in perfil_name_set:
+                    nombre = pid
+            it["perfil_ocupacional_nombre"] = nombre
     return records
 
 
@@ -3295,7 +3329,16 @@ def _form_context():
 @login_required
 @module_required("personal")
 def detalle_empleado(id):
-    emp = query("SELECT * FROM empleado WHERE id_cedula = %s", (id,), one=True)
+    # LEFT JOIN para obtener el nombre del perfil ocupacional directamente desde SQL
+    # (más robusto que mapear en Python, especialmente con IDs que llegan con espacios,
+    # diferente capitalización o como "5.0" vs "5").
+    emp = query(
+        """SELECT e.*, p.perfil_ocupacional AS perfil_ocupacional_nombre
+           FROM empleado e
+           LEFT JOIN perfil_ocupacional p ON TRIM(p.id_perfil) = TRIM(e.id_perfil_ocupacional)
+           WHERE e.id_cedula = %s""",
+        (id,), one=True,
+    )
     if not emp:
         flash("Empleado no encontrado", "error")
         return redirect(url_for("personal_activo"))
