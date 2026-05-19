@@ -4400,6 +4400,7 @@ def eps_retirado_detail(eps_name, cedula, retiro_id):
     if emp:
         emp_nombre = emp["apellidos_nombre"]
 
+    format_record_dates(ret, ["fecha_ingreso", "fecha_retiro"])
     return render_template(
         "eps_retirado_detail.html", active_page="EPS",
         ret=ret, eps_name=eps_name, cedula=cedula, emp_nombre=emp_nombre,
@@ -4565,6 +4566,7 @@ def fondo_retirado_detail(fondo_name, cedula, retiro_id):
     if emp:
         emp_nombre = emp["apellidos_nombre"]
 
+    format_record_dates(ret, ["fecha_ingreso", "fecha_retiro"])
     return render_template(
         "fondo_retirado_detail.html", active_page="Fondo de Pensiones",
         ret=ret, fondo_name=fondo_name, cedula=cedula, emp_nombre=emp_nombre,

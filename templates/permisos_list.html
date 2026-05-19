@@ -123,7 +123,7 @@
                     </div>
                     <div class="permiso-detail-row">
                         <span class="permiso-detail-label">Fechas</span>
-                        <span class="permiso-detail-value">{{ s.fecha_desde }} → {{ s.fecha_hasta }}</span>
+                        <span class="permiso-detail-value">{{ s.fecha_desde|fecha_display }} → {{ s.fecha_hasta|fecha_display }}</span>
                     </div>
                     {% if s.hora_inicio or s.hora_fin %}
                     <div class="permiso-detail-row">

@@ -26,8 +26,8 @@
                 {% for s in solicitudes %}
                 <tr>
                     <td>{{ s.tipo or 'Permiso' }}</td>
-                    <td>{{ s.fecha_desde }}</td>
-                    <td>{{ s.fecha_hasta }}</td>
+                    <td>{{ s.fecha_desde|fecha_display }}</td>
+                    <td>{{ s.fecha_hasta|fecha_display }}</td>
                     <td>
                         {% if s.estado == 'PENDIENTE' %}
                             <span style="color:#d97706; font-weight:600;">Pendiente</span>
