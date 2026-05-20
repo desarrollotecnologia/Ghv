@@ -6072,6 +6072,78 @@ def test_db():
         return {"status": "error", "message": str(e)}, 500
 
 
+# ── ADMIN: corrección masiva de fechas de ingreso futuras ─────
+
+@app.route("/admin/fix-fechas-ingreso")
+@login_required
+@admin_only
+def admin_fix_fechas_ingreso():
+    hoy = date.today()
+    rows = query(
+        "SELECT id_cedula, apellidos_nombre, fecha_ingreso FROM empleado "
+        "WHERE fecha_ingreso IS NOT NULL ORDER BY apellidos_nombre"
+    )
+    corregidos = []
+    manuales = []
+    for r in rows:
+        fi = parse_fecha(r["fecha_ingreso"])
+        if not fi or fi <= hoy:
+            continue
+        raw = str(r["fecha_ingreso"]).strip()
+        parts = raw.split("/")
+        if len(parts) == 3:
+            try:
+                d, m, y = int(parts[0]), int(parts[1]), int(parts[2])
+                nueva = date(y, d, m)
+                if nueva <= hoy:
+                    nueva_str = nueva.strftime("%d/%m/%Y")
+                    execute(
+                        "UPDATE empleado SET fecha_ingreso = %s WHERE id_cedula = %s",
+                        (nueva_str, r["id_cedula"])
+                    )
+                    corregidos.append({
+                        "cedula": r["id_cedula"],
+                        "nombre": r["apellidos_nombre"],
+                        "antes": raw,
+                        "despues": nueva_str,
+                    })
+                    continue
+            except (ValueError, TypeError):
+                pass
+        manuales.append({
+            "cedula": r["id_cedula"],
+            "nombre": r["apellidos_nombre"],
+            "fecha": raw,
+        })
+
+    resumen = []
+    resumen.append(f"<h2>Corrección de fechas de ingreso futuras</h2>")
+    resumen.append(f"<p>Fecha hoy: <b>{hoy.strftime('%d/%m/%Y')}</b></p>")
+
+    if corregidos:
+        resumen.append(f"<h3 style='color:green'>Corregidos automáticamente ({len(corregidos)})</h3><ul>")
+        for c in corregidos:
+            resumen.append(
+                f"<li><b>{c['nombre']}</b> ({c['cedula']}): "
+                f"{c['antes']} &rarr; {c['despues']}</li>"
+            )
+        resumen.append("</ul>")
+    else:
+        resumen.append("<p style='color:green'>No había fechas futuras que corregir automáticamente.</p>")
+
+    if manuales:
+        resumen.append(f"<h3 style='color:red'>Requieren corrección manual ({len(manuales)})</h3><ul>")
+        for m in manuales:
+            resumen.append(
+                f"<li><b>{m['nombre']}</b> ({m['cedula']}): {m['fecha']} "
+                f"— <a href='/personal-activo/{m['cedula']}/editar'>editar</a></li>"
+            )
+        resumen.append("</ul>")
+
+    resumen.append("<br><a href='/'>Volver al inicio</a>")
+    return "".join(resumen)
+
+
 # ── RUN ───────────────────────────────────────────────────────
 
 if __name__ == "__main__":
