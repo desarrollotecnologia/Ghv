@@ -378,6 +378,23 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('empForm').addEventListener('submit', function(e) {
+        const fi = document.querySelector('input[name="fecha_ingreso"]');
+        if (fi && fi.value.trim()) {
+            const parts = fi.value.trim().split('/');
+            if (parts.length === 3) {
+                const d = parseInt(parts[0], 10), m = parseInt(parts[1], 10), y = parseInt(parts[2], 10);
+                const ingreso = new Date(y, m - 1, d);
+                const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+                if (!isNaN(ingreso.getTime()) && ingreso > hoy) {
+                    e.preventDefault();
+                    alert('La fecha de ingreso no puede ser una fecha futura.\nFecha ingresada: ' + fi.value.trim());
+                    fi.focus();
+                }
+            }
+        }
+    });
+
     const selDepto = document.getElementById('selDepto');
     const selArea = document.getElementById('selArea');
     const selPerfil = document.getElementById('selPerfil');

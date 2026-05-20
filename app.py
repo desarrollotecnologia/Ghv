@@ -3385,6 +3385,12 @@ def crear_empleado():
         if existing:
             flash(f"Ya existe un empleado con cédula {cedula}", "error")
             return redirect(url_for("crear_empleado"))
+        fi_raw = request.form.get("fecha_ingreso", "").strip()
+        if fi_raw:
+            fi_parsed = parse_fecha(fi_raw)
+            if fi_parsed and fi_parsed > date.today():
+                flash(f"La fecha de ingreso ({fi_raw}) no puede ser una fecha futura.", "error")
+                return redirect(url_for("crear_empleado"))
         fields_list = [
             "id_cedula", "apellidos_nombre", "tipo_documento", "lugar_expedicion",
             "fecha_expedicion", "departamento", "area", "id_perfil_ocupacional",
@@ -3468,6 +3474,12 @@ def editar_empleado(id):
         return redirect(url_for("personal_activo"))
 
     if request.method == "POST":
+        fi_raw = request.form.get("fecha_ingreso", "").strip()
+        if fi_raw:
+            fi_parsed = parse_fecha(fi_raw)
+            if fi_parsed and fi_parsed > date.today():
+                flash(f"La fecha de ingreso ({fi_raw}) no puede ser una fecha futura.", "error")
+                return redirect(url_for("editar_empleado", id=id))
         update_fields = [
             "apellidos_nombre", "tipo_documento", "lugar_expedicion", "fecha_expedicion",
             "departamento", "area", "id_perfil_ocupacional", "fecha_ingreso", "sexo", "rh",

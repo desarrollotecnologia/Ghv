@@ -1,9 +1,16 @@
 """
-Script para verificar y corregir fechas_ingreso mal formateadas.
-Ejecutar con MySQL activo: python _fix_fechas.py
+_fix_fechas.py
+--------------
+Lista y corrige empleados con fecha_ingreso en el futuro.
+
+Uso:
+    python _fix_fechas.py          -> solo muestra los problemas
+    python _fix_fechas.py --fix    -> aplica las correcciones posibles
 """
+
+import sys
 import mysql.connector
-from datetime import datetime, date
+from datetime import date, datetime
 
 conn = mysql.connector.connect(
     host='localhost', port=3306,
@@ -11,82 +18,89 @@ conn = mysql.connector.connect(
     database='gestio_humana'
 )
 cur = conn.cursor(dictionary=True)
+hoy = date.today()
+DO_FIX = "--fix" in sys.argv
 
-# 1. Ver estado actual de CARDENAS CARDENAS
-print("=" * 60)
-print("ESTADO ACTUAL — CARDENAS CARDENAS (1004822805)")
-print("=" * 60)
-cur.execute(
-    "SELECT id_cedula, apellidos_nombre, fecha_ingreso, fecha_nacimiento "
-    "FROM empleado WHERE id_cedula = '1004822805'"
-)
-emp = cur.fetchone()
-if emp:
-    print(f"  Cédula        : {emp['id_cedula']}")
-    print(f"  Nombre        : {emp['apellidos_nombre']}")
-    print(f"  fecha_ingreso : {emp['fecha_ingreso']}  (tipo: {type(emp['fecha_ingreso']).__name__})")
-    print(f"  fecha_nacimiento: {emp['fecha_nacimiento']}")
-else:
-    print("  Empleado no encontrado con cédula 1004822805")
 
-# 2. Mostrar TODAS las fechas_ingreso para revisión visual
-print("\n" + "=" * 60)
-print("TODAS LAS FECHAS DE INGRESO (empleados activos e inactivos)")
-print("=" * 60)
+def parsear(s):
+    if not s:
+        return None
+    if isinstance(s, (date, datetime)):
+        return s if isinstance(s, date) else s.date()
+    for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(str(s).strip(), fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def intentar_correccion(s):
+    """Intercambia día y mes (caso típico: escribieron MM/DD en vez de DD/MM)."""
+    parts = str(s).strip().split("/")
+    if len(parts) != 3:
+        return None, None
+    try:
+        d, m, y = int(parts[0]), int(parts[1]), int(parts[2])
+        nueva = date(y, d, m)   # d era el "mes" real, m era el "día" real
+        return nueva.strftime("%d/%m/%Y"), nueva
+    except (ValueError, TypeError):
+        return None, None
+
+
 cur.execute(
     "SELECT id_cedula, apellidos_nombre, fecha_ingreso "
-    "FROM empleado WHERE fecha_ingreso IS NOT NULL "
-    "ORDER BY apellidos_nombre"
+    "FROM empleado WHERE fecha_ingreso IS NOT NULL ORDER BY apellidos_nombre"
 )
 rows = cur.fetchall()
-problemas = []
+
+futuros = []
 for r in rows:
-    fi = r['fecha_ingreso']
-    # Si es date object, convertir a string para análisis
-    if isinstance(fi, (date, datetime)):
-        fi_str = fi.strftime("%d/%m/%Y")
+    fi = parsear(r["fecha_ingreso"])
+    if fi and fi > hoy:
+        futuros.append(r)
+
+if not futuros:
+    print(f"Sin problemas — ningún empleado tiene fecha_ingreso futura (hoy: {hoy}).")
+    cur.close(); conn.close(); sys.exit(0)
+
+print(f"\n{'='*70}")
+print(f"  Empleados con fecha_ingreso FUTURA — hoy es {hoy}")
+print(f"{'='*70}")
+
+corregibles = 0
+for r in futuros:
+    cedula   = r["id_cedula"]
+    nombre   = r["apellidos_nombre"]
+    fi_raw   = str(r["fecha_ingreso"]).strip()
+    fi_obj   = parsear(fi_raw)
+    nueva_str, nueva_obj = intentar_correccion(fi_raw)
+
+    print(f"\n  Cédula  : {cedula}")
+    print(f"  Nombre  : {nombre}")
+    print(f"  Actual  : {fi_raw}  →  {fi_obj}")
+
+    if nueva_obj and nueva_obj <= hoy:
+        print(f"  Corr.   : {nueva_str}  ✓  (se invirtió día/mes)")
+        corregibles += 1
+        if DO_FIX:
+            cur.execute(
+                "UPDATE empleado SET fecha_ingreso = %s WHERE id_cedula = %s",
+                (nueva_str, cedula)
+            )
+            conn.commit()
+            print(f"  [GUARDADO]")
     else:
-        fi_str = str(fi).strip()
+        print(f"  Corr.   : no se puede corregir automáticamente — revisar manualmente")
 
-    # Detectar posibles MM/DD/YYYY: si el primer número <= 12 y el segundo <= 12 es ambiguo
-    parts = fi_str.replace('-', '/').split('/')
-    if len(parts) == 3:
-        try:
-            a, b = int(parts[0]), int(parts[1])
-            if a <= 12 and b <= 12 and a != b:
-                flag = "⚠ AMBIGUA"
-                problemas.append(r)
-            elif a > 12 or b > 12:
-                flag = "OK"
-            else:
-                flag = "OK"
-        except:
-            flag = "?"
-    else:
-        flag = "?"
-
-    print(f"  {r['id_cedula']:<15} {r['apellidos_nombre'][:40]:<40} {fi_str}  {flag}")
-
-# 3. Aplicar la corrección de CARDENAS: cambiar a 10/02/2026 (10 de febrero)
-print("\n" + "=" * 60)
-print("CORRECCIÓN — CARDENAS CARDENAS: February 10 = 10/02/2026")
-print("=" * 60)
-
-confirm = input("\n¿Actualizar fecha_ingreso de CARDENAS a '10/02/2026'? (s/n): ").strip().lower()
-if confirm == 's':
-    cur.execute(
-        "UPDATE empleado SET fecha_ingreso = '10/02/2026' WHERE id_cedula = '1004822805'"
-    )
-    conn.commit()
-    print("  ✓ Actualizado correctamente.")
-
-    # Verificar
-    cur.execute("SELECT fecha_ingreso FROM empleado WHERE id_cedula = '1004822805'")
-    nuevo = cur.fetchone()
-    print(f"  Nuevo valor en BD: {nuevo['fecha_ingreso']}")
+print(f"\n{'='*70}")
+if DO_FIX:
+    print(f"  Listo. {corregibles} registro(s) corregido(s).")
 else:
-    print("  Sin cambios.")
+    print(f"  {corregibles} de {len(futuros)} se pueden corregir automáticamente.")
+    if corregibles:
+        print(f"  Para aplicar los cambios ejecuta:")
+        print(f"      python _fix_fechas.py --fix")
 
 cur.close()
 conn.close()
-print("\nListo.")
