@@ -3998,6 +3998,7 @@ def retiro_personal():
         "data_table.html", active_page="Retiro de Personal",
         rows=rows, columns=columns, stats=stats,
         export_key="retiro_personal", filter_columns=filter_columns,
+        detail_route="detalle_empleado", pk="id_cedula",
     )
 
 
