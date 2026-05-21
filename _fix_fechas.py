@@ -49,7 +49,7 @@ def intentar_correccion(s):
 
 
 cur.execute(
-    "SELECT id_cedula, apellidos_nombre, fecha_ingreso "
+    "SELECT id_cedula, apellidos_nombre, estado, fecha_ingreso "
     "FROM empleado WHERE fecha_ingreso IS NOT NULL ORDER BY apellidos_nombre"
 )
 rows = cur.fetchall()
@@ -69,15 +69,24 @@ print(f"  Empleados con fecha_ingreso FUTURA — hoy es {hoy}")
 print(f"{'='*70}")
 
 corregibles = 0
+tot_activos = 0
+tot_inactivos = 0
 for r in futuros:
     cedula   = r["id_cedula"]
     nombre   = r["apellidos_nombre"]
+    estado   = str(r.get("estado") or "").strip().upper()
     fi_raw   = str(r["fecha_ingreso"]).strip()
     fi_obj   = parsear(fi_raw)
     nueva_str, nueva_obj = intentar_correccion(fi_raw)
 
+    if estado == "ACTIVO":
+        tot_activos += 1
+    else:
+        tot_inactivos += 1
+
     print(f"\n  Cédula  : {cedula}")
     print(f"  Nombre  : {nombre}")
+    print(f"  Estado  : {estado or 'SIN ESTADO'}")
     print(f"  Actual  : {fi_raw}  →  {fi_obj}")
 
     if nueva_obj and nueva_obj <= hoy:
@@ -94,6 +103,8 @@ for r in futuros:
         print(f"  Corr.   : no se puede corregir automáticamente — revisar manualmente")
 
 print(f"\n{'='*70}")
+print(f"  Casos activos   : {tot_activos}")
+print(f"  Casos inactivos : {tot_inactivos}")
 if DO_FIX:
     print(f"  Listo. {corregibles} registro(s) corregido(s).")
 else:
