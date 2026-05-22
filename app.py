@@ -1091,6 +1091,12 @@ def parse_fecha(fecha_str):
     return None
 
 
+def _fecha_ddmmyyyy(fecha_val):
+    """Normaliza fechas al formato DD/MM/YYYY para almacenar en tabla retirado."""
+    d = parse_fecha(fecha_val)
+    return d.strftime("%d/%m/%Y") if d else None
+
+
 def format_fecha_display(value):
     """Convierte fechas a DD/MM/YYYY para pintar en UI."""
     if value is None:
@@ -3572,18 +3578,23 @@ def retirar_empleado(id):
             num = 1
         new_id = f"RET-{num:04d}"
 
-        fr_formatted = fecha_retiro
-        if "-" in fecha_retiro:
-            parts = fecha_retiro.split("-")
-            fr_formatted = f"{parts[2]}/{parts[1]}/{parts[0]}"
+        fi_obj = parse_fecha(emp.get("fecha_ingreso"))
+        fr_obj = parse_fecha(fecha_retiro)
+        if fi_obj and fr_obj and fr_obj < fi_obj:
+            flash("La fecha de retiro no puede ser menor que la fecha de ingreso.", "error")
+            return redirect(url_for("retirar_empleado", id=id))
+
+        fr_formatted = _fecha_ddmmyyyy(fecha_retiro) or fecha_retiro
+        dias_auto = (fr_obj - fi_obj).days if fi_obj and fr_obj else None
+        dias_final = int(dias_laborados) if dias_laborados else dias_auto
 
         execute(
             "INSERT INTO retirado (id_retiro, id_cedula, apellidos_nombre, departamento, "
             "area, id_perfil_ocupacional, fecha_ingreso, fecha_retiro, dias_laborados, "
             "tipo_retiro, motivo) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (new_id, emp["id_cedula"], emp["apellidos_nombre"], emp["departamento"],
-             emp["area"], emp.get("id_perfil_ocupacional"), emp["fecha_ingreso"],
-             fr_formatted, int(dias_laborados) if dias_laborados else None,
+             emp["area"], emp.get("id_perfil_ocupacional"), _fecha_ddmmyyyy(emp.get("fecha_ingreso")) or emp.get("fecha_ingreso"),
+             fr_formatted, dias_final,
              tipo_retiro, motivo or None),
         )
         execute("UPDATE empleado SET estado = 'INACTIVO' WHERE id_cedula = %s", (id,))
@@ -3591,6 +3602,8 @@ def retirar_empleado(id):
         return redirect(url_for("detalle_empleado", id=id))
 
     # Homogeneiza visualización (DD/MM/YYYY) sin alterar lo almacenado.
+    fi_obj = parse_fecha(emp.get("fecha_ingreso"))
+    emp["fecha_ingreso_iso"] = fi_obj.strftime("%Y-%m-%d") if fi_obj else ""
     format_record_dates(emp, ["fecha_ingreso"])
     motivos = query("SELECT tipo_retiro FROM motivo_retiro ORDER BY tipo_retiro")
     return render_template(
@@ -4610,19 +4623,30 @@ def editar_retirado(id):
         flash("Registro no encontrado", "error")
         return redirect(url_for("retiro_personal"))
     if request.method == "POST":
+        fecha_ingreso = request.form.get("fecha_ingreso", "").strip()
         fecha_retiro = request.form.get("fecha_retiro", "").strip()
         tipo_retiro = request.form.get("tipo_retiro", "").strip()
         dias_laborados = request.form.get("dias_laborados", "").strip()
         motivo = request.form.get("motivo", "").strip()
-        if "-" in fecha_retiro:
-            parts = fecha_retiro.split("-")
-            fecha_retiro = f"{parts[2]}/{parts[1]}/{parts[0]}"
+
+        fi_obj = parse_fecha(fecha_ingreso or ret.get("fecha_ingreso"))
+        fr_obj = parse_fecha(fecha_retiro)
+        if fi_obj and fr_obj and fr_obj < fi_obj:
+            flash("La fecha de retiro no puede ser menor que la fecha de ingreso.", "error")
+            return redirect(url_for("editar_retirado", id=id, redirect_cedula=request.form.get("redirect_cedula", "")))
+
+        fecha_ingreso_fmt = _fecha_ddmmyyyy(fecha_ingreso or ret.get("fecha_ingreso")) or (fecha_ingreso or ret.get("fecha_ingreso"))
+        fecha_retiro_fmt = _fecha_ddmmyyyy(fecha_retiro) or fecha_retiro
+        dias_auto = (fr_obj - fi_obj).days if fi_obj and fr_obj else None
+        dias_final = int(dias_laborados) if dias_laborados else dias_auto
+
         execute(
-            "UPDATE retirado SET fecha_retiro=%s, tipo_retiro=%s, dias_laborados=%s, motivo=%s "
+            "UPDATE retirado SET fecha_ingreso=%s, fecha_retiro=%s, tipo_retiro=%s, dias_laborados=%s, motivo=%s "
             "WHERE id_retiro=%s",
-            (fecha_retiro or None,
+            (fecha_ingreso_fmt or None,
+             fecha_retiro_fmt or None,
              tipo_retiro or None,
-             int(dias_laborados) if dias_laborados else None,
+             dias_final,
              motivo or None,
              id),
         )
@@ -4633,6 +4657,8 @@ def editar_retirado(id):
         return redirect(url_for("retiro_personal"))
     # Estandariza fechas para UI y arma valor ISO para input[type=date].
     format_record_dates(ret, ["fecha_ingreso", "fecha_retiro"])
+    fecha_ingreso_d = parse_fecha(ret.get("fecha_ingreso"))
+    ret["fecha_ingreso_iso"] = fecha_ingreso_d.strftime("%Y-%m-%d") if fecha_ingreso_d else ""
     fecha_retiro_d = parse_fecha(ret.get("fecha_retiro"))
     ret["fecha_retiro_iso"] = fecha_retiro_d.strftime("%Y-%m-%d") if fecha_retiro_d else ""
     motivos = query("SELECT tipo_retiro FROM motivo_retiro ORDER BY tipo_retiro")
