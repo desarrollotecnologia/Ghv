@@ -11,11 +11,12 @@ Uso:
 import sys
 import mysql.connector
 from datetime import date, datetime
+from config import Config
 
 conn = mysql.connector.connect(
-    host='localhost', port=3306,
-    user='gh_admin', password='GHC01b33f2026*',
-    database='gestio_humana'
+    host=Config.MYSQL_HOST, port=Config.MYSQL_PORT,
+    user=Config.MYSQL_USER, password=Config.MYSQL_PASSWORD,
+    database=Config.MYSQL_DATABASE
 )
 cur = conn.cursor(dictionary=True)
 hoy = date.today()
