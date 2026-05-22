@@ -263,6 +263,26 @@ def _read_permiso_email_token(token):
     return {"sid": int(sid), "action": action, "by": actor_email}, None
 
 
+def _safe_resuelto_por_permiso(value):
+    """Ajusta resuelto_por al tamaño real de la columna para evitar Data too long."""
+    txt = (value or "").strip()
+    if not txt:
+        return "EMAIL-LINK"
+    try:
+        row = query(
+            "SELECT CHARACTER_MAXIMUM_LENGTH AS max_len "
+            "FROM INFORMATION_SCHEMA.COLUMNS "
+            "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = 'solicitud_permiso' AND COLUMN_NAME = 'resuelto_por'",
+            (app.config.get("MYSQL_DATABASE"),), one=True,
+        )
+        max_len = int((row or {}).get("max_len") or 0)
+        if max_len > 0 and len(txt) > max_len:
+            return txt[:max_len]
+    except Exception:
+        pass
+    return txt
+
+
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -2659,12 +2679,24 @@ def permiso_email_action_confirm():
         resolver_id = payload["by"]
     elif cur_user and cur_user.get("id_user"):
         resolver_id = cur_user["id_user"]
+    resolver_id_db = _safe_resuelto_por_permiso(resolver_id)
 
     nuevo_estado = "APROBADO" if payload["action"] == "aprobar" else "RECHAZADO"
-    execute(
-        "UPDATE solicitud_permiso SET estado = %s, observaciones = %s, resuelto_por = %s, fecha_resolucion = NOW() WHERE id = %s",
-        (nuevo_estado, observaciones or None, resolver_id, payload["sid"]),
-    )
+    try:
+        execute(
+            "UPDATE solicitud_permiso SET estado = %s, observaciones = %s, resuelto_por = %s, fecha_resolucion = NOW() WHERE id = %s",
+            (nuevo_estado, observaciones or None, resolver_id_db, payload["sid"]),
+        )
+    except Exception:
+        return render_template(
+            "permiso_email_action.html",
+            estado="error",
+            mensaje="No se pudo resolver la solicitud en este momento. Intente nuevamente o avise a tecnología.",
+            solicitud=solicitud,
+            token="",
+            accion="",
+            actor_email=payload.get("by") or "",
+        ), 500
     solicitud["estado"] = nuevo_estado
     solicitud["observaciones"] = observaciones or None
 
