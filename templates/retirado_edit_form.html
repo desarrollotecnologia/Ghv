@@ -9,21 +9,20 @@
 {% block content %}
 <div class="detail-card" style="max-width:800px">
     <h3 class="form-section-title" style="color:#3b82f6"><span class="material-symbols-outlined">edit</span> Editar Registro de Retiro</h3>
-    <div class="detail-grid" style="margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid var(--border)">
-        <div class="detail-field"><label>ID Retiro</label><span>{{ ret.id_retiro }}</span></div>
-        <div class="detail-field"><label>Cédula</label><span>{{ ret.id_cedula }}</span></div>
-        <div class="detail-field"><label>Nombre</label><span>{{ ret.apellidos_nombre }}</span></div>
-        <div class="detail-field"><label>Departamento</label><span>{{ ret.departamento or '—' }}</span></div>
-        <div class="detail-field"><label>Área</label><span>{{ ret.area or '—' }}</span></div>
-        <div class="detail-field">
-            <label>Fecha Ingreso</label>
-            <input type="date" name="fecha_ingreso" id="fechaIngreso" class="form-input"
-                   value="{{ ret.fecha_ingreso_iso or '' }}">
-        </div>
-    </div>
-
     <form method="POST">
         <input type="hidden" name="redirect_cedula" value="{{ redirect_cedula }}">
+        <div class="detail-grid" style="margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid var(--border)">
+            <div class="detail-field"><label>ID Retiro</label><span>{{ ret.id_retiro }}</span></div>
+            <div class="detail-field"><label>Cédula</label><span>{{ ret.id_cedula }}</span></div>
+            <div class="detail-field"><label>Nombre</label><span>{{ ret.apellidos_nombre }}</span></div>
+            <div class="detail-field"><label>Departamento</label><span>{{ ret.departamento or '—' }}</span></div>
+            <div class="detail-field"><label>Área</label><span>{{ ret.area or '—' }}</span></div>
+            <div class="detail-field">
+                <label>Fecha Ingreso</label>
+                <input type="date" name="fecha_ingreso" id="fechaIngreso" class="form-input"
+                       value="{{ ret.fecha_ingreso_iso or '' }}">
+            </div>
+        </div>
         <div class="form-row">
             <div class="form-group">
                 <label class="form-label">Fecha de Retiro<span class="required">*</span></label>
@@ -42,7 +41,7 @@
             <div class="form-group">
                 <label class="form-label">Días Laborados</label>
                 <input type="number" name="dias_laborados" id="diasLaborados" class="form-input"
-                       value="{{ ret.dias_laborados or '' }}">
+                       value="{{ ret.dias_laborados or '' }}" readonly>
             </div>
         </div>
         <div class="form-row">

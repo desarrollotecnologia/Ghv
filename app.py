@@ -3585,8 +3585,7 @@ def retirar_empleado(id):
             return redirect(url_for("retirar_empleado", id=id))
 
         fr_formatted = _fecha_ddmmyyyy(fecha_retiro) or fecha_retiro
-        dias_auto = (fr_obj - fi_obj).days if fi_obj and fr_obj else None
-        dias_final = int(dias_laborados) if dias_laborados else dias_auto
+        dias_final = (fr_obj - fi_obj).days if fi_obj and fr_obj else None
 
         execute(
             "INSERT INTO retirado (id_retiro, id_cedula, apellidos_nombre, departamento, "
@@ -4629,16 +4628,18 @@ def editar_retirado(id):
         dias_laborados = request.form.get("dias_laborados", "").strip()
         motivo = request.form.get("motivo", "").strip()
 
-        fi_obj = parse_fecha(fecha_ingreso or ret.get("fecha_ingreso"))
+        # Prioriza la fecha base del empleado para evitar ambigüedad DD/MM vs MM/DD en históricos.
+        emp_ref = query("SELECT fecha_ingreso FROM empleado WHERE id_cedula = %s", (ret.get("id_cedula"),), one=True)
+        fecha_ingreso_ref = (emp_ref or {}).get("fecha_ingreso") or ret.get("fecha_ingreso")
+        fi_obj = parse_fecha(fecha_ingreso or fecha_ingreso_ref)
         fr_obj = parse_fecha(fecha_retiro)
         if fi_obj and fr_obj and fr_obj < fi_obj:
             flash("La fecha de retiro no puede ser menor que la fecha de ingreso.", "error")
             return redirect(url_for("editar_retirado", id=id, redirect_cedula=request.form.get("redirect_cedula", "")))
 
-        fecha_ingreso_fmt = _fecha_ddmmyyyy(fecha_ingreso or ret.get("fecha_ingreso")) or (fecha_ingreso or ret.get("fecha_ingreso"))
+        fecha_ingreso_fmt = _fecha_ddmmyyyy(fecha_ingreso or fecha_ingreso_ref) or (fecha_ingreso or fecha_ingreso_ref)
         fecha_retiro_fmt = _fecha_ddmmyyyy(fecha_retiro) or fecha_retiro
-        dias_auto = (fr_obj - fi_obj).days if fi_obj and fr_obj else None
-        dias_final = int(dias_laborados) if dias_laborados else dias_auto
+        dias_final = (fr_obj - fi_obj).days if fi_obj and fr_obj else None
 
         execute(
             "UPDATE retirado SET fecha_ingreso=%s, fecha_retiro=%s, tipo_retiro=%s, dias_laborados=%s, motivo=%s "
@@ -4655,9 +4656,11 @@ def editar_retirado(id):
         if redirect_cedula:
             return redirect(url_for("detalle_empleado", id=redirect_cedula))
         return redirect(url_for("retiro_personal"))
+    emp_ref = query("SELECT fecha_ingreso FROM empleado WHERE id_cedula = %s", (ret.get("id_cedula"),), one=True)
+    fecha_ingreso_ref = (emp_ref or {}).get("fecha_ingreso") or ret.get("fecha_ingreso")
     # Estandariza fechas para UI y arma valor ISO para input[type=date].
     format_record_dates(ret, ["fecha_ingreso", "fecha_retiro"])
-    fecha_ingreso_d = parse_fecha(ret.get("fecha_ingreso"))
+    fecha_ingreso_d = parse_fecha(fecha_ingreso_ref)
     ret["fecha_ingreso_iso"] = fecha_ingreso_d.strftime("%Y-%m-%d") if fecha_ingreso_d else ""
     fecha_retiro_d = parse_fecha(ret.get("fecha_retiro"))
     ret["fecha_retiro_iso"] = fecha_retiro_d.strftime("%Y-%m-%d") if fecha_retiro_d else ""
