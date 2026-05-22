@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="detail-card" style="max-width:680px;margin:24px auto">
+    <h3 class="form-section-title" style="margin-bottom:14px">
+        <span class="material-symbols-outlined">mail</span>
+        Resolución de Solicitud de Permiso
+    </h3>
+
+    {% if solicitud %}
+    <div class="detail-grid" style="margin-bottom:16px">
+        <div class="detail-field"><label>Empleado</label><span>{{ solicitud.apellidos_nombre or '—' }}</span></div>
+        <div class="detail-field"><label>Cédula</label><span>{{ solicitud.id_cedula or '—' }}</span></div>
+        <div class="detail-field"><label>Tipo</label><span>{{ solicitud.tipo or 'Permiso' }}</span></div>
+        <div class="detail-field"><label>Fechas</label><span>{{ solicitud.fecha_desde|fecha_display }} → {{ solicitud.fecha_hasta|fecha_display }}</span></div>
+    </div>
+    {% endif %}
+    {% if actor_email %}
+    <p style="font-size:12px;color:#6b7280;margin-top:-4px;margin-bottom:12px">
+        Este enlace está asociado al correo: <strong>{{ actor_email }}</strong>.
+    </p>
+    {% endif %}
+
+    {% if estado == 'confirmar' %}
+    <p style="margin-bottom:14px">{{ mensaje }}</p>
+    <form method="POST" action="{{ url_for('permiso_email_action_confirm') }}">
+        <input type="hidden" name="token" value="{{ token }}">
+        <div class="form-group">
+            <label class="form-label">Observaciones (opcional)</label>
+            <textarea name="observaciones" class="form-input" rows="3" placeholder="Ej: Aprobado para las fechas indicadas..."></textarea>
+        </div>
+        <div class="form-actions">
+            {% if accion == 'aprobar' %}
+            <button type="submit" class="btn btn-success">
+                <span class="material-symbols-outlined">check_circle</span>
+                Confirmar aprobación
+            </button>
+            {% else %}
+            <button type="submit" class="btn btn-danger">
+                <span class="material-symbols-outlined">cancel</span>
+                Confirmar rechazo
+            </button>
+            {% endif %}
+        </div>
+    </form>
+    {% elif estado == 'ok' %}
+    <div class="empty-state" style="padding:18px;background:#ecfdf3;border:1px solid #bbf7d0">
+        <span class="material-symbols-outlined" style="color:#16a34a">check_circle</span>
+        <p style="color:#166534">{{ mensaje }}</p>
+    </div>
+    {% elif estado == 'resuelta' %}
+    <div class="empty-state" style="padding:18px;background:#fffbeb;border:1px solid #fde68a">
+        <span class="material-symbols-outlined" style="color:#b45309">info</span>
+        <p style="color:#92400e">{{ mensaje }}</p>
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding:18px;background:#fef2f2;border:1px solid #fecaca">
+        <span class="material-symbols-outlined" style="color:#dc2626">error</span>
+        <p style="color:#991b1b">{{ mensaje }}</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

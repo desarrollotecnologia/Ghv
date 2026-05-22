@@ -304,7 +304,10 @@ def _gh_recipients(app):
     return gh, informada, control
 
 
-def notificar_nueva_solicitud_permiso(app, solicitud, empleado_nombre, empleado_email, evidencia_path=None):
+def notificar_nueva_solicitud_permiso(
+    app, solicitud, empleado_nombre, empleado_email, evidencia_path=None,
+    approve_url=None, reject_url=None, force_recipients=None
+):
     """
     Notifica por separado:
     - coordinacion.gestionhumana@colbeef.com (MAIL_GH_PERMISOS): es quien APRUEBA o RECHAZA el permiso.
@@ -322,14 +325,52 @@ def notificar_nueva_solicitud_permiso(app, solicitud, empleado_nombre, empleado_
 
     nota_evidencia = "<p><strong>Se adjunta la evidencia</strong> enviada por el empleado (permiso no remunerado).</p>" if attachments else ""
 
+    force_to = _parse_emails(force_recipients)
+
+    # Correo a destino forzado (jefe inmediato): reemplaza flujo GH por completo.
+    if force_to:
+        subject_jefe = f"Nueva solicitud de permiso – {empleado_nombre}"
+        acciones_html = ""
+        if approve_url and reject_url:
+            acciones_html = f"""
+        <div style="margin:14px 0 6px;">
+            <a href="{html_escape(str(approve_url))}" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:600;margin-right:8px;">Aprobar desde el celular</a>
+            <a href="{html_escape(str(reject_url))}" style="display:inline-block;background:#dc2626;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:600;">Rechazar desde el celular</a>
+        </div>
+        <p style="font-size:12px;color:#6b7280">Este enlace es de un solo uso efectivo: al resolver, la solicitud deja de estar pendiente.</p>
+            """
+        body_jefe_content = f"""
+        <p>Estimado/a Jefe Inmediato,</p>
+        <p>Se registró una <strong>nueva solicitud de permiso</strong> de su colaborador. Revise y resuelva (aprobar o rechazar).</p>
+        {tabla}
+        {acciones_html}
+        {nota_evidencia}
+        <div class="mail-divider"></div>
+        <p>Esta notificación se envía únicamente al jefe inmediato asignado.</p>
+        <p>Saludos cordiales,<br/><strong>Sistema de Gestión Humana – Colbeef</strong></p>
+        """
+        body_jefe = _wrap_html(body_jefe_content, title=subject_jefe, subtitle="Nueva solicitud de permiso")
+        plain_jefe = _strip_html(body_jefe_content)
+        return send_mail(force_to, subject_jefe, body_jefe, body_text=plain_jefe, app=app, attachments=attachments)
+
     # Correo a Coordinación GH (quien aprueba/rechaza)
     gh, informada, _control = _gh_recipients(app)
     if gh:
         subject_gh = f"Solicitud de permiso – {solicitud.get('fecha_desde', '')} – {empleado_nombre}"
+        acciones_html = ""
+        if approve_url and reject_url:
+            acciones_html = f"""
+        <div style="margin:14px 0 6px;">
+            <a href="{html_escape(str(approve_url))}" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:600;margin-right:8px;">Aprobar desde el celular</a>
+            <a href="{html_escape(str(reject_url))}" style="display:inline-block;background:#dc2626;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:600;">Rechazar desde el celular</a>
+        </div>
+        <p style="font-size:12px;color:#6b7280">Estos enlaces aplican solo para solicitudes de <strong>permiso</strong>.</p>
+            """
         body_gh_content = f"""
         <p>Estimado/a Coordinación Gestión Humana,</p>
         <p>Se ha registrado una <strong>nueva solicitud de permiso</strong> en el sistema. Por favor revise los datos y resuelva la solicitud (aprobar o rechazar).</p>
         {tabla}
+        {acciones_html}
         {nota_evidencia}
         <div class="mail-divider"></div>
         <p><strong>Usted es quien aprueba o rechaza el permiso.</strong> Ingrese al sistema para resolver esta solicitud. Agradecemos una respuesta a la brevedad para confirmar que recibió esta notificación.</p>

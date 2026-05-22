@@ -25,6 +25,7 @@ from mail_utils import (
     notificar_gh_resolucion_por_jefe,
 )
 import tempfile
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -225,6 +226,41 @@ def _linked_accounts_for_user(user):
 def _is_api_request():
     """True si la petición espera JSON (rutas /api/ o Accept: application/json)."""
     return request.path.startswith("/api/") or "application/json" in request.accept_mimetypes
+
+
+def _build_email_action_serializer():
+    secret = app.config.get("SECRET_KEY") or "colbeef-ghv-secret"
+    return URLSafeTimedSerializer(secret_key=secret, salt="permiso-email-action-v1")
+
+
+def _create_permiso_email_token(solicitud_id, action, actor_email=None):
+    serializer = _build_email_action_serializer()
+    return serializer.dumps({
+        "scope": "permiso",
+        "sid": int(solicitud_id),
+        "action": str(action or "").strip().lower(),
+        "by": (actor_email or "").strip().lower() or None,
+    })
+
+
+def _read_permiso_email_token(token):
+    max_age_hours = int(app.config.get("PERMISO_EMAIL_TOKEN_HOURS", 168) or 168)
+    max_age_seconds = max_age_hours * 3600
+    serializer = _build_email_action_serializer()
+    try:
+        data = serializer.loads(token, max_age=max_age_seconds)
+    except SignatureExpired:
+        return None, "El enlace ya expiró. Solicite una nueva notificación."
+    except BadSignature:
+        return None, "El enlace no es válido."
+    if not isinstance(data, dict) or data.get("scope") != "permiso":
+        return None, "El enlace no corresponde a una solicitud de permiso."
+    sid = data.get("sid")
+    action = (data.get("action") or "").strip().lower()
+    actor_email = (data.get("by") or "").strip().lower()
+    if not sid or action not in ("aprobar", "rechazar"):
+        return None, "El enlace no es válido."
+    return {"sid": int(sid), "action": action, "by": actor_email}, None
 
 
 def login_required(f):
@@ -2047,21 +2083,27 @@ def permiso_solicitar():
         else:
             fp = os.path.join(current_app.instance_path, "uploads", evidencia_ruta)
             evidencia_full_path = fp if os.path.isfile(fp) else None
-        correos_ok = notificar_nueva_solicitud_permiso(app, row, emp["apellidos_nombre"], emp.get("direccion_email"), evidencia_path=evidencia_full_path)
         encargado = _obtener_encargado_de(id_cedula)
-        if encargado and encargado.get("email"):
+        correos_ok = False
+        if encargado and encargado.get("email") and row and row.get("id"):
             try:
-                notificar_encargado_nueva_solicitud(
-                    app, row, emp["apellidos_nombre"],
-                    encargado["email"], encargado.get("nombre"),
-                    tipo="permiso", evidencia_path=evidencia_full_path,
+                t_ap = _create_permiso_email_token(row["id"], "aprobar", actor_email=encargado["email"])
+                t_re = _create_permiso_email_token(row["id"], "rechazar", actor_email=encargado["email"])
+                approve_url = url_for("permiso_email_action", token=t_ap, _external=True)
+                reject_url = url_for("permiso_email_action", token=t_re, _external=True)
+                correos_ok = notificar_nueva_solicitud_permiso(
+                    app, row, emp["apellidos_nombre"], emp.get("direccion_email"),
+                    evidencia_path=evidencia_full_path,
+                    approve_url=approve_url,
+                    reject_url=reject_url,
+                    force_recipients=[encargado["email"]],
                 )
             except Exception:
-                pass
+                correos_ok = False
         if correos_ok:
-            flash("Solicitud registrada. Se envió correo a Coordinación GH" + (" y al encargado del empleado." if _obtener_encargado_de(id_cedula) else "."), "success")
+            flash("Solicitud registrada. Se envió notificación al jefe inmediato.", "success")
         else:
-            flash("Solicitud registrada. Revisar configuración de correo (MAIL_ENABLED, MAIL_PASSWORD) si no llegaron los avisos.", "info")
+            flash("Solicitud registrada. No se pudo notificar al jefe inmediato (revise configuración de correo y que el jefe tenga email).", "info")
         if is_empleado:
             return redirect(url_for("empleado_mis_solicitudes"))
         return redirect(url_for("permisos_index"))
@@ -2159,7 +2201,6 @@ def vacaciones_solicitar():
             )
             emp_nombre = emp_row.get("apellidos_nombre") if emp_row else ""
             if new_row and emp_nombre:
-                notificar_nueva_solicitud_vacaciones(app, new_row, emp_nombre)
                 encargado = _obtener_encargado_de(id_cedula)
                 if encargado and encargado.get("email"):
                     notificar_encargado_nueva_solicitud(
@@ -2517,6 +2558,146 @@ def permiso_aprobar(id):
         r = query("SELECT COUNT(*) as c FROM solicitud_permiso WHERE estado = 'RECHAZADO'", one=True)["c"]
         return jsonify(ok=True, pendientes=p, aprobadas=a, rechazadas=r)
     return redirect(url_for("permisos_index"))
+
+
+@app.route("/permisos/email-action")
+def permiso_email_action():
+    token = (request.args.get("token") or "").strip()
+    payload, error = _read_permiso_email_token(token)
+    if error:
+        return render_template(
+            "permiso_email_action.html",
+            estado="error",
+            mensaje=error,
+            solicitud=None,
+            token="",
+            accion="",
+            actor_email="",
+        ), 400
+
+    solicitud = query(
+        "SELECT p.*, e.apellidos_nombre FROM solicitud_permiso p "
+        "LEFT JOIN empleado e ON e.id_cedula = p.id_cedula "
+        "WHERE p.id = %s",
+        (payload["sid"],), one=True,
+    )
+    if not solicitud:
+        return render_template(
+            "permiso_email_action.html",
+            estado="error",
+            mensaje="La solicitud ya no existe o fue eliminada.",
+            solicitud=None,
+            token="",
+            accion="",
+            actor_email=payload.get("by") or "",
+        ), 404
+
+    if solicitud.get("estado") != "PENDIENTE":
+        return render_template(
+            "permiso_email_action.html",
+            estado="resuelta",
+            mensaje="Este enlace ya fue utilizado y la solicitud ya fue resuelta.",
+            solicitud=solicitud,
+            token="",
+            accion="",
+            actor_email=payload.get("by") or "",
+        )
+
+    return render_template(
+        "permiso_email_action.html",
+        estado="confirmar",
+        mensaje="Confirme la acción para resolver la solicitud.",
+        solicitud=solicitud,
+        token=token,
+        accion=payload["action"],
+        actor_email=payload.get("by") or "",
+    )
+
+
+@app.route("/permisos/email-action/confirm", methods=["POST"])
+def permiso_email_action_confirm():
+    token = (request.form.get("token") or "").strip()
+    observaciones = (request.form.get("observaciones") or "").strip()
+    payload, error = _read_permiso_email_token(token)
+    if error:
+        return render_template(
+            "permiso_email_action.html",
+            estado="error",
+            mensaje=error,
+            solicitud=None,
+            token="",
+            accion="",
+            actor_email="",
+        ), 400
+
+    solicitud = query("SELECT * FROM solicitud_permiso WHERE id = %s", (payload["sid"],), one=True)
+    if not solicitud:
+        return render_template(
+            "permiso_email_action.html",
+            estado="error",
+            mensaje="La solicitud no existe.",
+            solicitud=None,
+            token="",
+            accion="",
+            actor_email=payload.get("by") or "",
+        ), 404
+
+    if solicitud.get("estado") != "PENDIENTE":
+        return render_template(
+            "permiso_email_action.html",
+            estado="resuelta",
+            mensaje="Este enlace ya fue utilizado y la solicitud ya fue resuelta.",
+            solicitud=solicitud,
+            token="",
+            accion="",
+            actor_email=payload.get("by") or "",
+        )
+
+    cur_user = get_current_user()
+    resolver_id = "EMAIL-LINK"
+    if payload.get("by"):
+        resolver_id = payload["by"]
+    elif cur_user and cur_user.get("id_user"):
+        resolver_id = cur_user["id_user"]
+
+    nuevo_estado = "APROBADO" if payload["action"] == "aprobar" else "RECHAZADO"
+    execute(
+        "UPDATE solicitud_permiso SET estado = %s, observaciones = %s, resuelto_por = %s, fecha_resolucion = NOW() WHERE id = %s",
+        (nuevo_estado, observaciones or None, resolver_id, payload["sid"]),
+    )
+    solicitud["estado"] = nuevo_estado
+    solicitud["observaciones"] = observaciones or None
+
+    emp = query("SELECT apellidos_nombre FROM empleado WHERE id_cedula = %s", (solicitud["id_cedula"],), one=True)
+    email_empleado = _resolver_email_empleado(solicitud["id_cedula"])
+    notificar_resolucion_permiso(
+        app, solicitud, emp["apellidos_nombre"] if emp else "",
+        email_empleado, aprobado=(nuevo_estado == "APROBADO"), observaciones=observaciones,
+    )
+    if nuevo_estado == "APROBADO":
+        try:
+            notificar_gh_resolucion_por_jefe(
+                app, solicitud, emp["apellidos_nombre"] if emp else "",
+                tipo="permiso", aprobado=True,
+                jefe_nombre=payload.get("by") or (cur_user or {}).get("nombre") or "Aprobación por correo",
+                observaciones=observaciones,
+            )
+        except Exception:
+            pass
+    registrar_audit(
+        f"Solicitud {'aprobada' if nuevo_estado == 'APROBADO' else 'rechazada'} por enlace correo",
+        "permisos",
+        f"id={payload['sid']} cédula={solicitud.get('id_cedula')} actor={resolver_id}",
+    )
+    return render_template(
+        "permiso_email_action.html",
+        estado="ok",
+        mensaje=f"Solicitud {nuevo_estado.lower()} correctamente.",
+        solicitud=solicitud,
+        token="",
+        accion="",
+        actor_email=payload.get("by") or "",
+    )
 
 
 @app.route("/permisos/<int:id>/rechazar", methods=["POST"])

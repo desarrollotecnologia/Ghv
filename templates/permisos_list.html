@@ -187,6 +187,25 @@
             <div class="permiso-card-observaciones">
                 <span class="permiso-detail-label">Observaciones:</span> {{ s.observaciones }}
             </div>
+            {% elif puede_aprobar and s.estado != 'PENDIENTE' %}
+            <div class="permiso-card-observaciones">
+                {% if s.resuelto_por and '@' in s.resuelto_por %}
+                <span class="permiso-detail-label">Resuelto por correo:</span> {{ s.resuelto_por }}
+                {% elif s.resuelto_por %}
+                <span class="permiso-detail-label">Resuelto por:</span> {{ s.resuelto_por }}
+                {% else %}
+                <span class="permiso-detail-label">Resuelto por:</span> —
+                {% endif %}
+            </div>
+            {% endif %}
+            {% if puede_aprobar and s.estado != 'PENDIENTE' and s.observaciones and s.resuelto_por %}
+            <div class="permiso-card-observaciones" style="padding-top:8px;border-top:none">
+                {% if '@' in s.resuelto_por %}
+                <span class="permiso-detail-label">Resuelto por correo:</span> {{ s.resuelto_por }}
+                {% else %}
+                <span class="permiso-detail-label">Resuelto por:</span> {{ s.resuelto_por }}
+                {% endif %}
+            </div>
             {% endif %}
         </div>
         {% endfor %}
