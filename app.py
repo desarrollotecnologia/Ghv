@@ -3308,6 +3308,37 @@ def api_empleado_update(id_cedula):
     return jsonify({"ok": True})
 
 
+@app.route("/api/personal-buscar", methods=["GET"])
+@login_required
+def api_personal_buscar():
+    """Búsqueda rápida de empleados (activos e inactivos) por cédula o nombre."""
+    user = get_current_user()
+    if not user:
+        return jsonify({"ok": False, "error": "No autenticado", "resultados": []}), 401
+    mods = _get_effective_modules(user.get("rol") or "")
+    if not (mods.get("personal") or mods.get("personal_inactivo")):
+        return jsonify({"ok": False, "error": "Sin acceso a personal", "resultados": []}), 403
+
+    q = request.args.get("q", "").strip()
+    if len(q) < 2:
+        return jsonify({"ok": True, "resultados": []})
+
+    like = f"%{q}%"
+    rows = query(
+        "SELECT id_cedula, apellidos_nombre, estado, departamento, area "
+        "FROM empleado "
+        "WHERE id_cedula LIKE %s OR apellidos_nombre LIKE %s "
+        "ORDER BY "
+        "CASE WHEN id_cedula = %s THEN 0 "
+        "     WHEN id_cedula LIKE %s THEN 1 "
+        "     WHEN apellidos_nombre LIKE %s THEN 2 "
+        "     ELSE 3 END, apellidos_nombre "
+        "LIMIT 12",
+        (like, like, q, q + "%", like),
+    )
+    return jsonify({"ok": True, "resultados": rows or []})
+
+
 # ── PERSONAL ACTIVO ──────────────────────────────────────────
 
 @app.route("/personal-activo")

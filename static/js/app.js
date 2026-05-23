@@ -59,6 +59,68 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Global search: tabla O tarjetas del Home O lista de permisos ─────────────
     if (globalSearch) {
+        let searchBox = globalSearch.closest('.search-box');
+        let dropdown = document.getElementById('globalSearchDropdown');
+        let lookupTimer = null;
+        let hideTimer = null;
+        if (!dropdown && searchBox) {
+            dropdown = document.createElement('div');
+            dropdown.id = 'globalSearchDropdown';
+            dropdown.className = 'global-search-dropdown';
+            dropdown.style.display = 'none';
+            searchBox.style.position = 'relative';
+            searchBox.appendChild(dropdown);
+        }
+
+        const closeDropdown = () => {
+            if (!dropdown) return;
+            dropdown.style.display = 'none';
+            dropdown.innerHTML = '';
+        };
+
+        const renderDropdown = (items) => {
+            if (!dropdown) return;
+            if (!items || !items.length) {
+                closeDropdown();
+                return;
+            }
+            dropdown.innerHTML = items.map((r) => {
+                const estadoClass = (r.estado || '').toUpperCase() === 'ACTIVO' ? 'active' : 'inactive';
+                const estadoTxt = (r.estado || '—').toUpperCase();
+                const areaTxt = (r.area || r.departamento || '—');
+                return `<button type="button" class="global-search-item" data-cedula="${r.id_cedula}">
+                    <span class="gs-name">${r.apellidos_nombre || ''}</span>
+                    <span class="gs-sub">${r.id_cedula || ''} · ${areaTxt}</span>
+                    <span class="gs-state ${estadoClass}">${estadoTxt}</span>
+                </button>`;
+            }).join('');
+            dropdown.style.display = 'block';
+        };
+
+        const lookupPersonal = async (term) => {
+            if (!term || term.length < 2) {
+                closeDropdown();
+                return;
+            }
+            try {
+                const res = await fetch('/api/personal-buscar?q=' + encodeURIComponent(term), {
+                    headers: { 'Accept': 'application/json' }
+                });
+                if (!res.ok) {
+                    closeDropdown();
+                    return;
+                }
+                const data = await res.json();
+                if (!data || !data.ok) {
+                    closeDropdown();
+                    return;
+                }
+                renderDropdown(data.resultados || []);
+            } catch (_) {
+                closeDropdown();
+            }
+        };
+
         globalSearch.addEventListener('input', () => {
             const term = (globalSearch.value || '').toLowerCase().trim();
 
@@ -90,9 +152,32 @@ document.addEventListener('DOMContentLoaded', () => {
             if (tf) {
                 tf.value = globalSearch.value;
                 tf.dispatchEvent(new Event('input', { bubbles: true }));
-                return;
             }
+
+            // Búsqueda global de personas (activos + inactivos) desde la barra superior.
+            clearTimeout(lookupTimer);
+            lookupTimer = setTimeout(() => lookupPersonal((globalSearch.value || '').trim()), 250);
         });
+
+        globalSearch.addEventListener('focus', () => {
+            clearTimeout(hideTimer);
+            const term = (globalSearch.value || '').trim();
+            if (term.length >= 2) lookupPersonal(term);
+        });
+
+        globalSearch.addEventListener('blur', () => {
+            hideTimer = setTimeout(closeDropdown, 180);
+        });
+
+        if (dropdown) {
+            dropdown.addEventListener('mousedown', (ev) => {
+                const item = ev.target.closest('.global-search-item[data-cedula]');
+                if (!item) return;
+                ev.preventDefault();
+                const ced = item.getAttribute('data-cedula');
+                if (ced) window.location.href = '/personal-activo/' + encodeURIComponent(ced);
+            });
+        }
     }
 
     // ── Column sorting ──────────────────────────────────────

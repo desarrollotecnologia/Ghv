@@ -387,6 +387,59 @@
     });
     </script>
     <style>
+        .global-search-dropdown {
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            right: 0;
+            background: #fff;
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            box-shadow: 0 10px 22px rgba(15, 23, 42, 0.16);
+            max-height: 340px;
+            overflow-y: auto;
+            z-index: 1200;
+        }
+        .global-search-item {
+            width: 100%;
+            border: none;
+            background: #fff;
+            text-align: left;
+            padding: 10px 12px;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            grid-template-areas:
+                "name state"
+                "sub  state";
+            gap: 2px 8px;
+            cursor: pointer;
+        }
+        .global-search-item:hover { background: #f0fdf4; }
+        .global-search-item + .global-search-item { border-top: 1px solid #eef2f7; }
+        .global-search-item .gs-name {
+            grid-area: name;
+            color: #0f172a;
+            font-size: 13px;
+            font-weight: 600;
+            line-height: 1.3;
+        }
+        .global-search-item .gs-sub {
+            grid-area: sub;
+            color: #64748b;
+            font-size: 12px;
+            line-height: 1.25;
+        }
+        .global-search-item .gs-state {
+            grid-area: state;
+            align-self: center;
+            justify-self: end;
+            font-size: 11px;
+            font-weight: 700;
+            border-radius: 999px;
+            padding: 3px 8px;
+        }
+        .global-search-item .gs-state.active { background: #dcfce7; color: #166534; }
+        .global-search-item .gs-state.inactive { background: #fee2e2; color: #991b1b; }
         tr.row-clickable { cursor: pointer; transition: background-color 0.15s ease; }
         tr.row-clickable:hover { background-color: #f0fdf4 !important; }
         tr.row-clickable:hover td { color: #065f46; }
