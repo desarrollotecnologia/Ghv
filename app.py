@@ -3320,22 +3320,32 @@ def api_personal_buscar():
         return jsonify({"ok": False, "error": "Sin acceso a personal", "resultados": []}), 403
 
     q = request.args.get("q", "").strip()
+    estado = (request.args.get("estado") or "").strip().upper()
+    if estado not in ("ACTIVO", "INACTIVO"):
+        estado = ""
     if len(q) < 2:
         return jsonify({"ok": True, "resultados": []})
 
     like = f"%{q}%"
-    rows = query(
+    sql = (
         "SELECT id_cedula, apellidos_nombre, estado, departamento, area "
         "FROM empleado "
-        "WHERE id_cedula LIKE %s OR apellidos_nombre LIKE %s "
-        "ORDER BY "
+        "WHERE (id_cedula LIKE %s OR apellidos_nombre LIKE %s)"
+    )
+    params = [like, like]
+    if estado:
+        sql += " AND estado = %s"
+        params.append(estado)
+    sql += (
+        " ORDER BY "
         "CASE WHEN id_cedula = %s THEN 0 "
         "     WHEN id_cedula LIKE %s THEN 1 "
         "     WHEN apellidos_nombre LIKE %s THEN 2 "
         "     ELSE 3 END, apellidos_nombre "
-        "LIMIT 12",
-        (like, like, q, q + "%", like),
+        "LIMIT 12"
     )
+    params.extend([q, q + "%", like])
+    rows = query(sql, tuple(params))
     return jsonify({"ok": True, "resultados": rows or []})
 
 

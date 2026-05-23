@@ -59,6 +59,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Global search: tabla O tarjetas del Home O lista de permisos ─────────────
     if (globalSearch) {
+        const pageTitle = (((document.querySelector('.page-header h1') || {}).textContent) || '').trim().toLowerCase();
+        let estadoScope = '';
+        if (pageTitle.includes('personal activo')) estadoScope = 'ACTIVO';
+        else if (pageTitle.includes('personal inactivo')) estadoScope = 'INACTIVO';
+
         let searchBox = globalSearch.closest('.search-box');
         let dropdown = document.getElementById('globalSearchDropdown');
         let lookupTimer = null;
@@ -103,7 +108,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             try {
-                const res = await fetch('/api/personal-buscar?q=' + encodeURIComponent(term), {
+                let url = '/api/personal-buscar?q=' + encodeURIComponent(term);
+                if (estadoScope) url += '&estado=' + encodeURIComponent(estadoScope);
+                const res = await fetch(url, {
                     headers: { 'Accept': 'application/json' }
                 });
                 if (!res.ok) {
