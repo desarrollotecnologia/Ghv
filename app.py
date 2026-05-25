@@ -2913,7 +2913,7 @@ def incapacitados_dashboard():
     hasta = (request.args.get("hasta") or "").strip()
 
     where = [
-        "LOWER(TRIM(COALESCE(p.tipo, ''))) IN ('incapacidad médica','incapacidad medica','médico','medico')"
+        "REPLACE(LOWER(TRIM(COALESCE(p.tipo, ''))), 'á', 'a') LIKE 'incapacidad%'"
     ]
     params = []
     if estado != "TODOS":
@@ -2933,15 +2933,24 @@ def incapacitados_dashboard():
         where.append("p.fecha_desde <= %s")
         params.append(hasta)
 
-    sql = (
+    sql_base = (
         "SELECT p.id, p.id_cedula, e.apellidos_nombre, COALESCE(p.area, e.area) AS area, p.tipo, p.estado, "
-        "p.fecha_desde, p.fecha_hasta, p.motivo, p.motivo_cambio_empleado, p.observaciones, p.fecha_solicitud "
+        "p.fecha_desde, p.fecha_hasta, p.motivo, {motivo_cambio_col} p.observaciones, p.fecha_solicitud "
         "FROM solicitud_permiso p "
         "JOIN empleado e ON e.id_cedula = p.id_cedula "
         f"WHERE {' AND '.join(where)} "
         "ORDER BY p.fecha_desde DESC, p.fecha_solicitud DESC, p.id DESC"
     )
-    rows = query(sql, tuple(params))
+    try:
+        sql = sql_base.format(motivo_cambio_col="p.motivo_cambio_empleado, ")
+        rows = query(sql, tuple(params))
+    except Exception as e:
+        # Compatibilidad en entornos donde aún no existe la columna motivo_cambio_empleado.
+        if "motivo_cambio_empleado" in str(e).lower():
+            sql = sql_base.format(motivo_cambio_col="'' AS motivo_cambio_empleado, ")
+            rows = query(sql, tuple(params))
+        else:
+            raise
 
     total_dias = 0
     personas_set = set()
