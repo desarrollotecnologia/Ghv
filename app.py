@@ -528,6 +528,16 @@ def _normalize_email(s):
     return " ".join(str(s).split()).strip().lower()
 
 
+def _is_logistica_coordinator(user):
+    """Coord. logística: solo aprueba/rechaza, no solicita para sí."""
+    if not user:
+        return False
+    nombre = _normalize_rol(user.get("nombre") or "")
+    email = _normalize_email(user.get("email"))
+    uid = (user.get("id_user") or "").strip().upper()
+    return uid == "US-0001" or "COORDINACION LOGISTICA" in nombre or email == "coordinacion.logistica@colbeef.com"
+
+
 def _is_locker_user(user):
     """Locker: visible para gestor de contratación y correo de gerencia."""
     if not user:
@@ -662,7 +672,8 @@ def inject_user():
             switchable_accounts = [a for a in linked if (a.get("id_user") or "") != (user.get("id_user") or "")]
             can_switch_to_employee = bool(switchable_accounts)
         can_enter_employee_vac_mode = _can_employee_vacation_mode(user)
-        can_enter_encargado_mode = _can_encargado_mode(user)
+        # Excepción: ADMIN y COORD. GH no deben entrar al modo jefe encargado.
+        can_enter_encargado_mode = _can_encargado_mode(user) and (not _es_admin_o_coord(user))
         if encargado_mode and not can_enter_encargado_mode:
             session.pop("encargado_mode", None)
             session.pop("encargado_mode_opt_out", None)
@@ -696,6 +707,7 @@ def inject_user():
         can_enter_employee_vac_mode=can_enter_employee_vac_mode,
         encargado_mode=encargado_mode,
         can_enter_encargado_mode=can_enter_encargado_mode,
+        is_logistica_coordinator=_is_logistica_coordinator(user),
     )
 
 
@@ -885,6 +897,10 @@ def activar_modo_encargado():
 @app.route("/encargado/modo/salir", methods=["POST"])
 @login_required
 def desactivar_modo_encargado():
+    user = get_current_user()
+    if _is_logistica_coordinator(user):
+        flash("Coordinación logística debe permanecer en modo jefe para aprobar solicitudes.", "info")
+        return redirect(url_for("permisos_index"))
     session.pop("encargado_mode", None)
     session["encargado_mode_opt_out"] = True
     flash("Modo jefe encargado desactivado.", "info")
@@ -2080,10 +2096,13 @@ _ROLES_SOLICITAR_PARA_SI = (
 @module_required("permisos")
 def permiso_solicitar():
     """Formulario GH-FR-007: permiso o licencia (área, remunerado/no, hora inicio/fin)."""
+    user = get_current_user()
+    if _is_logistica_coordinator(user):
+        flash("Coordinación logística solo puede aprobar o rechazar solicitudes del equipo.", "info")
+        return redirect(url_for("permisos_index"))
     if session.get("encargado_mode"):
         flash("En modo jefe solo puedes revisar solicitudes que envía tu equipo.", "info")
         return redirect(url_for("permisos_index"))
-    user = get_current_user()
     modo_empleado = bool(session.get("employee_mode") or session.get("employee_vac_mode")) and _can_employee_vacation_mode(user)
     if session.get("employee_mode") and not modo_empleado:
         session.pop("employee_mode", None)
@@ -2436,10 +2455,13 @@ def permiso_editar(id):
 @module_required("permisos")
 def vacaciones_solicitar():
     """Formulario Solicitud de vacaciones (Gestión Humana - Colbeef)."""
+    user = get_current_user()
+    if _is_logistica_coordinator(user):
+        flash("Coordinación logística solo puede aprobar o rechazar solicitudes del equipo.", "info")
+        return redirect(url_for("vacaciones_index"))
     if session.get("encargado_mode"):
         flash("En modo jefe solo puedes revisar solicitudes que envía tu equipo.", "info")
         return redirect(url_for("vacaciones_index"))
-    user = get_current_user()
     rol = (user.get("rol") or "").strip().upper()
     modo_empleado_vac = bool(session.get("employee_mode") or session.get("employee_vac_mode")) and _can_employee_vacation_mode(user)
     if (session.get("employee_mode") or session.get("employee_vac_mode")) and not modo_empleado_vac:
@@ -2829,10 +2851,13 @@ def vacaciones_rechazar(id):
 @module_required("permisos")
 def vacaciones_mis_solicitudes():
     """Mis solicitudes de vacaciones (empleado o quien solicita para sí)."""
+    user = get_current_user()
+    if _is_logistica_coordinator(user):
+        flash("Coordinación logística no tiene módulo de solicitudes propias.", "info")
+        return redirect(url_for("vacaciones_index"))
     if session.get("encargado_mode"):
         flash("En modo jefe solo puedes revisar solicitudes que envía tu equipo.", "info")
         return redirect(url_for("vacaciones_index"))
-    user = get_current_user()
     id_cedula = (user.get("id_cedula") or "").strip()
     if not id_cedula:
         flash("No tiene cédula vinculada.", "error")
