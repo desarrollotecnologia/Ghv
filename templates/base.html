@@ -78,14 +78,6 @@
                             <span class="material-symbols-outlined">photo_camera</span>
                             Cambiar foto
                         </button>
-                        {% if can_enter_employee_vac_mode and not employee_vac_mode %}
-                        <form method="post" action="{{ url_for('activar_modo_empleado_vacaciones') }}" style="margin:0">
-                            <button type="submit" class="profile-dropdown-btn" style="width:100%">
-                                <span class="material-symbols-outlined">person</span>
-                                Modo empleado (permisos y vacaciones)
-                            </button>
-                        </form>
-                        {% endif %}
                         {% if can_enter_employee_vac_mode and employee_vac_mode %}
                         <form method="post" action="{{ url_for('desactivar_modo_empleado_vacaciones') }}" style="margin:0">
                             <button type="submit" class="profile-dropdown-btn" style="width:100%">
