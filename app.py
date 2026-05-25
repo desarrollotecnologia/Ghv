@@ -2119,7 +2119,7 @@ def permiso_solicitar():
                 flash("No puede enviar solicitudes a nombre de otro empleado.", "error")
                 return redirect(url_for("permiso_solicitar"))
         tipo = (request.form.get("tipo") or "Permiso").strip()
-        _tipos_permitidos = ("Permiso", "Licencia", "Médico", "Personal", "Capacitación", "Calamidad doméstica", "Otro")
+        _tipos_permitidos = ("Permiso", "Licencia", "Médico", "Incapacidad médica", "Personal", "Capacitación", "Calamidad doméstica", "Otro")
         if tipo not in _tipos_permitidos:
             tipo = "Permiso"
         fecha_desde = request.form.get("fecha_desde")
@@ -2134,6 +2134,9 @@ def permiso_solicitar():
         if not id_cedula or not fecha_desde or not fecha_hasta:
             flash("Complete empleado, fecha desde y fecha hasta.", "error")
             return redirect(url_for("permiso_solicitar"))
+        if not motivo:
+            flash("El motivo es obligatorio.", "error")
+            return redirect(url_for("permiso_solicitar"))
         if permiso_remunerado is None:
             flash("Indique si el permiso es remunerado o no.", "error")
             return redirect(url_for("permiso_solicitar"))
@@ -2146,10 +2149,11 @@ def permiso_solicitar():
         except ValueError:
             flash("Fechas inválidas.", "error")
             return redirect(url_for("permiso_solicitar"))
-        if permiso_remunerado == 0:
+        requiere_evidencia = permiso_remunerado == 0 or tipo == "Incapacidad médica"
+        if requiere_evidencia:
             evidencia_file = request.files.get("evidencia")
             if not evidencia_file or not evidencia_file.filename:
-                flash("Para permiso no remunerado debe adjuntar evidencia (PDF o imagen).", "error")
+                flash("Debe adjuntar evidencia (PDF o imagen) para permiso no remunerado o incapacidad médica.", "error")
                 return redirect(url_for("permiso_solicitar"))
         emp = query("SELECT id_cedula, apellidos_nombre, direccion_email, area FROM empleado WHERE id_cedula = %s AND estado = 'ACTIVO'", (id_cedula,), one=True)
         if not emp:
@@ -2162,25 +2166,24 @@ def permiso_solicitar():
             area = emp["area"]
 
         evidencia_ruta = None
-        if permiso_remunerado == 0:
-            evidencia_file = request.files.get("evidencia")
-            if evidencia_file and evidencia_file.filename:
-                ext = os.path.splitext(secure_filename(evidencia_file.filename))[1].lower()
-                if ext not in (".pdf", ".jpg", ".jpeg", ".png"):
-                    flash("La evidencia debe ser PDF o imagen (JPG, PNG).", "error")
-                    return redirect(url_for("permiso_solicitar"))
-                evidencia_file.seek(0, 2)
-                size = evidencia_file.tell()
-                evidencia_file.seek(0)
-                if size > 5 * 1024 * 1024:
-                    flash("La evidencia no debe superar 5 MB.", "error")
-                    return redirect(url_for("permiso_solicitar"))
-                upload_dir = os.path.join(current_app.instance_path, "uploads", "permisos")
-                os.makedirs(upload_dir, exist_ok=True)
-                nombre_safe = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{id_cedula}{ext}"
-                evidencia_ruta = os.path.join("permisos", nombre_safe)
-                evidencia_full_path = os.path.join(upload_dir, nombre_safe)
-                evidencia_file.save(evidencia_full_path)
+        evidencia_file = request.files.get("evidencia")
+        if evidencia_file and evidencia_file.filename:
+            ext = os.path.splitext(secure_filename(evidencia_file.filename))[1].lower()
+            if ext not in (".pdf", ".jpg", ".jpeg", ".png"):
+                flash("La evidencia debe ser PDF o imagen (JPG, PNG).", "error")
+                return redirect(url_for("permiso_solicitar"))
+            evidencia_file.seek(0, 2)
+            size = evidencia_file.tell()
+            evidencia_file.seek(0)
+            if size > 5 * 1024 * 1024:
+                flash("La evidencia no debe superar 5 MB.", "error")
+                return redirect(url_for("permiso_solicitar"))
+            upload_dir = os.path.join(current_app.instance_path, "uploads", "permisos")
+            os.makedirs(upload_dir, exist_ok=True)
+            nombre_safe = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{id_cedula}{ext}"
+            evidencia_ruta = os.path.join("permisos", nombre_safe)
+            evidencia_full_path = os.path.join(upload_dir, nombre_safe)
+            evidencia_file.save(evidencia_full_path)
 
         try:
             execute(
@@ -2296,7 +2299,7 @@ def permiso_editar(id):
 
     if request.method == "POST":
         tipo = (request.form.get("tipo") or "Permiso").strip()
-        _tipos_permitidos = ("Permiso", "Licencia", "Médico", "Personal", "Capacitación", "Calamidad doméstica", "Otro")
+        _tipos_permitidos = ("Permiso", "Licencia", "Médico", "Incapacidad médica", "Personal", "Capacitación", "Calamidad doméstica", "Otro")
         if tipo not in _tipos_permitidos:
             tipo = "Permiso"
 
@@ -2313,6 +2316,9 @@ def permiso_editar(id):
 
         if not fecha_desde or not fecha_hasta:
             flash("Complete fecha desde y fecha hasta.", "error")
+            return redirect(url_for("permiso_editar", id=id))
+        if not motivo:
+            flash("El motivo del permiso es obligatorio.", "error")
             return redirect(url_for("permiso_editar", id=id))
         if not motivo_cambio:
             flash("Debes indicar el motivo del cambio para reenviar la solicitud.", "error")
@@ -2332,29 +2338,29 @@ def permiso_editar(id):
             return redirect(url_for("permiso_editar", id=id))
 
         evidencia_ruta = solicitud.get("evidencia")
-        if permiso_remunerado == 0:
-            evidencia_file = request.files.get("evidencia")
-            if evidencia_file and evidencia_file.filename:
-                ext = os.path.splitext(secure_filename(evidencia_file.filename))[1].lower()
-                if ext not in (".pdf", ".jpg", ".jpeg", ".png"):
-                    flash("La evidencia debe ser PDF o imagen (JPG, PNG).", "error")
-                    return redirect(url_for("permiso_editar", id=id))
-                evidencia_file.seek(0, 2)
-                size = evidencia_file.tell()
-                evidencia_file.seek(0)
-                if size > 5 * 1024 * 1024:
-                    flash("La evidencia no debe superar 5 MB.", "error")
-                    return redirect(url_for("permiso_editar", id=id))
-                upload_dir = os.path.join(current_app.instance_path, "uploads", "permisos")
-                os.makedirs(upload_dir, exist_ok=True)
-                nombre_safe = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{user_cedula}{ext}"
-                evidencia_ruta = os.path.join("permisos", nombre_safe)
-                evidencia_full_path = os.path.join(upload_dir, nombre_safe)
-                evidencia_file.save(evidencia_full_path)
-            elif not evidencia_ruta:
-                flash("Para permiso no remunerado debes adjuntar evidencia (PDF o imagen).", "error")
+        evidencia_file = request.files.get("evidencia")
+        if evidencia_file and evidencia_file.filename:
+            ext = os.path.splitext(secure_filename(evidencia_file.filename))[1].lower()
+            if ext not in (".pdf", ".jpg", ".jpeg", ".png"):
+                flash("La evidencia debe ser PDF o imagen (JPG, PNG).", "error")
                 return redirect(url_for("permiso_editar", id=id))
-        else:
+            evidencia_file.seek(0, 2)
+            size = evidencia_file.tell()
+            evidencia_file.seek(0)
+            if size > 5 * 1024 * 1024:
+                flash("La evidencia no debe superar 5 MB.", "error")
+                return redirect(url_for("permiso_editar", id=id))
+            upload_dir = os.path.join(current_app.instance_path, "uploads", "permisos")
+            os.makedirs(upload_dir, exist_ok=True)
+            nombre_safe = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{user_cedula}{ext}"
+            evidencia_ruta = os.path.join("permisos", nombre_safe)
+            evidencia_full_path = os.path.join(upload_dir, nombre_safe)
+            evidencia_file.save(evidencia_full_path)
+        requiere_evidencia = permiso_remunerado == 0 or tipo == "Incapacidad médica"
+        if requiere_evidencia and not evidencia_ruta:
+            flash("Debes adjuntar evidencia (PDF o imagen) para permiso no remunerado o incapacidad médica.", "error")
+            return redirect(url_for("permiso_editar", id=id))
+        if permiso_remunerado == 1 and tipo != "Incapacidad médica":
             evidencia_ruta = None
 
         try:

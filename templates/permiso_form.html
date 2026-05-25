@@ -155,7 +155,7 @@
                 <div class="gh-formato-fila una permiso-evidencia-row" id="rowEvidencia" style="display:none; margin-bottom:16px">
                     <div class="form-group">
                         <label class="gh-formato-label">Adjuntar evidencia <span class="required">*</span> <span style="font-size:12px;color:#6b7280">(PDF, JPG, PNG – máx. 5 MB)</span></label>
-                        <input type="file" name="evidencia" id="evidencia" class="gh-formato-input" accept=".pdf,.jpg,.jpeg,.png">
+                        <input type="file" name="evidencia" id="evidencia" class="gh-formato-input" accept=".pdf,.jpg,.jpeg,.png,.webp">
                     </div>
                 </div>
 
@@ -174,8 +174,8 @@
                 <!-- Motivo -->
                 <div class="gh-formato-fila una" style="margin-bottom:8px">
                     <div class="form-group">
-                        <label class="gh-formato-label">Motivo</label>
-                        <textarea name="motivo" class="gh-formato-input gh-formato-motivo" rows="3" placeholder="Indique el motivo del permiso o licencia"></textarea>
+                        <label class="gh-formato-label">Motivo <span class="required">*</span></label>
+                        <textarea name="motivo" class="gh-formato-input gh-formato-motivo" rows="3" required placeholder="Indique el motivo del permiso o licencia"></textarea>
                     </div>
                 </div>
 
@@ -187,6 +187,7 @@
                             <option value="Permiso">Permiso</option>
                             <option value="Licencia">Licencia</option>
                             <option value="Médico">Médico</option>
+                            <option value="Incapacidad médica">Incapacidad médica</option>
                             <option value="Personal">Personal</option>
                             <option value="Capacitación">Capacitación</option>
                             <option value="Calamidad doméstica">Calamidad doméstica</option>
@@ -264,20 +265,24 @@
         actualizarNombre();
     }
     var remunerado = document.getElementById('permisoRemunerado');
+    var tipoSel = document.querySelector('select[name="tipo"]');
     var rowEvidencia = document.getElementById('rowEvidencia');
     var evidenciaInput = document.getElementById('evidencia');
     function toggleEvidencia() {
         var esNoRemunerado = remunerado && remunerado.value === '0';
-        if (rowEvidencia) rowEvidencia.style.display = esNoRemunerado ? '' : 'none';
+        var esIncapacidad = tipoSel && tipoSel.value === 'Incapacidad médica';
+        var requiere = !!(esNoRemunerado || esIncapacidad);
+        if (rowEvidencia) rowEvidencia.style.display = requiere ? '' : 'none';
         if (evidenciaInput) {
-            evidenciaInput.required = esNoRemunerado;
-            if (!esNoRemunerado) evidenciaInput.value = '';
+            evidenciaInput.required = requiere;
+            if (!requiere) evidenciaInput.value = '';
         }
     }
     if (remunerado) {
         remunerado.addEventListener('change', toggleEvidencia);
-        toggleEvidencia();
     }
+    if (tipoSel) tipoSel.addEventListener('change', toggleEvidencia);
+    toggleEvidencia();
 })();
 </script>
 {% endblock %}
