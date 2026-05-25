@@ -181,7 +181,7 @@ CREATE TABLE IF NOT EXISTS solicitud_permiso (
     fecha_solicitud DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     estado ENUM('PENDIENTE','APROBADO','RECHAZADO') NOT NULL DEFAULT 'PENDIENTE',
     observaciones TEXT NULL,
-    resuelto_por VARCHAR(20) NULL,
+    resuelto_por VARCHAR(150) NULL,
     fecha_resolucion DATETIME NULL,
     solicitante_email VARCHAR(150) NULL,
     area VARCHAR(100) NULL COMMENT 'Área (formato GH-FR-007)',
