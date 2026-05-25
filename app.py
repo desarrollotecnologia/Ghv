@@ -196,6 +196,25 @@ def _can_employee_vacation_mode(user):
     return _can_use_account_switch(user)
 
 
+def _has_assigned_team(user):
+    """True si el usuario es encargado de al menos un empleado."""
+    if not user:
+        return False
+    try:
+        row = query(
+            "SELECT COUNT(*) AS c FROM empleado WHERE id_user_encargado = %s",
+            (user.get("id_user"),), one=True,
+        )
+        return bool(row and row.get("c"))
+    except Exception:
+        return False
+
+
+def _can_encargado_mode(user):
+    """Habilita modo jefe encargado (ver solo personal a cargo)."""
+    return _has_assigned_team(user)
+
+
 def _is_employee_mode(user=None):
     """True cuando está activo el modo empleado temporal."""
     user = user or get_current_user()
@@ -612,6 +631,8 @@ def inject_user():
     switchable_accounts = []
     employee_vac_mode = bool(session.get("employee_mode") or session.get("employee_vac_mode"))
     can_enter_employee_vac_mode = False
+    encargado_mode = bool(session.get("encargado_mode"))
+    can_enter_encargado_mode = False
     if user:
         rol = user.get("rol") or ""
         perm = get_role_permission(rol)
@@ -640,11 +661,18 @@ def inject_user():
             switchable_accounts = [a for a in linked if (a.get("id_user") or "") != (user.get("id_user") or "")]
             can_switch_to_employee = bool(switchable_accounts)
         can_enter_employee_vac_mode = _can_employee_vacation_mode(user)
+        can_enter_encargado_mode = _can_encargado_mode(user)
+        if encargado_mode and not can_enter_encargado_mode:
+            session.pop("encargado_mode", None)
+            encargado_mode = False
         if employee_vac_mode and can_enter_employee_vac_mode:
             for k in list(vm.keys()):
                 vm[k] = False
             vm["permisos"] = True
             show_permisos_menu = True
+        if encargado_mode and can_enter_encargado_mode:
+            vm["personal"] = True
+            vm["personal_inactivo"] = True
     return dict(
         current_user=user,
         can_write=can_write,
@@ -657,6 +685,8 @@ def inject_user():
         switchable_accounts=switchable_accounts,
         employee_vac_mode=employee_vac_mode,
         can_enter_employee_vac_mode=can_enter_employee_vac_mode,
+        encargado_mode=encargado_mode,
+        can_enter_encargado_mode=can_enter_encargado_mode,
     )
 
 
@@ -827,6 +857,26 @@ def desactivar_modo_empleado_vacaciones():
     session.pop("employee_mode", None)
     session.pop("employee_vac_mode", None)
     flash("Modo empleado desactivado.", "info")
+    return redirect(url_for("home"))
+
+
+@app.route("/encargado/modo", methods=["POST"])
+@login_required
+def activar_modo_encargado():
+    user = get_current_user()
+    if not _can_encargado_mode(user):
+        flash("No tienes personal asignado para activar el modo jefe encargado.", "error")
+        return redirect(url_for("home"))
+    session["encargado_mode"] = True
+    flash("Modo jefe encargado activado: verás solo tu personal a cargo.", "info")
+    return redirect(url_for("mi_equipo"))
+
+
+@app.route("/encargado/modo/salir", methods=["POST"])
+@login_required
+def desactivar_modo_encargado():
+    session.pop("encargado_mode", None)
+    flash("Modo jefe encargado desactivado.", "info")
     return redirect(url_for("home"))
 
 
@@ -3529,6 +3579,9 @@ def personal_activo():
 
     where = ["estado = %s"]
     params = [estado]
+    if session.get("encargado_mode"):
+        where.append("id_user_encargado = %s")
+        params.append((get_current_user() or {}).get("id_user"))
     if filtro_depto:
         where.append("departamento = %s")
         params.append(filtro_depto)
@@ -3546,6 +3599,9 @@ def personal_activo():
     # para que Activos/Inactivos siempre muestren ambos conteos reales.
     where_counts = []
     params_counts = []
+    if session.get("encargado_mode"):
+        where_counts.append("id_user_encargado = %s")
+        params_counts.append((get_current_user() or {}).get("id_user"))
     if filtro_depto:
         where_counts.append("departamento = %s")
         params_counts.append(filtro_depto)
@@ -3608,6 +3664,66 @@ def personal_activo():
         personal_selected_area=filtro_area,
         personal_filter_base_url=url_for("personal_activo"),
         show_add_btn=show_add_btn, add_url=url_for("crear_empleado"),
+    )
+
+
+@app.route("/mi-equipo")
+@login_required
+def mi_equipo():
+    user = get_current_user()
+    if not _can_encargado_mode(user):
+        flash("No tienes personal asignado.", "info")
+        return redirect(url_for("home"))
+
+    estado = (request.args.get("estado") or "ACTIVO").strip().upper()
+    if estado not in ("ACTIVO", "INACTIVO", "TODOS"):
+        estado = "ACTIVO"
+
+    where = ["id_user_encargado = %s"]
+    params = [user.get("id_user")]
+    if estado in ("ACTIVO", "INACTIVO"):
+        where.append("estado = %s")
+        params.append(estado)
+
+    rows = query(
+        "SELECT id_cedula, apellidos_nombre, tipo_documento, departamento, area, sexo, fecha_ingreso, celular, eps, estado "
+        "FROM empleado WHERE " + " AND ".join(where) + " ORDER BY apellidos_nombre",
+        tuple(params),
+    )
+    columns = [
+        {"key": "id_cedula",        "label": "Cédula"},
+        {"key": "apellidos_nombre", "label": "Nombre"},
+        {"key": "tipo_documento",   "label": "Tipo Doc"},
+        {"key": "departamento",     "label": "Departamento", "type": "dept"},
+        {"key": "area",             "label": "Área"},
+        {"key": "sexo",             "label": "Sexo", "type": "sex"},
+        {"key": "fecha_ingreso",    "label": "Fecha Ingreso"},
+        {"key": "celular",          "label": "Celular"},
+        {"key": "eps",              "label": "EPS"},
+        {"key": "estado",           "label": "Estado", "type": "badge"},
+    ]
+    stats = [
+        {"value": len(rows), "label": "Mi equipo", "icon": "groups", "color": "green"},
+        {"value": sum(1 for r in rows if (r.get("estado") or "").upper() == "ACTIVO"), "label": "Activos", "icon": "person_check", "color": "green"},
+        {"value": sum(1 for r in rows if (r.get("estado") or "").upper() == "INACTIVO"), "label": "Inactivos", "icon": "person_off", "color": "orange"},
+    ]
+    filter_columns = [
+        {"index": 3, "label": "Departamento"},
+        {"index": 4, "label": "Área"},
+        {"index": 5, "label": "Sexo"},
+        {"index": 8, "label": "EPS"},
+        {"index": 9, "label": "Estado"},
+    ]
+    return render_template(
+        "data_table.html",
+        active_page="Mi Equipo",
+        rows=rows,
+        columns=columns,
+        stats=stats,
+        detail_route="detalle_empleado",
+        pk="id_cedula",
+        filter_columns=filter_columns,
+        export_key=None,
     )
 
 
@@ -4144,6 +4260,9 @@ def personal_inactivo():
     personal_filter_areas = [r["a"] for r in (areas_opts or []) if r.get("a")]
     where = ["estado = %s"]
     params = [estado]
+    if session.get("encargado_mode"):
+        where.append("id_user_encargado = %s")
+        params.append((get_current_user() or {}).get("id_user"))
     if filtro_depto:
         where.append("departamento = %s")
         params.append(filtro_depto)

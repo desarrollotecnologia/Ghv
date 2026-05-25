@@ -94,6 +94,22 @@
                             </button>
                         </form>
                         {% endif %}
+                        {% if can_enter_encargado_mode and not encargado_mode %}
+                        <form method="post" action="{{ url_for('activar_modo_encargado') }}" style="margin:0">
+                            <button type="submit" class="profile-dropdown-btn" style="width:100%">
+                                <span class="material-symbols-outlined">groups</span>
+                                Modo jefe encargado
+                            </button>
+                        </form>
+                        {% endif %}
+                        {% if can_enter_encargado_mode and encargado_mode %}
+                        <form method="post" action="{{ url_for('desactivar_modo_encargado') }}" style="margin:0">
+                            <button type="submit" class="profile-dropdown-btn" style="width:100%">
+                                <span class="material-symbols-outlined">undo</span>
+                                Salir de modo jefe
+                            </button>
+                        </form>
+                        {% endif %}
                         <a href="{{ url_for('logout') }}" class="profile-dropdown-btn profile-dropdown-logout">
                             <span class="material-symbols-outlined">logout</span>
                             Cerrar sesión
@@ -148,6 +164,12 @@
         {% if vm.personal or vm.retiro %}
         <div class="sidebar-section">
             <span class="sidebar-label">Personal</span>
+            {% if encargado_mode %}
+            <a href="{{ url_for('mi_equipo') }}" class="nav-item {{ 'active' if active_page == 'Mi Equipo' }}">
+                <span class="material-symbols-outlined">groups</span>
+                <span class="nav-label">Mi Equipo</span>
+            </a>
+            {% endif %}
             {% if vm.personal %}
             <a href="{{ url_for('personal_activo') }}" class="nav-item {{ 'active' if active_page == 'Personal Activo' }}">
                 <span class="material-symbols-outlined">person_check</span>
