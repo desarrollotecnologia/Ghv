@@ -8,25 +8,73 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght@24,400">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
-        .emp-header { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
-        .emp-brand { display: flex; align-items: center; gap: 12px; }
-        .emp-brand img { height: 40px; }
-        .emp-brand span { font-weight: 700; color: #111; font-size: 1.1rem; }
-        .emp-nav { display: flex; align-items: center; gap: 8px; }
-        .emp-nav a { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 10px; text-decoration: none; color: #374151; font-weight: 500; font-size: 0.95rem; }
+        .emp-header { position: sticky; top: 0; z-index: 120; background: #fff; border-bottom: 1px solid #e5e7eb; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .emp-header-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .emp-menu-btn { display: none; border: 1px solid #d1d5db; background: #fff; color: #374151; width: 38px; height: 38px; border-radius: 10px; cursor: pointer; align-items: center; justify-content: center; }
+        .emp-menu-btn .material-symbols-outlined { font-size: 22px; }
+        .emp-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .emp-brand img { height: 36px; }
+        .emp-brand span { font-weight: 700; color: #111; font-size: 1.05rem; white-space: nowrap; }
+        .emp-nav-wrap { border-bottom: 1px solid #e5e7eb; background: #fff; }
+        .emp-nav { max-width: 1200px; margin: 0 auto; padding: 10px 20px; display: flex; align-items: center; gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+        .emp-nav a { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 10px; text-decoration: none; color: #374151; font-weight: 500; font-size: 0.95rem; white-space: nowrap; flex: 0 0 auto; }
         .emp-nav a:hover { background: #f0fdf4; color: #2D9E3F; }
         .emp-nav a.active { background: #dcfce7; color: #2D9E3F; }
-        .emp-user { display: flex; align-items: center; gap: 12px; font-size: 0.9rem; color: #6b7280; }
-        .emp-user .nombre { font-weight: 600; color: #111; }
-        .emp-content { max-width: 900px; margin: 0 auto; padding: 32px 24px; }
+        .emp-user { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; color: #6b7280; }
+        .emp-user .nombre { font-weight: 600; color: #111; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .emp-content { max-width: 980px; margin: 0 auto; padding: 24px 20px; }
+        .emp-overlay { display: none; }
+
+        @media (max-width: 900px) {
+            .emp-header { padding: 10px 14px; }
+            .emp-menu-btn { display: inline-flex; }
+            .emp-brand img { height: 30px; }
+            .emp-brand span { font-size: 0.98rem; }
+            .emp-user .nombre { max-width: 140px; font-size: 0.85rem; }
+            .emp-nav-wrap { position: fixed; left: 0; right: 0; top: 59px; transform: translateY(-110%); opacity: 0; pointer-events: none; transition: transform .22s ease, opacity .22s ease; box-shadow: 0 10px 30px rgba(0,0,0,.12); z-index: 115; }
+            .emp-nav-wrap.open { transform: translateY(0); opacity: 1; pointer-events: auto; }
+            .emp-nav { padding: 10px 12px; max-width: none; }
+            .emp-content { padding: 18px 12px; }
+            .emp-overlay { display: block; position: fixed; inset: 0; background: rgba(15, 23, 42, .35); z-index: 110; opacity: 0; pointer-events: none; transition: opacity .2s ease; }
+            .emp-overlay.open { opacity: 1; pointer-events: auto; }
+        }
+
+        @media (max-width: 560px) {
+            .emp-user .nombre { display: none; }
+            .emp-nav a { padding: 7px 12px; font-size: 0.9rem; }
+            .emp-nav a .material-symbols-outlined { font-size: 18px !important; }
+            .emp-content { padding: 14px 10px; }
+            .detail-card { padding: 14px; }
+            .data-table { min-width: 560px; }
+        }
     </style>
 </head>
 <body>
     <header class="emp-header">
-        <div class="emp-brand">
+        <div class="emp-header-left">
+            <button type="button" class="emp-menu-btn" id="empMenuBtn" aria-label="Mostrar menu">
+                <span class="material-symbols-outlined">menu</span>
+            </button>
+            <div class="emp-brand">
             <img src="{{ url_for('static', filename='img/logo_colbeef.png') }}" alt="Colbeef">
             <span>Portal del Empleado</span>
+            </div>
         </div>
+        <div class="emp-user">
+            <span class="nombre">{{ current_user.nombre if current_user else '' }}</span>
+            {% if can_switch_back %}
+            <form method="post" action="{{ url_for('volver_cuenta_principal') }}" style="display:inline; margin:0;">
+                <button type="submit" title="Volver a cuenta principal" style="padding:6px 10px; border-radius:8px; border:1px solid #d1d5db; background:#fff; color:#374151; cursor:pointer;">
+                    <span class="material-symbols-outlined" style="font-size:20px; vertical-align:middle;">undo</span>
+                </button>
+            </form>
+            {% endif %}
+            <a href="{{ url_for('logout') }}" style="padding:6px 10px; border-radius:8px; color:#6b7280; text-decoration:none;" title="Cerrar sesion">
+                <span class="material-symbols-outlined" style="font-size:22px">logout</span>
+            </a>
+        </div>
+    </header>
+    <div class="emp-nav-wrap" id="empNavWrap">
         <nav class="emp-nav">
             <a href="{{ url_for('empleado_portal') }}" class="{{ 'active' if active_page == 'Portal Empleado' else '' }}">
                 <span class="material-symbols-outlined" style="font-size:20px">home</span>
@@ -53,20 +101,8 @@
                 Cambiar contraseña
             </a>
         </nav>
-        <div class="emp-user">
-            <span class="nombre">{{ current_user.nombre if current_user else '' }}</span>
-            {% if can_switch_back %}
-            <form method="post" action="{{ url_for('volver_cuenta_principal') }}" style="display:inline; margin:0;">
-                <button type="submit" title="Volver a cuenta principal" style="padding:6px 10px; border-radius:8px; border:1px solid #d1d5db; background:#fff; color:#374151; cursor:pointer;">
-                    <span class="material-symbols-outlined" style="font-size:20px; vertical-align:middle;">undo</span>
-                </button>
-            </form>
-            {% endif %}
-            <a href="{{ url_for('logout') }}" style="padding:6px 10px; border-radius:8px; color:#6b7280; text-decoration:none;" title="Cerrar sesion">
-                <span class="material-symbols-outlined" style="font-size:22px">logout</span>
-            </a>
-        </div>
-    </header>
+    </div>
+    <div class="emp-overlay" id="empNavOverlay"></div>
     <main class="emp-content">
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
@@ -77,5 +113,37 @@
         {% endwith %}
         {% block content %}{% endblock %}
     </main>
+    <script>
+        (function () {
+            var btn = document.getElementById('empMenuBtn');
+            var navWrap = document.getElementById('empNavWrap');
+            var overlay = document.getElementById('empNavOverlay');
+            if (!btn || !navWrap || !overlay) return;
+
+            function closeMenu() {
+                navWrap.classList.remove('open');
+                overlay.classList.remove('open');
+            }
+            function toggleMenu() {
+                navWrap.classList.toggle('open');
+                overlay.classList.toggle('open');
+            }
+
+            btn.addEventListener('click', function (ev) {
+                ev.stopPropagation();
+                toggleMenu();
+            });
+
+            overlay.addEventListener('click', closeMenu);
+            document.addEventListener('click', function (ev) {
+                if (!navWrap.classList.contains('open')) return;
+                if (!navWrap.contains(ev.target) && ev.target !== btn && !btn.contains(ev.target)) closeMenu();
+            });
+
+            window.addEventListener('resize', function () {
+                if (window.innerWidth > 900) closeMenu();
+            });
+        })();
+    </script>
 </body>
 </html>

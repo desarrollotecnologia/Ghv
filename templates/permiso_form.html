@@ -37,6 +37,23 @@
 .gh-formato-actions { margin-top: 24px; padding-top: 20px; border-top: 1px solid #e5e7eb; display: flex; gap: 12px; flex-wrap: wrap; }
 .gh-formato-hint { font-size: 12px; color: #6b7280; margin-bottom: 16px; padding: 10px 14px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; }
 .gh-formato-hint strong { color: #111; }
+
+@media (max-width: 768px) {
+    .gh-formato-wrap { max-width: 100%; }
+    .gh-formato-header { flex-direction: column; gap: 10px; padding: 14px; }
+    .gh-formato-logo img { height: 38px; }
+    .gh-formato-titulo { padding: 12px 14px 8px; font-size: 15px; }
+    .gh-formato-titulo-sub { padding: 0 14px 12px; }
+    .gh-formato-body { padding: 8px 14px 14px; }
+    .gh-formato-fila,
+    .gh-formato-fila.dos,
+    .gh-formato-fila.tres { grid-template-columns: 1fr; gap: 10px; margin-bottom: 12px; }
+    .gh-formato-firmas { grid-template-columns: 1fr; }
+    .gh-formato-firma-celda { border-right: none; border-bottom: 1px solid #e5e7eb; min-height: auto; }
+    .gh-formato-firma-celda:last-child { border-bottom: none; }
+    .gh-formato-actions { margin-top: 14px; padding-top: 14px; flex-direction: column; }
+    .gh-formato-actions .btn { width: 100%; justify-content: center; }
+}
 </style>
 
 <div class="gh-formato-wrap">
