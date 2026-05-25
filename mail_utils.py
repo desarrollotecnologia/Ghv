@@ -334,8 +334,8 @@ def notificar_nueva_solicitud_permiso(
         if approve_url and reject_url:
             acciones_html = f"""
         <div style="margin:14px 0 6px;">
-            <a href="{html_escape(str(approve_url))}" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:600;margin-right:8px;">Aprobar desde el celular</a>
-            <a href="{html_escape(str(reject_url))}" style="display:inline-block;background:#dc2626;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:600;">Rechazar desde el celular</a>
+            <a href="{html_escape(str(approve_url))}" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:600;margin-right:8px;">Aprobar</a>
+            <a href="{html_escape(str(reject_url))}" style="display:inline-block;background:#dc2626;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:600;">Rechazar</a>
         </div>
         <p style="font-size:12px;color:#6b7280">Este enlace es de un solo uso efectivo: al resolver, la solicitud deja de estar pendiente.</p>
             """
@@ -361,8 +361,8 @@ def notificar_nueva_solicitud_permiso(
         if approve_url and reject_url:
             acciones_html = f"""
         <div style="margin:14px 0 6px;">
-            <a href="{html_escape(str(approve_url))}" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:600;margin-right:8px;">Aprobar desde el celular</a>
-            <a href="{html_escape(str(reject_url))}" style="display:inline-block;background:#dc2626;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:600;">Rechazar desde el celular</a>
+            <a href="{html_escape(str(approve_url))}" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:600;margin-right:8px;">Aprobar</a>
+            <a href="{html_escape(str(reject_url))}" style="display:inline-block;background:#dc2626;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:600;">Rechazar</a>
         </div>
         <p style="font-size:12px;color:#6b7280">Estos enlaces aplican solo para solicitudes de <strong>permiso</strong>.</p>
             """
