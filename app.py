@@ -2045,9 +2045,10 @@ def permisos_index():
     if orden:
         export_params["orden"] = orden
     permisos_export_url_full = url_for("permisos_export") + ("?" + urlencode(export_params) if export_params else "")
+    active_page_name = "Permisos empleados" if session.get("encargado_mode") else "Solicitud de permiso"
     return render_template(
         "permisos_list.html",
-        active_page="Solicitud de permiso",
+        active_page=active_page_name,
         solicitudes=solicitudes,
         puede_aprobar=_puede_ver_listado_solicitudes(),
         filtro_estado=filtro_estado,
@@ -2210,7 +2211,7 @@ def permiso_solicitar():
         if emp_actual:
             return render_template(
                 "permiso_form.html",
-                active_page="Solicitud de permiso",
+                active_page=("Permisos empleados" if session.get("encargado_mode") else "Solicitud de permiso"),
                 empleados=None,
                 is_empleado=is_empleado,
                 empleado_actual=emp_actual,
@@ -2221,7 +2222,7 @@ def permiso_solicitar():
     empleados = query("SELECT id_cedula, apellidos_nombre, area FROM empleado WHERE estado = 'ACTIVO' ORDER BY apellidos_nombre")
     return render_template(
         "permiso_form.html",
-        active_page="Solicitud de permiso",
+        active_page=("Permisos empleados" if session.get("encargado_mode") else "Solicitud de permiso"),
         empleados=empleados,
         is_empleado=False,
         empleado_actual=None,

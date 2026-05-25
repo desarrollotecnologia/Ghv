@@ -230,9 +230,9 @@
         {% if show_permisos_menu %}
         <div class="sidebar-section">
             <span class="sidebar-label">Permisos</span>
-            <a href="{{ url_for('permisos_index') }}" class="nav-item {{ 'active' if active_page == 'Solicitud de permiso' }}">
+            <a href="{{ url_for('permisos_index') }}" class="nav-item {{ 'active' if active_page in ['Solicitud de permiso', 'Permisos empleados'] }}">
                 <span class="material-symbols-outlined">assignment</span>
-                <span class="nav-label">Solicitud de permiso</span>
+                <span class="nav-label">{{ 'Permisos empleados' if encargado_mode else 'Solicitud de permiso' }}</span>
             </a>
             <a href="{{ url_for('vacaciones_solicitar') }}" class="nav-item {{ 'active' if active_page == 'Solicitud de vacaciones' }}">
                 <span class="material-symbols-outlined">beach_access</span>
