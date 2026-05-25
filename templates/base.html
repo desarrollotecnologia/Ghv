@@ -102,7 +102,7 @@
                             </button>
                         </form>
                         {% endif %}
-                        {% if can_enter_encargado_mode and encargado_mode %}
+                        {% if can_enter_encargado_mode and encargado_mode and not employee_vac_mode %}
                         <form method="post" action="{{ url_for('desactivar_modo_encargado') }}" style="margin:0">
                             <button type="submit" class="profile-dropdown-btn" style="width:100%">
                                 <span class="material-symbols-outlined">undo</span>
@@ -161,7 +161,7 @@
         </div>
         {% endif %}
 
-        {% if vm.personal or vm.retiro %}
+        {% if vm.personal or vm.retiro or encargado_mode %}
         <div class="sidebar-section">
             <span class="sidebar-label">Personal</span>
             {% if encargado_mode %}

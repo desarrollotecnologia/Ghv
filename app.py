@@ -670,9 +670,16 @@ def inject_user():
                 vm[k] = False
             vm["permisos"] = True
             show_permisos_menu = True
-        if encargado_mode and can_enter_encargado_mode:
-            vm["personal"] = True
-            vm["personal_inactivo"] = True
+        if can_enter_encargado_mode and not employee_vac_mode:
+            # Modo jefe encargado predeterminado al iniciar sesión.
+            if not encargado_mode:
+                session["encargado_mode"] = True
+                encargado_mode = True
+        if encargado_mode and can_enter_encargado_mode and not employee_vac_mode:
+            # En modo jefe solo debe ver "Mi Equipo" (no Personal Activo/Inactivo).
+            vm["personal"] = False
+            vm["personal_inactivo"] = False
+            vm["retiro"] = False
     return dict(
         current_user=user,
         can_write=can_write,
@@ -3557,6 +3564,9 @@ def api_personal_buscar():
 @login_required
 @module_required("personal")
 def personal_activo():
+    if session.get("encargado_mode"):
+        flash("En modo jefe encargado solo puedes ver Mi Equipo.", "info")
+        return redirect(url_for("mi_equipo"))
     # Solo un modo: inactivos=1 en la URL → inactivos; si no → activos
     show_inactivos = request.args.get("inactivos", "").strip().lower() in ("1", "true", "yes")
     show_activos = not show_inactivos
@@ -4243,6 +4253,9 @@ def eliminar_retirado(id):
 @login_required
 @module_required("personal_inactivo")
 def personal_inactivo():
+    if session.get("encargado_mode"):
+        flash("En modo jefe encargado solo puedes ver Mi Equipo.", "info")
+        return redirect(url_for("mi_equipo"))
     estado = "INACTIVO"
     filtro_depto = request.args.get("depto", "").strip()
     filtro_area = request.args.get("area", "").strip()
