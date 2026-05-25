@@ -735,7 +735,10 @@ def notificar_gh_resolucion_por_jefe(app, solicitud, empleado_nombre, tipo, apro
     return send_mail(control, subject, body, body_text=plain, app=app)
 
 
-def notificar_encargado_nueva_solicitud(app, solicitud, empleado_nombre, encargado_email, encargado_nombre, tipo="permiso", evidencia_path=None):
+def notificar_encargado_nueva_solicitud(
+    app, solicitud, empleado_nombre, encargado_email, encargado_nombre,
+    tipo="permiso", evidencia_path=None, approve_url=None, reject_url=None
+):
     """Envía al encargado asignado al empleado un correo pidiéndole que resuelva la
     solicitud (aprobar/rechazar) en el sistema.
 
@@ -761,10 +764,21 @@ def notificar_encargado_nueva_solicitud(app, solicitud, empleado_nombre, encarga
     if evidencia_path and os.path.isfile(evidencia_path):
         attachments = [(os.path.basename(evidencia_path), evidencia_path)]
 
+    acciones_html = ""
+    if approve_url and reject_url:
+        acciones_html = f"""
+    <div style="margin:14px 0 6px;">
+        <a href="{html_escape(str(approve_url))}" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:600;margin-right:8px;">Aprobar</a>
+        <a href="{html_escape(str(reject_url))}" style="display:inline-block;background:#dc2626;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-weight:600;">Rechazar</a>
+    </div>
+    <p style="font-size:12px;color:#6b7280">Este enlace es de un solo uso efectivo: al resolver, la solicitud deja de estar pendiente.</p>
+        """
+
     body_content = f"""
     <p>Estimado/a <strong>{html_escape(nombre_enc)}</strong>,</p>
     <p>Como encargado/a de <strong>{html_escape(empleado_nombre)}</strong>, ha recibido {intro} que requiere su aprobación o rechazo.</p>
     {tabla}
+    {acciones_html}
     <div class="mail-divider"></div>
     <p>Por favor ingrese al sistema para resolver esta solicitud. Puede aprobarla o rechazarla e incluir observaciones.</p>
     <p>Saludos cordiales,<br/><strong>Sistema de Gestión Humana – Colbeef</strong></p>
