@@ -241,7 +241,7 @@
             {% if not employee_vac_mode %}
             <a href="{{ url_for('vacaciones_index') }}" class="nav-item {{ 'active' if active_page == 'Listado vacaciones' }}">
                 <span class="material-symbols-outlined">list</span>
-                <span class="nav-label">Listado vacaciones</span>
+                <span class="nav-label">{{ 'Permisos vacaciones' if encargado_mode else 'Listado vacaciones' }}</span>
             </a>
             <a href="{{ url_for('vacaciones_mis_solicitudes') }}" class="nav-item {{ 'active' if active_page == 'Mis solicitudes de vacaciones' }}">
                 <span class="material-symbols-outlined">event_note</span>
