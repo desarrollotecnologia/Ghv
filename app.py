@@ -632,6 +632,7 @@ def inject_user():
     employee_vac_mode = bool(session.get("employee_mode") or session.get("employee_vac_mode"))
     can_enter_employee_vac_mode = False
     encargado_mode = bool(session.get("encargado_mode"))
+    encargado_mode_opt_out = bool(session.get("encargado_mode_opt_out"))
     can_enter_encargado_mode = False
     if user:
         rol = user.get("rol") or ""
@@ -664,13 +665,14 @@ def inject_user():
         can_enter_encargado_mode = _can_encargado_mode(user)
         if encargado_mode and not can_enter_encargado_mode:
             session.pop("encargado_mode", None)
+            session.pop("encargado_mode_opt_out", None)
             encargado_mode = False
         if employee_vac_mode and can_enter_employee_vac_mode:
             for k in list(vm.keys()):
                 vm[k] = False
             vm["permisos"] = True
             show_permisos_menu = True
-        if can_enter_encargado_mode and not employee_vac_mode:
+        if can_enter_encargado_mode and not employee_vac_mode and not encargado_mode_opt_out:
             # Modo jefe encargado predeterminado al iniciar sesión.
             if not encargado_mode:
                 session["encargado_mode"] = True
@@ -875,6 +877,7 @@ def activar_modo_encargado():
         flash("No tienes personal asignado para activar el modo jefe encargado.", "error")
         return redirect(url_for("home"))
     session["encargado_mode"] = True
+    session.pop("encargado_mode_opt_out", None)
     flash("Modo jefe encargado activado: verás solo tu personal a cargo.", "info")
     return redirect(url_for("mi_equipo"))
 
@@ -883,6 +886,7 @@ def activar_modo_encargado():
 @login_required
 def desactivar_modo_encargado():
     session.pop("encargado_mode", None)
+    session["encargado_mode_opt_out"] = True
     flash("Modo jefe encargado desactivado.", "info")
     return redirect(url_for("home"))
 
