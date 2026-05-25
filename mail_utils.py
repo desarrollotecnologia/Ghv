@@ -248,6 +248,14 @@ def _tabla_detalle_solicitud(solicitud, empleado_nombre=None, incluir_empleado=T
     tipo = html_escape(str(solicitud.get("tipo", "Permiso")))
     desde = html_escape(str(solicitud.get("fecha_desde", "—")))
     hasta = html_escape(str(solicitud.get("fecha_hasta", "—")))
+    hi = solicitud.get("hora_inicio")
+    hf = solicitud.get("hora_fin")
+    if hasattr(hi, "strftime"):
+        hi = hi.strftime("%H:%M")
+    hi = html_escape(str(hi or "—"))
+    if hasattr(hf, "strftime"):
+        hf = hf.strftime("%H:%M")
+    hf = html_escape(str(hf or "—"))
     motivo = html_escape(str(solicitud.get("motivo") or "—"))
     filas = []
     if incluir_empleado and empleado_nombre:
@@ -255,6 +263,8 @@ def _tabla_detalle_solicitud(solicitud, empleado_nombre=None, incluir_empleado=T
     filas.append(("<th>Tipo de permiso</th>", f"<td>{tipo}</td>"))
     filas.append(("<th>Fecha desde</th>", f"<td>{desde}</td>"))
     filas.append(("<th>Fecha hasta</th>", f"<td>{hasta}</td>"))
+    filas.append(("<th>Hora inicio</th>", f"<td>{hi}</td>"))
+    filas.append(("<th>Hora final</th>", f"<td>{hf}</td>"))
     filas.append(("<th>Motivo</th>", f"<td>{motivo}</td>"))
     rows_html = "".join(f"<tr>{th}{td}</tr>" for th, td in filas)
     return f'<table class="mail-table"><tbody>{rows_html}</tbody></table>'
