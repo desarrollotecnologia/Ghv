@@ -44,6 +44,13 @@
                 <p>Resueltas hoy</p>
             </div>
         </div>
+        <div class="stat-card">
+            <div class="stat-icon purple"><span class="material-symbols-outlined">monitor_heart</span></div>
+            <div class="stat-info">
+                <h3 id="kpiIncapacitadosMes">{{ kpi_incapacitados_mes|default(0) }}</h3>
+                <p>Personas incapacitadas este mes</p>
+            </div>
+        </div>
     </section>
 
     {% if retiros_mes_labels is defined and retiros_mes_labels %}

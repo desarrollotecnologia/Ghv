@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="detail-card" style="max-width:900px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        <h3 class="form-section-title" style="margin:0;color:var(--colbeef-green-dark,#166534)">
+            <span class="material-symbols-outlined">monitor_heart</span>
+            Detalle de incapacidad
+        </h3>
+        <a href="{{ url_for('incapacitados_dashboard') }}" class="btn btn-outline btn-sm">
+            <span class="material-symbols-outlined" style="font-size:18px">arrow_back</span>
+            Volver al módulo
+        </a>
+    </div>
+
+    <div class="detail-grid">
+        <div class="detail-field"><label>Empleado</label><span>{{ solicitud.apellidos_nombre or '—' }}</span></div>
+        <div class="detail-field"><label>Cédula</label><span>{{ solicitud.id_cedula or '—' }}</span></div>
+        <div class="detail-field"><label>Área</label><span>{{ solicitud.area_final or '—' }}</span></div>
+        <div class="detail-field"><label>Estado</label><span>{{ solicitud.estado or '—' }}</span></div>
+        <div class="detail-field"><label>Tipo</label><span>{{ solicitud.tipo or '—' }}</span></div>
+        <div class="detail-field"><label>Días incapacidad</label><span>{{ solicitud.dias_incapacidad or 0 }}</span></div>
+        <div class="detail-field"><label>Fecha desde</label><span>{{ solicitud.fecha_desde|fecha_display }}</span></div>
+        <div class="detail-field"><label>Fecha hasta</label><span>{{ solicitud.fecha_hasta|fecha_display }}</span></div>
+        <div class="detail-field"><label>Hora inicio</label><span>{{ solicitud.hora_inicio or '—' }}</span></div>
+        <div class="detail-field"><label>Hora final</label><span>{{ solicitud.hora_fin or '—' }}</span></div>
+        <div class="detail-field"><label>Fecha solicitud</label><span>{{ solicitud.fecha_solicitud|fecha_display }}</span></div>
+        <div class="detail-field"><label>Fecha resolución</label><span>{{ solicitud.fecha_resolucion|fecha_display if solicitud.fecha_resolucion else '—' }}</span></div>
+        <div class="detail-field" style="grid-column:1/-1"><label>Motivo</label><span>{{ solicitud.motivo or '—' }}</span></div>
+        <div class="detail-field" style="grid-column:1/-1"><label>Motivo de cambio/edición</label><span>{{ solicitud.motivo_cambio_empleado or '—' }}</span></div>
+        <div class="detail-field" style="grid-column:1/-1"><label>Comentario del aprobador</label><span>{{ solicitud.observaciones or '—' }}</span></div>
+        <div class="detail-field"><label>Resuelto por</label><span>{{ solicitud.resuelto_por_display or '—' }}</span></div>
+        <div class="detail-field"><label>Email empleado</label><span>{{ solicitud.direccion_email or '—' }}</span></div>
+    </div>
+
+    <div class="form-actions" style="margin-top:18px">
+        {% if solicitud.evidencia %}
+        <a href="{{ url_for('incapacitado_evidencia', id=solicitud.id) }}" class="btn btn-primary" target="_blank" rel="noopener">
+            <span class="material-symbols-outlined" style="font-size:18px">attach_file</span>
+            Ver evidencia adjunta
+        </a>
+        {% endif %}
+        <a href="{{ url_for('incapacitados_dashboard') }}" class="btn btn-outline">Cerrar</a>
+    </div>
+</div>
+{% endblock %}
+

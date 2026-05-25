@@ -2904,18 +2904,25 @@ def incapacitados_dashboard():
         flash("No tienes acceso al módulo de incapacitados.", "error")
         return redirect(url_for("home"))
 
+    hoy = date.today()
+    mes_inicio = hoy.replace(day=1)
+    if mes_inicio.month == 12:
+        mes_siguiente = mes_inicio.replace(year=mes_inicio.year + 1, month=1, day=1)
+    else:
+        mes_siguiente = mes_inicio.replace(month=mes_inicio.month + 1, day=1)
+
     estado = (request.args.get("estado") or "APROBADO").strip().upper()
     if estado not in ("TODOS", "PENDIENTE", "APROBADO", "RECHAZADO"):
         estado = "APROBADO"
     buscar = (request.args.get("buscar") or "").strip()
     area = (request.args.get("area") or "").strip()
-    desde = (request.args.get("desde") or "").strip()
-    hasta = (request.args.get("hasta") or "").strip()
 
     where = [
-        "REPLACE(LOWER(TRIM(COALESCE(p.tipo, ''))), 'á', 'a') LIKE 'incapacidad%'"
+        "REPLACE(LOWER(TRIM(COALESCE(p.tipo, ''))), 'á', 'a') LIKE 'incapacidad%'",
+        "p.fecha_desde >= %s",
+        "p.fecha_desde < %s",
     ]
-    params = []
+    params = [mes_inicio, mes_siguiente]
     if estado != "TODOS":
         where.append("p.estado = %s")
         params.append(estado)
@@ -2926,13 +2933,6 @@ def incapacitados_dashboard():
         where.append("(e.apellidos_nombre LIKE %s OR p.id_cedula LIKE %s)")
         like = f"%{buscar.replace('%', '\\%')}%"
         params.extend([like, like])
-    if desde:
-        where.append("p.fecha_hasta >= %s")
-        params.append(desde)
-    if hasta:
-        where.append("p.fecha_desde <= %s")
-        params.append(hasta)
-
     sql_base = (
         "SELECT p.id, p.id_cedula, e.apellidos_nombre, COALESCE(p.area, e.area) AS area, p.tipo, p.estado, "
         "p.fecha_desde, p.fecha_hasta, p.motivo, {motivo_cambio_col} p.observaciones, p.fecha_solicitud "
@@ -3012,8 +3012,7 @@ def incapacitados_dashboard():
         estado=estado,
         buscar=buscar,
         area=area,
-        desde=desde,
-        hasta=hasta,
+        mes_actual_label=mes_inicio.strftime("%B %Y").capitalize(),
         total_registros=len(rows),
         total_personas=len(personas_set),
         total_areas=len(areas_set),
@@ -3022,6 +3021,85 @@ def incapacitados_dashboard():
         top_people=top_people[:10],
         areas_list=sorted(list(areas_set)),
     )
+
+
+@app.route("/incapacitados/<int:id>")
+@login_required
+def incapacitado_detalle(id):
+    """Detalle ampliado de una incapacidad registrada desde permisos."""
+    user = get_current_user()
+    if not _can_view_incapacitados(user):
+        flash("No tienes acceso a este detalle.", "error")
+        return redirect(url_for("home"))
+
+    sql_base = (
+        "SELECT p.*, e.apellidos_nombre, COALESCE(p.area, e.area) AS area_final, e.direccion_email, "
+        "u.nombre AS resuelto_por_nombre, {motivo_cambio_col} "
+        "REPLACE(LOWER(TRIM(COALESCE(p.tipo, ''))), 'á', 'a') AS tipo_norm "
+        "FROM solicitud_permiso p "
+        "JOIN empleado e ON e.id_cedula = p.id_cedula "
+        "LEFT JOIN usuario u ON u.id_user = p.resuelto_por "
+        "WHERE p.id = %s"
+    )
+    try:
+        solicitud = query(sql_base.format(motivo_cambio_col="p.motivo_cambio_empleado, "), (id,), one=True)
+    except Exception as e:
+        if "motivo_cambio_empleado" in str(e).lower():
+            solicitud = query(sql_base.format(motivo_cambio_col="'' AS motivo_cambio_empleado, "), (id,), one=True)
+        else:
+            raise
+
+    if not solicitud or not str(solicitud.get("tipo_norm") or "").startswith("incapacidad"):
+        flash("No se encontró el detalle de incapacidad solicitado.", "error")
+        return redirect(url_for("incapacitados_dashboard"))
+
+    fd = solicitud.get("fecha_desde")
+    fh = solicitud.get("fecha_hasta")
+    try:
+        fd_date = fd.date() if hasattr(fd, "date") else fd
+        fh_date = fh.date() if hasattr(fh, "date") else fh
+        dias = (fh_date - fd_date).days + 1 if fd_date and fh_date else 0
+        if dias < 1:
+            dias = 1
+    except Exception:
+        dias = 0
+    solicitud["dias_incapacidad"] = dias
+
+    rp = (solicitud.get("resuelto_por") or "").strip()
+    if "@" in rp:
+        solicitud["resuelto_por_display"] = rp
+    else:
+        solicitud["resuelto_por_display"] = solicitud.get("resuelto_por_nombre") or rp or "—"
+
+    return render_template(
+        "incapacitado_detail.html",
+        active_page="Incapacitados",
+        solicitud=solicitud,
+    )
+
+
+@app.route("/incapacitados/<int:id>/evidencia")
+@login_required
+def incapacitado_evidencia(id):
+    """Vista de evidencia para módulo incapacitados (ADMIN/GH/Gerencia)."""
+    user = get_current_user()
+    if not _can_view_incapacitados(user):
+        flash("No tienes acceso a la evidencia.", "error")
+        return redirect(url_for("home"))
+    solicitud = query("SELECT id, evidencia FROM solicitud_permiso WHERE id = %s", (id,), one=True)
+    if not solicitud or not (solicitud.get("evidencia") or "").strip():
+        flash("No hay evidencia adjunta para esta incapacidad.", "info")
+        return redirect(url_for("incapacitado_detalle", id=id))
+    evidencia_ruta = (solicitud["evidencia"] or "").strip()
+    if ".." in evidencia_ruta or evidencia_ruta.startswith("/"):
+        flash("Ruta de evidencia no válida.", "error")
+        return redirect(url_for("incapacitado_detalle", id=id))
+    uploads_dir = os.path.join(current_app.instance_path, "uploads")
+    full_path = os.path.normpath(os.path.join(uploads_dir, evidencia_ruta))
+    if not full_path.startswith(os.path.normpath(uploads_dir)) or not os.path.isfile(full_path):
+        flash("Archivo de evidencia no encontrado.", "error")
+        return redirect(url_for("incapacitado_detalle", id=id))
+    return send_file(full_path, as_attachment=False, download_name=os.path.basename(evidencia_ruta), mimetype=None)
 
 
 
@@ -6764,6 +6842,24 @@ def view_total_personal():
         )["c"]
     except Exception:
         kpi_resueltas_hoy = 0
+    try:
+        hoy = date.today()
+        mes_inicio = hoy.replace(day=1)
+        if mes_inicio.month == 12:
+            mes_siguiente = mes_inicio.replace(year=mes_inicio.year + 1, month=1, day=1)
+        else:
+            mes_siguiente = mes_inicio.replace(month=mes_inicio.month + 1, day=1)
+        kpi_incapacitados_mes = query(
+            "SELECT COUNT(DISTINCT id_cedula) AS c "
+            "FROM solicitud_permiso "
+            "WHERE estado = 'APROBADO' "
+            "AND REPLACE(LOWER(TRIM(COALESCE(tipo, ''))), 'á', 'a') LIKE 'incapacidad%%' "
+            "AND fecha_desde >= %s AND fecha_desde < %s",
+            (mes_inicio, mes_siguiente),
+            one=True,
+        )["c"]
+    except Exception:
+        kpi_incapacitados_mes = 0
 
     actividad_reciente = _get_actividad_reciente(10)
     from datetime import datetime
@@ -6776,6 +6872,7 @@ def view_total_personal():
         kpi_retiros_mes=kpi_retiros_mes,
         kpi_solicitudes_pend=kpi_solicitudes_pend,
         kpi_resueltas_hoy=kpi_resueltas_hoy,
+        kpi_incapacitados_mes=kpi_incapacitados_mes,
         retiros_mes_labels=retiros_mes_labels,
         retiros_mes_values=retiros_mes_values,
         actividad_reciente=actividad_reciente,
