@@ -441,12 +441,28 @@ def _body_informe_permiso_aprobado(solicitud, empleado_nombre, firma_img_html, f
     else:
         hora_fin = str(hora_fin) if hora_fin else "—"
     motivo = html_escape(str(solicitud.get("motivo") or "—"))
+    motivo_cambio = html_escape(str(solicitud.get("motivo_cambio_empleado") or "").strip())
+    comentario_aprobador = html_escape(str(observaciones or "").strip())
     # Estilos inline para compatibilidad con Gmail/Outlook
     lbl = "font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:2px;font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;"
     val = "font-size:14px;color:#111;padding:6px 0;border-bottom:1px solid #e5e7eb;font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;"
-    obs_row = ""
-    if observaciones:
-        obs_row = f'<tr><td colspan="3" style="padding:0 8px 12px 0;vertical-align:top"><p style="{lbl}margin:0">Observaciones</p><p style="{val}margin:0">{html_escape(observaciones)}</p></td></tr>'
+    motivo_cambio_row = ""
+    if motivo_cambio:
+        motivo_cambio_row = (
+            f'<tr><td colspan="3" style="padding:0 8px 12px 0;vertical-align:top">'
+            f'<div style="border:1px solid #86efac;background:#f0fdf4;border-radius:8px;padding:10px 12px;">'
+            f'<p style="{lbl}margin:0 0 4px 0;color:#166534">Motivo del cambio / edición</p>'
+            f'<p style="margin:0;font-size:13px;color:#166534;line-height:1.45;font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;">{motivo_cambio}</p>'
+            f'</div></td></tr>'
+        )
+
+    comentario_row = (
+        f'<tr><td colspan="3" style="padding:0 8px 12px 0;vertical-align:top">'
+        f'<div style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:8px;padding:10px 12px;">'
+        f'<p style="{lbl}margin:0 0 4px 0;color:#166534">Comentario del aprobador</p>'
+        f'<p style="margin:0;font-size:13px;color:#166534;line-height:1.45;font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;">{comentario_aprobador or "Sin comentario."}</p>'
+        f'</div></td></tr>'
+    )
     return f"""
 <p style="margin:0 0 16px 0;font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;"><span style="display:inline-block;padding:6px 12px;border-radius:8px;font-size:13px;font-weight:600;background:#d1fae5;color:#047857;">Permiso aprobado</span></p>
 <p style="margin:0 0 20px 0;font-size:14px;color:#374151;font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;">Se adjunta el <strong>informe en PDF</strong> (Formato GH-FR-007) con los datos que diligenció y la firma digital de Coordinación Gestión Humana.</p>
@@ -476,7 +492,8 @@ def _body_informe_permiso_aprobado(solicitud, empleado_nombre, firma_img_html, f
         <tr><td colspan="3" style="padding:0 8px 12px 0;vertical-align:top;"><p style="{lbl}margin:0">Hora de Inicio / Hora Final</p><p style="{val}margin:0">{html_escape(str(hora_inicio))} – {html_escape(str(hora_fin))}</p></td></tr>
         <tr><td colspan="3" style="padding:0 8px 12px 0;vertical-align:top;"><p style="{lbl}margin:0">Motivo</p><p style="{val}margin:0">{motivo}</p></td></tr>
         <tr><td colspan="3" style="padding:0 8px 12px 0;vertical-align:top;"><p style="{lbl}margin:0">Tipo</p><p style="{val}margin:0">{tipo}</p></td></tr>
-        {obs_row}
+        {motivo_cambio_row}
+        {comentario_row}
       </table>
       <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:20px;border:1px solid #e5e7eb;border-radius:8px;border-collapse:collapse;">
         <tr>

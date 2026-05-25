@@ -13,6 +13,22 @@
         <div class="detail-field"><label>Cédula</label><span>{{ solicitud.id_cedula or '—' }}</span></div>
         <div class="detail-field"><label>Tipo</label><span>{{ solicitud.tipo or 'Permiso' }}</span></div>
         <div class="detail-field"><label>Fechas</label><span>{{ solicitud.fecha_desde|fecha_display }} → {{ solicitud.fecha_hasta|fecha_display }}</span></div>
+        <div class="detail-field">
+            <label>Horas</label>
+            <span>
+                {% set hi = solicitud.hora_inicio|string if solicitud.hora_inicio else '—' %}
+                {% set hf = solicitud.hora_fin|string if solicitud.hora_fin else '—' %}
+                {{ hi[:5] if hi != '—' else hi }} - {{ hf[:5] if hf != '—' else hf }}
+            </span>
+        </div>
+        <div class="detail-field">
+            <label>Motivo</label>
+            <span>{{ solicitud.motivo or '—' }}</span>
+        </div>
+        <div class="detail-field" style="grid-column: 1 / -1;">
+            <label>Motivo de edición/cambio</label>
+            <span>{{ solicitud.motivo_cambio_empleado or '—' }}</span>
+        </div>
     </div>
     {% endif %}
     {% if actor_email %}

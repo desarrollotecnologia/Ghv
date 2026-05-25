@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="incapacitados-page">
+    <div class="detail-card" style="margin-bottom:16px;">
+        <h3 class="form-section-title" style="margin-bottom:10px;color:var(--colbeef-green-dark,#166534)">
+            <span class="material-symbols-outlined">monitor_heart</span>
+            Módulo de incapacitados
+        </h3>
+        <p style="color:#6b7280;margin:0;">
+            Seguimiento de personas incapacitados: quiénes fueron, áreas impactadas y total de días.
+        </p>
+    </div>
+
+    <form method="get" class="detail-card" style="margin-bottom:16px;">
+        <div class="form-row" style="margin-bottom:0;">
+            <div class="form-group">
+                <label class="form-label">Estado</label>
+                <select name="estado" class="form-input">
+                    <option value="APROBADO" {{ 'selected' if estado == 'APROBADO' else '' }}>Aprobado</option>
+                    <option value="PENDIENTE" {{ 'selected' if estado == 'PENDIENTE' else '' }}>Pendiente</option>
+                    <option value="RECHAZADO" {{ 'selected' if estado == 'RECHAZADO' else '' }}>Rechazado</option>
+                    <option value="TODOS" {{ 'selected' if estado == 'TODOS' else '' }}>Todos</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Área</label>
+                <select name="area" class="form-input">
+                    <option value="">Todas</option>
+                    {% for a in areas_list %}
+                    <option value="{{ a }}" {{ 'selected' if area == a else '' }}>{{ a }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Desde</label>
+                <input type="date" name="desde" value="{{ desde or '' }}" class="form-input">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Hasta</label>
+                <input type="date" name="hasta" value="{{ hasta or '' }}" class="form-input">
+            </div>
+            <div class="form-group" style="grid-column:1/-1;">
+                <label class="form-label">Buscar (nombre o cédula)</label>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                    <input type="text" name="buscar" value="{{ buscar or '' }}" class="form-input" style="flex:1;min-width:220px;">
+                    <button type="submit" class="btn btn-primary">Aplicar filtros</button>
+                    <a href="{{ url_for('incapacitados_dashboard') }}" class="btn btn-outline">Limpiar</a>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <div class="stats-grid" style="margin-bottom:16px;">
+        <div class="stat-card">
+            <div class="stat-icon green"><span class="material-symbols-outlined">assignment</span></div>
+            <div class="stat-info">
+                <h3>{{ total_registros }}</h3>
+                <p>Registros de incapacidad</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon blue"><span class="material-symbols-outlined">groups</span></div>
+            <div class="stat-info">
+                <h3>{{ total_personas }}</h3>
+                <p>Personas incapacitados</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon orange"><span class="material-symbols-outlined">apartment</span></div>
+            <div class="stat-info">
+                <h3>{{ total_areas }}</h3>
+                <p>Áreas con casos</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon red"><span class="material-symbols-outlined">calendar_month</span></div>
+            <div class="stat-info">
+                <h3>{{ total_dias }}</h3>
+                <p>Total días de incapacidad</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="area-emp-layout" style="margin-bottom:16px;">
+        <div class="detail-card">
+            <h4 class="related-title"><span class="material-symbols-outlined">apartment</span>Por área</h4>
+            {% if area_stats %}
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Área</th>
+                            <th>Personas</th>
+                            <th>Casos</th>
+                            <th>Días</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for a in area_stats %}
+                        <tr>
+                            <td>{{ a.area }}</td>
+                            <td>{{ a.personas }}</td>
+                            <td>{{ a.registros }}</td>
+                            <td>{{ a.dias }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted">No hay datos para los filtros seleccionados.</p>
+            {% endif %}
+        </div>
+
+        <div class="detail-card">
+            <h4 class="related-title"><span class="material-symbols-outlined">leaderboard</span>Personas con más días</h4>
+            {% if top_people %}
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Cédula</th>
+                            <th>Nombre</th>
+                            <th>Días</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in top_people %}
+                        <tr>
+                            <td>{{ p.id_cedula }}</td>
+                            <td>{{ p.nombre }}</td>
+                            <td>{{ p.dias }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted">No hay datos para los filtros seleccionados.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="detail-card">
+        <h4 class="related-title"><span class="material-symbols-outlined">list_alt</span>Detalle de incapacidades</h4>
+        {% if rows %}
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Cédula</th>
+                        <th>Nombre</th>
+                        <th>Área</th>
+                        <th>Tipo</th>
+                        <th>Desde</th>
+                        <th>Hasta</th>
+                        <th>Días</th>
+                        <th>Estado</th>
+                        <th>Motivo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in rows %}
+                    <tr>
+                        <td>{{ r.id_cedula }}</td>
+                        <td>{{ r.apellidos_nombre }}</td>
+                        <td>{{ r.area or '—' }}</td>
+                        <td>{{ r.tipo }}</td>
+                        <td>{{ r.fecha_desde|fecha_display }}</td>
+                        <td>{{ r.fecha_hasta|fecha_display }}</td>
+                        <td>{{ r.dias_incapacidad }}</td>
+                        <td>
+                            {% if r.estado == 'APROBADO' %}
+                            <span class="badge badge-active">APROBADO</span>
+                            {% elif r.estado == 'PENDIENTE' %}
+                            <span class="badge badge-warning">PENDIENTE</span>
+                            {% else %}
+                            <span class="badge badge-inactive">RECHAZADO</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {{ r.motivo or '—' }}
+                            {% if r.motivo_cambio_empleado %}
+                            <div style="margin-top:4px;font-size:12px;color:#166534;">
+                                Cambio: {{ r.motivo_cambio_empleado }}
+                            </div>
+                            {% endif %}
+                            {% if r.observaciones %}
+                            <div style="margin-top:4px;font-size:12px;color:#6b7280;">
+                                Comentario: {{ r.observaciones }}
+                            </div>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <span class="material-symbols-outlined">inbox</span>
+            <p>No hay incapacidades con los filtros seleccionados.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+

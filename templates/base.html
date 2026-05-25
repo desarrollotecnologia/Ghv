@@ -255,6 +255,16 @@
         </div>
         {% endif %}
 
+        {% if vm.incapacitados %}
+        <div class="sidebar-section">
+            <span class="sidebar-label">Salud</span>
+            <a href="{{ url_for('incapacitados_dashboard') }}" class="nav-item {{ 'active' if active_page == 'Incapacitados' }}">
+                <span class="material-symbols-outlined">monitor_heart</span>
+                <span class="nav-label">Incapacitados</span>
+            </a>
+        </div>
+        {% endif %}
+
         {% if vm.incidencias %}
         <div class="sidebar-section">
             <span class="sidebar-label">Incidencias (SISO)</span>

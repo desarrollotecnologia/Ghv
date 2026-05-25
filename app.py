@@ -389,6 +389,7 @@ _ROLE_MODULES = {
         "admin":        True,   # Home Setting, Catálogos, Usuarios (todo)
         "admin_usuarios": True,
         "permisos":     True,   # Solicitud permiso/licencia
+        "incapacitados": True,  # Métricas de incapacidades
     },
     "COORD. GH": {
         "organizacion": True,
@@ -402,6 +403,7 @@ _ROLE_MODULES = {
         "admin":        False,   # Sin Home Setting ni Catálogos
         "admin_usuarios": True,  # Solo ver usuarios e inactivar
         "permisos":     True,    # Coordinación aprueba/rechaza permisos
+        "incapacitados": True,
     },
     "GH INFORMADA": {
         "organizacion": True,
@@ -415,6 +417,7 @@ _ROLE_MODULES = {
         "admin":        False,
         "admin_usuarios": False,
         "permisos":     True,    # Solo consulta; no aprueba ni rechaza
+        "incapacitados": True,
     },
     "GESTOR DE CONTRATACION": {
         "organizacion": False,
@@ -496,7 +499,7 @@ _DEFAULT_MODULES = {k: False for k in [
     "organizacion", "personal", "personal_inactivo", "retiro",
     "familia", "eventos", "eps", "fondos",
     "reportes", "dashboard", "total_hijos", "admin", "admin_usuarios", "permisos",
-    "incidencias", "incidencias_dashboard", "suite_principal",
+    "incidencias", "incidencias_dashboard", "incapacitados", "suite_principal",
     "locker",
 ]}
 
@@ -657,6 +660,9 @@ def inject_user():
         if (user.get("email") or "").strip().lower() == "siso@colbeef.com":
             vm["incidencias"] = True
             vm["incidencias_dashboard"] = True
+        # Gerencia también puede consultar incapacidades, aunque su rol no esté en catálogo.
+        if _is_gerencia_user(user):
+            vm["incapacitados"] = True
         # GESTOR SST no ve Permisos (ni por código ni por BD)
         if _rol_match(rol) == "GESTOR SST":
             vm["permisos"] = False
@@ -1851,6 +1857,15 @@ def _es_admin_o_coord(user=None):
     return user and user.get("rol") in ("ADMIN", "COORD. GH")
 
 
+def _can_view_incapacitados(user=None):
+    """Acceso al módulo de incapacidades: ADMIN, GH y Gerencia."""
+    user = user or get_current_user()
+    if not user:
+        return False
+    rol = _rol_match(user.get("rol") or "")
+    return rol in ("ADMIN", "COORD. GH", "GH INFORMADA") or _is_gerencia_user(user)
+
+
 def _puede_resolver_solicitud(solicitud):
     """Un usuario puede resolver (aprobar/rechazar) una solicitud si:
     - Es ADMIN o COORD. GH (visibilidad global), o
@@ -2877,6 +2892,126 @@ def vacaciones_mis_solicitudes():
         "vacaciones_mis_solicitudes.html",
         active_page="Mis solicitudes de vacaciones",
         rows=rows,
+    )
+
+
+@app.route("/incapacitados")
+@login_required
+def incapacitados_dashboard():
+    """Módulo de incapacitados: resumen y detalle por personas/áreas/días."""
+    user = get_current_user()
+    if not _can_view_incapacitados(user):
+        flash("No tienes acceso al módulo de incapacitados.", "error")
+        return redirect(url_for("home"))
+
+    estado = (request.args.get("estado") or "APROBADO").strip().upper()
+    if estado not in ("TODOS", "PENDIENTE", "APROBADO", "RECHAZADO"):
+        estado = "APROBADO"
+    buscar = (request.args.get("buscar") or "").strip()
+    area = (request.args.get("area") or "").strip()
+    desde = (request.args.get("desde") or "").strip()
+    hasta = (request.args.get("hasta") or "").strip()
+
+    where = [
+        "LOWER(TRIM(COALESCE(p.tipo, ''))) IN ('incapacidad médica','incapacidad medica','médico','medico')"
+    ]
+    params = []
+    if estado != "TODOS":
+        where.append("p.estado = %s")
+        params.append(estado)
+    if area:
+        where.append("COALESCE(p.area, e.area) = %s")
+        params.append(area)
+    if buscar:
+        where.append("(e.apellidos_nombre LIKE %s OR p.id_cedula LIKE %s)")
+        like = f"%{buscar.replace('%', '\\%')}%"
+        params.extend([like, like])
+    if desde:
+        where.append("p.fecha_hasta >= %s")
+        params.append(desde)
+    if hasta:
+        where.append("p.fecha_desde <= %s")
+        params.append(hasta)
+
+    sql = (
+        "SELECT p.id, p.id_cedula, e.apellidos_nombre, COALESCE(p.area, e.area) AS area, p.tipo, p.estado, "
+        "p.fecha_desde, p.fecha_hasta, p.motivo, p.motivo_cambio_empleado, p.observaciones, p.fecha_solicitud "
+        "FROM solicitud_permiso p "
+        "JOIN empleado e ON e.id_cedula = p.id_cedula "
+        f"WHERE {' AND '.join(where)} "
+        "ORDER BY p.fecha_desde DESC, p.fecha_solicitud DESC, p.id DESC"
+    )
+    rows = query(sql, tuple(params))
+
+    total_dias = 0
+    personas_set = set()
+    areas_set = set()
+    area_stats = {}
+    people_days = {}
+
+    for r in rows:
+        fd = r.get("fecha_desde")
+        fh = r.get("fecha_hasta")
+        fd_date = fd.date() if hasattr(fd, "date") else fd
+        fh_date = fh.date() if hasattr(fh, "date") else fh
+        dias = 0
+        try:
+            if fd_date and fh_date:
+                dias = (fh_date - fd_date).days + 1
+                if dias < 1:
+                    dias = 1
+        except Exception:
+            dias = 0
+        r["dias_incapacidad"] = dias
+        total_dias += dias
+
+        ced = (r.get("id_cedula") or "").strip()
+        if ced:
+            personas_set.add(ced)
+            people_days.setdefault(ced, {"nombre": r.get("apellidos_nombre") or "—", "dias": 0})
+            people_days[ced]["dias"] += dias
+
+        area_name = (r.get("area") or "SIN ÁREA").strip() or "SIN ÁREA"
+        areas_set.add(area_name)
+        st = area_stats.setdefault(area_name, {"registros": 0, "dias": 0, "personas": set()})
+        st["registros"] += 1
+        st["dias"] += dias
+        if ced:
+            st["personas"].add(ced)
+
+    area_stats_list = [
+        {
+            "area": a,
+            "registros": v["registros"],
+            "dias": v["dias"],
+            "personas": len(v["personas"]),
+        }
+        for a, v in area_stats.items()
+    ]
+    area_stats_list.sort(key=lambda x: (x["dias"], x["registros"]), reverse=True)
+
+    top_people = [
+        {"id_cedula": ced, "nombre": d["nombre"], "dias": d["dias"]}
+        for ced, d in people_days.items()
+    ]
+    top_people.sort(key=lambda x: x["dias"], reverse=True)
+
+    return render_template(
+        "incapacitados_dashboard.html",
+        active_page="Incapacitados",
+        rows=rows,
+        estado=estado,
+        buscar=buscar,
+        area=area,
+        desde=desde,
+        hasta=hasta,
+        total_registros=len(rows),
+        total_personas=len(personas_set),
+        total_areas=len(areas_set),
+        total_dias=total_dias,
+        area_stats=area_stats_list,
+        top_people=top_people[:10],
+        areas_list=sorted(list(areas_set)),
     )
 
 
