@@ -229,24 +229,28 @@
 
         {% if show_permisos_menu %}
         <div class="sidebar-section">
-            <span class="sidebar-label">Permisos</span>
+            <span class="sidebar-label">{{ 'Solicitudes para mi equipo' if encargado_mode else 'Permisos' }}</span>
             <a href="{{ url_for('permisos_index') }}" class="nav-item {{ 'active' if active_page in ['Solicitud de permiso', 'Permisos empleados'] }}">
                 <span class="material-symbols-outlined">assignment</span>
                 <span class="nav-label">{{ 'Permisos empleados' if encargado_mode else 'Solicitud de permiso' }}</span>
             </a>
+            {% if not encargado_mode %}
             <a href="{{ url_for('vacaciones_solicitar') }}" class="nav-item {{ 'active' if active_page == 'Solicitud de vacaciones' }}">
                 <span class="material-symbols-outlined">beach_access</span>
                 <span class="nav-label">Solicitud de vacaciones</span>
             </a>
+            {% endif %}
             {% if not employee_vac_mode %}
             <a href="{{ url_for('vacaciones_index') }}" class="nav-item {{ 'active' if active_page == 'Listado vacaciones' }}">
                 <span class="material-symbols-outlined">list</span>
-                <span class="nav-label">{{ 'Permisos vacaciones' if encargado_mode else 'Listado vacaciones' }}</span>
+                <span class="nav-label">{{ 'Solicitudes vacaciones empleados' if encargado_mode else 'Listado vacaciones' }}</span>
             </a>
+            {% if not encargado_mode %}
             <a href="{{ url_for('vacaciones_mis_solicitudes') }}" class="nav-item {{ 'active' if active_page == 'Mis solicitudes de vacaciones' }}">
                 <span class="material-symbols-outlined">event_note</span>
                 <span class="nav-label">Mis vacaciones</span>
             </a>
+            {% endif %}
             {% endif %}
         </div>
         {% endif %}

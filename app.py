@@ -2076,6 +2076,9 @@ _ROLES_SOLICITAR_PARA_SI = (
 @module_required("permisos")
 def permiso_solicitar():
     """Formulario GH-FR-007: permiso o licencia (área, remunerado/no, hora inicio/fin)."""
+    if session.get("encargado_mode"):
+        flash("En modo jefe solo puedes revisar solicitudes que envía tu equipo.", "info")
+        return redirect(url_for("permisos_index"))
     user = get_current_user()
     modo_empleado = bool(session.get("employee_mode") or session.get("employee_vac_mode")) and _can_employee_vacation_mode(user)
     if session.get("employee_mode") and not modo_empleado:
@@ -2239,6 +2242,9 @@ def permiso_solicitar():
 @module_required("permisos")
 def vacaciones_solicitar():
     """Formulario Solicitud de vacaciones (Gestión Humana - Colbeef)."""
+    if session.get("encargado_mode"):
+        flash("En modo jefe solo puedes revisar solicitudes que envía tu equipo.", "info")
+        return redirect(url_for("vacaciones_index"))
     user = get_current_user()
     rol = (user.get("rol") or "").strip().upper()
     modo_empleado_vac = bool(session.get("employee_mode") or session.get("employee_vac_mode")) and _can_employee_vacation_mode(user)
@@ -2629,6 +2635,9 @@ def vacaciones_rechazar(id):
 @module_required("permisos")
 def vacaciones_mis_solicitudes():
     """Mis solicitudes de vacaciones (empleado o quien solicita para sí)."""
+    if session.get("encargado_mode"):
+        flash("En modo jefe solo puedes revisar solicitudes que envía tu equipo.", "info")
+        return redirect(url_for("vacaciones_index"))
     user = get_current_user()
     id_cedula = (user.get("id_cedula") or "").strip()
     if not id_cedula:
