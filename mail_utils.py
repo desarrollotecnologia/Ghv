@@ -257,6 +257,7 @@ def _tabla_detalle_solicitud(solicitud, empleado_nombre=None, incluir_empleado=T
         hf = hf.strftime("%H:%M")
     hf = html_escape(str(hf or "—"))
     motivo = html_escape(str(solicitud.get("motivo") or "—"))
+    motivo_cambio = html_escape(str(solicitud.get("motivo_cambio_empleado") or ""))
     filas = []
     if incluir_empleado and empleado_nombre:
         filas.append(("<th>Empleado</th>", f"<td>{html_escape(empleado_nombre)}</td>"))
@@ -266,6 +267,8 @@ def _tabla_detalle_solicitud(solicitud, empleado_nombre=None, incluir_empleado=T
     filas.append(("<th>Hora inicio</th>", f"<td>{hi}</td>"))
     filas.append(("<th>Hora final</th>", f"<td>{hf}</td>"))
     filas.append(("<th>Motivo</th>", f"<td>{motivo}</td>"))
+    if motivo_cambio:
+        filas.append(("<th>Motivo del cambio</th>", f"<td>{motivo_cambio}</td>"))
     rows_html = "".join(f"<tr>{th}{td}</tr>" for th, td in filas)
     return f'<table class="mail-table"><tbody>{rows_html}</tbody></table>'
 

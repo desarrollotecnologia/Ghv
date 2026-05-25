@@ -1,0 +1,105 @@
+{% extends "base_empleado.html" if is_empleado else "base.html" %}
+
+{% block content %}
+<style>
+.permiso-edit-wrap { max-width: 760px; margin: 0 auto; }
+.permiso-edit-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.06); padding: 20px; }
+.permiso-edit-title { margin: 0 0 8px 0; font-size: 1.2rem; color: #0b3518; font-weight: 700; }
+.permiso-edit-sub { color: #6b7280; font-size: .92rem; margin: 0 0 16px 0; }
+.permiso-edit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.permiso-edit-full { grid-column: 1 / -1; }
+.permiso-edit-label { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: #374151; text-transform: uppercase; letter-spacing: .2px; }
+.permiso-edit-input { width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 9px 11px; font-size: 14px; }
+.permiso-edit-input[readonly] { background: #f3f4f6; color: #4b5563; }
+.permiso-edit-actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.permiso-edit-badge { display: inline-flex; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; margin-bottom: 12px; }
+.permiso-edit-badge.pendiente { background: #fef3c7; color: #92400e; }
+.permiso-edit-badge.rechazado { background: #fee2e2; color: #991b1b; }
+@media (max-width: 768px) {
+  .permiso-edit-card { padding: 14px; }
+  .permiso-edit-grid { grid-template-columns: 1fr; }
+  .permiso-edit-actions .btn { width: 100%; justify-content: center; }
+}
+</style>
+
+<div class="permiso-edit-wrap">
+  <div class="permiso-edit-card">
+    <span class="permiso-edit-badge {{ (solicitud.estado or '')|lower }}">{{ solicitud.estado or 'PENDIENTE' }}</span>
+    <h2 class="permiso-edit-title">Editar solicitud de permiso</h2>
+    <p class="permiso-edit-sub">Corrige la información y explica el motivo del cambio. Al guardar, se reenviará al jefe inmediato para nueva aprobación o rechazo.</p>
+
+    <form method="post" enctype="multipart/form-data">
+      <div class="permiso-edit-grid">
+        <div class="permiso-edit-full">
+          <label class="permiso-edit-label">Empleado</label>
+          <input class="permiso-edit-input" type="text" value="{{ solicitud.apellidos_nombre }} ({{ solicitud.id_cedula }})" readonly>
+        </div>
+
+        <div>
+          <label class="permiso-edit-label">Fecha desde</label>
+          <input class="permiso-edit-input" type="date" name="fecha_desde" required value="{{ solicitud.fecha_desde_iso or '' }}">
+        </div>
+        <div>
+          <label class="permiso-edit-label">Fecha hasta</label>
+          <input class="permiso-edit-input" type="date" name="fecha_hasta" required value="{{ solicitud.fecha_hasta_iso or '' }}">
+        </div>
+
+        <div>
+          <label class="permiso-edit-label">Hora inicio</label>
+          <input class="permiso-edit-input" type="time" name="hora_inicio" value="{{ solicitud.hora_inicio_hhmm or '' }}">
+        </div>
+        <div>
+          <label class="permiso-edit-label">Hora final</label>
+          <input class="permiso-edit-input" type="time" name="hora_fin" value="{{ solicitud.hora_fin_hhmm or '' }}">
+        </div>
+
+        <div>
+          <label class="permiso-edit-label">Tipo</label>
+          <select class="permiso-edit-input" name="tipo" required>
+            {% for t in ['Permiso','Licencia','Médico','Personal','Capacitación','Calamidad doméstica','Otro'] %}
+            <option value="{{ t }}" {{ 'selected' if solicitud.tipo == t else '' }}>{{ t }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="permiso-edit-label">Permiso remunerado</label>
+          <select class="permiso-edit-input" name="permiso_remunerado" required>
+            <option value="">— Seleccionar —</option>
+            <option value="1" {{ 'selected' if solicitud.permiso_remunerado == 1 else '' }}>Remunerado</option>
+            <option value="0" {{ 'selected' if solicitud.permiso_remunerado == 0 else '' }}>No remunerado</option>
+          </select>
+        </div>
+
+        <div class="permiso-edit-full">
+          <label class="permiso-edit-label">Área</label>
+          <input class="permiso-edit-input" type="text" name="area" value="{{ solicitud.area or solicitud.area_empleado or '' }}" readonly>
+        </div>
+
+        <div class="permiso-edit-full">
+          <label class="permiso-edit-label">Motivo del permiso</label>
+          <textarea class="permiso-edit-input" name="motivo" rows="3" placeholder="Motivo del permiso">{{ solicitud.motivo or '' }}</textarea>
+        </div>
+
+        <div class="permiso-edit-full">
+          <label class="permiso-edit-label">Motivo del cambio (obligatorio)</label>
+          <textarea class="permiso-edit-input" name="motivo_cambio" rows="3" required placeholder="Explique por qué corrige esta solicitud"></textarea>
+        </div>
+
+        <div class="permiso-edit-full">
+          <label class="permiso-edit-label">Evidencia (solo si es no remunerado)</label>
+          <input class="permiso-edit-input" type="file" name="evidencia" accept=".pdf,.jpg,.jpeg,.png">
+        </div>
+      </div>
+
+      <div class="permiso-edit-actions">
+        <button type="submit" class="btn btn-primary">
+          <span class="material-symbols-outlined" style="font-size:18px">save</span>
+          Guardar y reenviar
+        </button>
+        <a href="{{ url_for('empleado_mis_solicitudes') if is_empleado else url_for('permisos_index') }}" class="btn btn-outline">Cancelar</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+

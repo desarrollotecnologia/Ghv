@@ -145,6 +145,12 @@
                         <span class="permiso-detail-label">Motivo</span>
                         <span class="permiso-detail-value permiso-motivo-text">{{ s.motivo or '—' }}</span>
                     </div>
+                    {% if s.motivo_cambio_empleado %}
+                    <div class="permiso-detail-row permiso-motivo">
+                        <span class="permiso-detail-label">Motivo del cambio</span>
+                        <span class="permiso-detail-value permiso-motivo-text">{{ s.motivo_cambio_empleado }}</span>
+                    </div>
+                    {% endif %}
                     {% if s.evidencia %}
                     <div class="permiso-detail-row permiso-evidencia-row">
                         <span class="permiso-detail-label">Evidencia adjunta</span>
