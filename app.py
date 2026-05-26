@@ -3014,6 +3014,11 @@ def incapacidad_solicitar():
         row = query("SELECT * FROM solicitud_incapacidad WHERE id_cedula = %s ORDER BY id DESC LIMIT 1", (id_cedula,), one=True)
         encargado = _obtener_encargado_de(id_cedula)
         correos_ok = False
+        motivo_correo = ""
+        if not encargado:
+            motivo_correo = "El empleado no tiene jefe inmediato asignado."
+        elif not (encargado.get("email") or "").strip():
+            motivo_correo = "El jefe inmediato no tiene correo configurado."
         if encargado and encargado.get("email") and row and row.get("id"):
             try:
                 t_ap = _create_incapacidad_email_token(row["id"], "aprobar", actor_email=encargado["email"])
@@ -3027,10 +3032,12 @@ def incapacidad_solicitar():
                 )
             except Exception:
                 correos_ok = False
+                motivo_correo = "Fallo al construir o enviar correo (revise SMTP/configuracion)."
         if correos_ok:
             flash("Solicitud de incapacidad registrada. Se envio notificacion al jefe inmediato.", "success")
         else:
-            flash("Solicitud de incapacidad registrada. No se pudo notificar al jefe inmediato.", "info")
+            detalle = f" Motivo: {motivo_correo}" if motivo_correo else ""
+            flash("Solicitud de incapacidad registrada. No se pudo notificar al jefe inmediato." + detalle, "info")
         return redirect(url_for("incapacidad_mis_solicitudes" if is_empleado else "incapacidad_index"))
 
     now_fecha = datetime.now().strftime("%d-%m-%Y")
