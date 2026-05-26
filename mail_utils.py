@@ -223,17 +223,34 @@ def send_mail(to_emails, subject, body_html, body_text=None, cc=None, app=None, 
             msg.attach(MIMEText(body_text or body_html, "plain", "utf-8"))
             msg.attach(MIMEText(body_html, "html", "utf-8"))
         host = app.config.get("MAIL_HOST", "smtp.gmail.com")
-        port = app.config.get("MAIL_PORT", 587)
-        use_ssl = port == 465 or app.config.get("MAIL_USE_SSL", False)
-        if use_ssl:
-            with smtplib.SMTP_SSL(host, port) as s:
-                s.login(app.config["MAIL_USER"], app.config["MAIL_PASSWORD"])
-                s.sendmail(app.config.get("MAIL_FROM") or app.config["MAIL_USER"], to_list + cc_list, msg.as_string())
-        else:
-            with smtplib.SMTP(host, port) as s:
-                s.starttls()
-                s.login(app.config["MAIL_USER"], app.config["MAIL_PASSWORD"])
-                s.sendmail(app.config.get("MAIL_FROM") or app.config["MAIL_USER"], to_list + cc_list, msg.as_string())
+        port = int(app.config.get("MAIL_PORT", 587) or 587)
+        use_ssl = bool(app.config.get("MAIL_USE_SSL", False)) or port == 465
+        use_starttls = bool(app.config.get("MAIL_USE_STARTTLS", not use_ssl))
+        try:
+            if use_ssl:
+                with smtplib.SMTP_SSL(host, port) as s:
+                    s.login(app.config["MAIL_USER"], app.config["MAIL_PASSWORD"])
+                    s.sendmail(app.config.get("MAIL_FROM") or app.config["MAIL_USER"], to_list + cc_list, msg.as_string())
+            else:
+                with smtplib.SMTP(host, port) as s:
+                    if use_starttls:
+                        s.starttls()
+                    s.login(app.config["MAIL_USER"], app.config["MAIL_PASSWORD"])
+                    s.sendmail(app.config.get("MAIL_FROM") or app.config["MAIL_USER"], to_list + cc_list, msg.as_string())
+        except Exception as first_err:
+            # Fallback automático para entornos donde el puerto/seguridad no coincide
+            # (ej. SSL en 465 vs STARTTLS en 587).
+            if app and hasattr(app, "logger"):
+                app.logger.warning(f"[Permisos] Primer intento SMTP falló ({first_err}). Reintentando con modo alterno.")
+            if use_ssl:
+                with smtplib.SMTP(host, 587) as s:
+                    s.starttls()
+                    s.login(app.config["MAIL_USER"], app.config["MAIL_PASSWORD"])
+                    s.sendmail(app.config.get("MAIL_FROM") or app.config["MAIL_USER"], to_list + cc_list, msg.as_string())
+            else:
+                with smtplib.SMTP_SSL(host, 465) as s:
+                    s.login(app.config["MAIL_USER"], app.config["MAIL_PASSWORD"])
+                    s.sendmail(app.config.get("MAIL_FROM") or app.config["MAIL_USER"], to_list + cc_list, msg.as_string())
         if app and hasattr(app, "logger"):
             app.logger.info(f"[Permisos] Correo enviado a {to_list}: {subject[:50]}...")
         return True

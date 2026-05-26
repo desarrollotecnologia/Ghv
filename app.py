@@ -3073,6 +3073,7 @@ def incapacidad_index():
         return redirect(url_for("incapacidad_solicitar"))
     if not _puede_ver_listado_solicitudes():
         return redirect(url_for("incapacidad_solicitar"))
+    cur_user = get_current_user() or {}
     sql = (
         "SELECT i.id, i.id_cedula, e.apellidos_nombre, e.direccion_email, e.id_user_encargado, "
         "i.area, i.fecha_desde, i.fecha_hasta, i.dias_incapacidad, i.descripcion, i.evidencia, "
@@ -3080,7 +3081,7 @@ def incapacidad_index():
         "u.nombre AS resuelto_por_nombre "
         "FROM solicitud_incapacidad i "
         "JOIN empleado e ON e.id_cedula COLLATE utf8mb4_unicode_ci = i.id_cedula COLLATE utf8mb4_unicode_ci "
-        "LEFT JOIN usuario u ON u.id_user = i.resuelto_por "
+        "LEFT JOIN usuario u ON u.id_user COLLATE utf8mb4_unicode_ci = i.resuelto_por COLLATE utf8mb4_unicode_ci "
     )
     params = []
     enc_where, enc_params = _sql_filtro_encargado("e")
@@ -3104,13 +3105,12 @@ def incapacidad_index():
                     "u.nombre AS resuelto_por_nombre "
                     "FROM solicitud_incapacidad i "
                     "JOIN empleado e ON e.id_cedula COLLATE utf8mb4_unicode_ci = i.id_cedula COLLATE utf8mb4_unicode_ci "
-                    "LEFT JOIN usuario u ON u.id_user = i.resuelto_por "
+                    "LEFT JOIN usuario u ON u.id_user COLLATE utf8mb4_unicode_ci = i.resuelto_por COLLATE utf8mb4_unicode_ci "
                     "ORDER BY CASE i.estado WHEN 'PENDIENTE' THEN 0 ELSE 1 END, i.fecha_solicitud DESC, i.id DESC"
                 )
                 rows = query(sql, tuple())
         else:
             raise
-    cur_user = get_current_user() or {}
     es_admin_coord = _es_admin_o_coord(cur_user)
     for r in rows:
         r["_puede_resolver"] = es_admin_coord or ((r.get("id_user_encargado") or "") == (cur_user.get("id_user") or ""))
