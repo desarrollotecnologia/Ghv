@@ -3065,7 +3065,7 @@ def incapacidad_index():
         "i.estado, i.observaciones, i.resuelto_por, i.fecha_resolucion, i.fecha_solicitud, "
         "u.nombre AS resuelto_por_nombre "
         "FROM solicitud_incapacidad i "
-        "JOIN empleado e ON e.id_cedula = i.id_cedula "
+        "JOIN empleado e ON e.id_cedula COLLATE utf8mb4_unicode_ci = i.id_cedula COLLATE utf8mb4_unicode_ci "
         "LEFT JOIN usuario u ON u.id_user = i.resuelto_por "
     )
     params = []
@@ -3084,7 +3084,7 @@ def incapacidad_index():
                 "i.estado, i.observaciones, i.resuelto_por, i.fecha_resolucion, i.fecha_solicitud, "
                 "u.nombre AS resuelto_por_nombre "
                 "FROM solicitud_incapacidad i "
-                "JOIN empleado e ON e.id_cedula = i.id_cedula "
+                "JOIN empleado e ON e.id_cedula COLLATE utf8mb4_unicode_ci = i.id_cedula COLLATE utf8mb4_unicode_ci "
                 "LEFT JOIN usuario u ON u.id_user = i.resuelto_por "
             )
             if enc_where:
@@ -3165,7 +3165,7 @@ def incapacidad_email_action():
         return render_template("incapacidad_email_action.html", estado="error", mensaje=error, solicitud=None, token="", accion="", actor_email=""), 400
     solicitud = query(
         "SELECT i.*, e.apellidos_nombre FROM solicitud_incapacidad i "
-        "LEFT JOIN empleado e ON e.id_cedula = i.id_cedula WHERE i.id = %s",
+        "LEFT JOIN empleado e ON e.id_cedula COLLATE utf8mb4_unicode_ci = i.id_cedula COLLATE utf8mb4_unicode_ci WHERE i.id = %s",
         (payload["sid"],), one=True,
     )
     if not solicitud:
@@ -3350,7 +3350,7 @@ def incapacitados_dashboard():
         "'Incapacidad medica' AS tipo, i.estado, i.fecha_desde, i.fecha_hasta, "
         "i.descripcion AS motivo, '' AS motivo_cambio_empleado, i.observaciones, i.fecha_solicitud, i.dias_incapacidad "
         "FROM solicitud_incapacidad i "
-        "JOIN empleado e ON e.id_cedula = i.id_cedula "
+        "JOIN empleado e ON e.id_cedula COLLATE utf8mb4_unicode_ci = i.id_cedula COLLATE utf8mb4_unicode_ci "
         f"WHERE {' AND '.join(where)} "
         "ORDER BY i.fecha_desde DESC, i.fecha_solicitud DESC, i.id DESC"
     )
@@ -3431,7 +3431,7 @@ def incapacitado_detalle(id):
         "SELECT i.*, e.apellidos_nombre, COALESCE(i.area, e.area) AS area_final, e.direccion_email, "
         "u.nombre AS resuelto_por_nombre "
         "FROM solicitud_incapacidad i "
-        "JOIN empleado e ON e.id_cedula = i.id_cedula "
+        "JOIN empleado e ON e.id_cedula COLLATE utf8mb4_unicode_ci = i.id_cedula COLLATE utf8mb4_unicode_ci "
         "LEFT JOIN usuario u ON u.id_user = i.resuelto_por "
         "WHERE i.id = %s",
         (id,), one=True,
