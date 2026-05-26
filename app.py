@@ -3200,15 +3200,81 @@ def incapacidad_email_action():
         return render_template("incapacidad_email_action.html", estado="error", mensaje="La solicitud ya no existe o fue eliminada.", solicitud=None, token="", accion="", actor_email=payload.get("by") or ""), 404
     if solicitud.get("estado") != "PENDIENTE":
         return render_template("incapacidad_email_action.html", estado="resuelta", mensaje="Este enlace ya fue utilizado y la solicitud ya fue resuelta.", solicitud=solicitud, token="", accion="", actor_email=payload.get("by") or "")
+    evidencia_url = url_for("incapacidad_email_evidencia", token=token)
     return render_template(
         "incapacidad_email_action.html",
         estado="confirmar",
         mensaje="Confirme la accion para resolver la solicitud de incapacidad.",
         solicitud=solicitud,
+        evidencia_url=evidencia_url,
         token=token,
         accion=payload["action"],
         actor_email=payload.get("by") or "",
     )
+
+
+@app.route("/incapacidades/email-action/evidencia")
+def incapacidad_email_evidencia():
+    """Descarga evidencia usando token de correo (sin sesión activa)."""
+    token = (request.args.get("token") or "").strip()
+    payload, error = _read_incapacidad_email_token(token)
+    if error:
+        return render_template(
+            "incapacidad_email_action.html",
+            estado="error",
+            mensaje=error,
+            solicitud=None,
+            evidencia_url="",
+            token="",
+            accion="",
+            actor_email="",
+        ), 400
+    solicitud = query(
+        "SELECT id, evidencia FROM solicitud_incapacidad WHERE id = %s",
+        (payload["sid"],), one=True,
+    )
+    if not solicitud or not (solicitud.get("evidencia") or "").strip():
+        return render_template(
+            "incapacidad_email_action.html",
+            estado="error",
+            mensaje="No hay evidencia adjunta para esta solicitud.",
+            solicitud=None,
+            evidencia_url="",
+            token="",
+            accion="",
+            actor_email=payload.get("by") or "",
+        ), 404
+    evidencia_ruta = (solicitud["evidencia"] or "").strip()
+    if ".." in evidencia_ruta or evidencia_ruta.startswith("/"):
+        return render_template(
+            "incapacidad_email_action.html",
+            estado="error",
+            mensaje="Ruta de evidencia no valida.",
+            solicitud=None,
+            evidencia_url="",
+            token="",
+            accion="",
+            actor_email=payload.get("by") or "",
+        ), 400
+    uploads_dir = os.path.join(current_app.instance_path, "uploads")
+    full_path = os.path.normpath(os.path.join(uploads_dir, evidencia_ruta))
+    if not full_path.startswith(os.path.normpath(uploads_dir)) or not os.path.isfile(full_path):
+        return render_template(
+            "incapacidad_email_action.html",
+            estado="error",
+            mensaje="Archivo de evidencia no encontrado.",
+            solicitud=None,
+            evidencia_url="",
+            token="",
+            accion="",
+            actor_email=payload.get("by") or "",
+        ), 404
+    with open(full_path, "rb") as f:
+        data = f.read()
+    resp = make_response(data)
+    resp.headers["Content-Type"] = "application/octet-stream"
+    resp.headers["Content-Disposition"] = f'attachment; filename="{os.path.basename(evidencia_ruta)}"'
+    return resp
 
 
 @app.route("/incapacidades/email-action/confirm", methods=["POST"])

@@ -18,7 +18,9 @@
     <div class="detail-field" style="grid-column:1/-1">
       <label>Evidencia</label>
       <span>
-        {% if solicitud.evidencia %}
+        {% if solicitud.evidencia and evidencia_url %}
+        <a href="{{ evidencia_url }}" class="btn btn-outline btn-sm">Descargar evidencia</a>
+        {% elif solicitud.evidencia %}
         <a href="{{ url_for('incapacidad_evidencia', id=solicitud.id) }}" class="btn btn-outline btn-sm">Descargar evidencia</a>
         {% else %}—{% endif %}
       </span>

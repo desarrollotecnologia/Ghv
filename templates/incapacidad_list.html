@@ -5,160 +5,135 @@
 {% set aprobadas = rows | selectattr('estado', 'equalto', 'APROBADO') | list %}
 {% set rechazadas = rows | selectattr('estado', 'equalto', 'RECHAZADO') | list %}
 
-<div class="vacaciones-header">
-  <div class="vacaciones-header-text">
-    <h2 class="vacaciones-title">Solicitudes de incapacidad medica</h2>
-    {% if puede_aprobar %}
-    <p class="vacaciones-intro">Revise cada solicitud y elija <strong>Aprobar</strong> o <strong>Rechazar</strong>. La evidencia medica esta disponible para consulta.</p>
-    {% endif %}
-  </div>
-  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+<div class="incap-list-wrap">
+  <div class="incap-header">
+    <div>
+      <h2 class="incap-title">Solicitudes de incapacidad medica</h2>
+      {% if puede_aprobar %}
+      <p class="incap-intro">Revise cada solicitud y elija <strong>Aprobar</strong> o <strong>Rechazar</strong>.</p>
+      {% endif %}
+    </div>
     <a href="{{ url_for('incapacidad_solicitar') }}" class="btn btn-primary btn-sm">
       <span class="material-symbols-outlined" style="font-size:18px">add</span>
       Nueva solicitud
     </a>
   </div>
-</div>
 
-{% if puede_aprobar and pendientes|length > 0 %}
-<div class="vacaciones-alert">
-  <span class="material-symbols-outlined">info</span>
-  <span>Tiene <strong>{{ pendientes|length }}</strong> solicitud{{ 'es' if pendientes|length != 1 else '' }} pendiente{{ 's' if pendientes|length != 1 else '' }} por revisar.</span>
-</div>
-{% endif %}
-
-{% if rows %}
-<div class="vacaciones-stats">
-  <div class="vac-stat vac-stat-pendiente"><span class="material-symbols-outlined">schedule</span><div><div class="vac-stat-num">{{ pendientes|length }}</div><div class="vac-stat-label">Pendientes</div></div></div>
-  <div class="vac-stat vac-stat-aprobado"><span class="material-symbols-outlined">check_circle</span><div><div class="vac-stat-num">{{ aprobadas|length }}</div><div class="vac-stat-label">Aprobadas</div></div></div>
-  <div class="vac-stat vac-stat-rechazado"><span class="material-symbols-outlined">cancel</span><div><div class="vac-stat-num">{{ rechazadas|length }}</div><div class="vac-stat-label">Rechazadas</div></div></div>
-</div>
-{% endif %}
-
-<div class="table-wrapper">
-  {% if rows %}
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th>Estado</th>
-        <th>Cedula</th>
-        <th>Empleado</th>
-        <th>Area</th>
-        <th>Desde</th>
-        <th>Hasta</th>
-        <th>Dias</th>
-        <th>Descripcion</th>
-        <th>Evidencia</th>
-        <th>Resolucion</th>
-        {% if puede_aprobar %}<th style="min-width:170px">Acciones</th>{% endif %}
-      </tr>
-    </thead>
-    <tbody>
-      {% for r in rows %}
-      <tr class="{{ 'vac-row-pendiente' if r.estado == 'PENDIENTE' else '' }}">
-        <td>
-          {% if r.estado == 'PENDIENTE' %}<span class="badge badge-warning">PENDIENTE</span>
-          {% elif r.estado == 'APROBADO' %}<span class="badge badge-active">APROBADO</span>
-          {% else %}<span class="badge badge-inactive">{{ r.estado }}</span>{% endif %}
-        </td>
-        <td style="font-family:monospace">{{ r.id_cedula }}</td>
-        <td>{{ r.apellidos_nombre }}</td>
-        <td>{{ r.area or '—' }}</td>
-        <td>{{ r.fecha_desde.strftime('%d/%m/%Y') if r.fecha_desde else '—' }}</td>
-        <td>{{ r.fecha_hasta.strftime('%d/%m/%Y') if r.fecha_hasta else '—' }}</td>
-        <td>{{ r.dias_incapacidad if r.dias_incapacidad is not none else '—' }}</td>
-        <td>{{ r.descripcion or '—' }}</td>
-        <td>
-          {% if r.evidencia %}
-          <a href="{{ url_for('incapacidad_evidencia', id=r.id) }}" class="btn btn-outline btn-sm">Descargar</a>
-          {% else %}—{% endif %}
-        </td>
-        <td>
-          {% if r.fecha_resolucion %}
-          <div style="font-size:0.82rem;line-height:1.3">
-            <div>{{ r.fecha_resolucion.strftime('%d/%m/%Y %H:%M') }}</div>
-            {% if r.resuelto_por_nombre %}<div style="color:#6b7280">por {{ r.resuelto_por_nombre }}</div>{% endif %}
-            {% if r.observaciones %}<div style="color:#6b7280;font-style:italic;margin-top:2px">"{{ r.observaciones }}"</div>{% endif %}
-          </div>
-          {% else %}—{% endif %}
-        </td>
-        {% if puede_aprobar %}
-        <td>
-          {% if r.estado == 'PENDIENTE' and r._puede_resolver %}
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button type="button" class="btn btn-success btn-sm" onclick="abrirModalAprobar({{ r.id }}, {{ r.apellidos_nombre|tojson }})">
-              <span class="material-symbols-outlined" style="font-size:16px">check</span>Aprobar
-            </button>
-            <button type="button" class="btn btn-danger btn-sm" onclick="abrirModalRechazar({{ r.id }}, {{ r.apellidos_nombre|tojson }})">
-              <span class="material-symbols-outlined" style="font-size:16px">close</span>Rechazar
-            </button>
-          </div>
-          {% elif r.estado == 'PENDIENTE' %}
-          <span style="color:#9ca3af; font-size:0.85rem"><span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle">lock</span>Otro encargado</span>
-          {% else %}
-          <span style="color:#6b7280; font-size:0.85rem">Resuelta</span>
-          {% endif %}
-        </td>
-        {% endif %}
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <div class="empty-state">
-    <span class="material-symbols-outlined" style="font-size:48px;color:#9ca3af">monitor_heart</span>
-    <p>No hay solicitudes de incapacidad registradas.</p>
-    <a href="{{ url_for('incapacidad_solicitar') }}" class="btn btn-primary btn-sm" style="margin-top:12px">Nueva solicitud</a>
+  {% if puede_aprobar and pendientes|length > 0 %}
+  <div class="incap-alert">
+    <span class="material-symbols-outlined">info</span>
+    <span>Tiene <strong>{{ pendientes|length }}</strong> solicitud{{ 'es' if pendientes|length != 1 else '' }} pendiente{{ 's' if pendientes|length != 1 else '' }} por revisar.</span>
   </div>
   {% endif %}
-</div>
 
-{% if puede_aprobar %}
-<div class="modal-overlay" id="modalAprobarInc">
-  <div class="modal" style="max-width:460px">
-    <div class="modal-header"><h2>¿Aprobar solicitud de incapacidad?</h2><button type="button" class="btn-icon" data-close-modal><span class="material-symbols-outlined">close</span></button></div>
-    <p class="modal-intro">Esta por aprobar la solicitud de <strong id="aprobarEmpleadoNombre"></strong>.</p>
-    <form method="POST" id="formAprobarInc">
-      <div class="form-group"><label class="form-label">Observaciones (opcional)</label><textarea name="observaciones" class="form-input" rows="2"></textarea></div>
-      <div class="form-actions" style="display:flex;gap:12px;justify-content:flex-end"><button type="button" class="btn btn-outline" data-close-modal>Cancelar</button><button type="submit" class="btn btn-success"><span class="material-symbols-outlined" style="font-size:18px">check_circle</span>Si, aprobar</button></div>
-    </form>
+  {% if rows %}
+  <div class="incap-stats">
+    <div class="incap-stat p"><span class="material-symbols-outlined">schedule</span><div><div class="n">{{ pendientes|length }}</div><div class="l">Pendientes</div></div></div>
+    <div class="incap-stat a"><span class="material-symbols-outlined">check_circle</span><div><div class="n">{{ aprobadas|length }}</div><div class="l">Aprobadas</div></div></div>
+    <div class="incap-stat r"><span class="material-symbols-outlined">cancel</span><div><div class="n">{{ rechazadas|length }}</div><div class="l">Rechazadas</div></div></div>
+  </div>
+  {% endif %}
+
+  <div class="table-wrapper incap-table">
+    {% if rows %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Estado</th>
+          <th>Cedula</th>
+          <th>Empleado</th>
+          <th>Area</th>
+          <th>Desde</th>
+          <th>Hasta</th>
+          <th>Dias</th>
+          <th>Descripcion</th>
+          <th>Evidencia</th>
+          <th>Resolucion</th>
+          {% if puede_aprobar %}<th style="min-width:220px">Acciones</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr class="{{ 'vac-row-pendiente' if r.estado == 'PENDIENTE' else '' }}">
+          <td>
+            {% if r.estado == 'PENDIENTE' %}<span class="badge badge-warning">PENDIENTE</span>
+            {% elif r.estado == 'APROBADO' %}<span class="badge badge-active">APROBADO</span>
+            {% else %}<span class="badge badge-inactive">{{ r.estado }}</span>{% endif %}
+          </td>
+          <td style="font-family:monospace">{{ r.id_cedula }}</td>
+          <td>{{ r.apellidos_nombre }}</td>
+          <td>{{ r.area or '—' }}</td>
+          <td>{{ r.fecha_desde.strftime('%d/%m/%Y') if r.fecha_desde else '—' }}</td>
+          <td>{{ r.fecha_hasta.strftime('%d/%m/%Y') if r.fecha_hasta else '—' }}</td>
+          <td>{{ r.dias_incapacidad if r.dias_incapacidad is not none else '—' }}</td>
+          <td>{{ r.descripcion or '—' }}</td>
+          <td>
+            {% if r.evidencia %}
+            <a href="{{ url_for('incapacidad_evidencia', id=r.id) }}" class="btn btn-outline btn-sm">Descargar</a>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if r.fecha_resolucion %}
+            <div style="font-size:0.82rem;line-height:1.3">
+              <div>{{ r.fecha_resolucion.strftime('%d/%m/%Y %H:%M') }}</div>
+              {% if r.resuelto_por_nombre %}<div style="color:#6b7280">por {{ r.resuelto_por_nombre }}</div>{% endif %}
+              {% if r.observaciones %}<div style="color:#6b7280;font-style:italic;margin-top:2px">"{{ r.observaciones }}"</div>{% endif %}
+            </div>
+            {% else %}—{% endif %}
+          </td>
+          {% if puede_aprobar %}
+          <td>
+            {% if r.estado == 'PENDIENTE' and r._puede_resolver %}
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <form method="POST" action="{{ url_for('incapacidad_aprobar', id=r.id) }}" style="margin:0" onsubmit="return confirm('¿Aprobar solicitud de incapacidad?');">
+                <button type="submit" class="btn btn-success btn-sm">
+                  <span class="material-symbols-outlined" style="font-size:16px">check</span>Aprobar
+                </button>
+              </form>
+              <form method="POST" action="{{ url_for('incapacidad_rechazar', id=r.id) }}" style="margin:0" onsubmit="return confirm('¿Rechazar solicitud de incapacidad?');">
+                <button type="submit" class="btn btn-danger btn-sm">
+                  <span class="material-symbols-outlined" style="font-size:16px">close</span>Rechazar
+                </button>
+              </form>
+            </div>
+            {% elif r.estado == 'PENDIENTE' %}
+            <span style="color:#9ca3af; font-size:0.85rem"><span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle">lock</span>Otro encargado</span>
+            {% else %}
+            <span style="color:#6b7280; font-size:0.85rem">Resuelta</span>
+            {% endif %}
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <span class="material-symbols-outlined" style="font-size:48px;color:#9ca3af">monitor_heart</span>
+      <p>No hay solicitudes de incapacidad registradas.</p>
+      <a href="{{ url_for('incapacidad_solicitar') }}" class="btn btn-primary btn-sm" style="margin-top:12px">Nueva solicitud</a>
+    </div>
+    {% endif %}
   </div>
 </div>
 
-<div class="modal-overlay" id="modalRechazarInc">
-  <div class="modal" style="max-width:460px">
-    <div class="modal-header"><h2>¿Rechazar solicitud de incapacidad?</h2><button type="button" class="btn-icon" data-close-modal><span class="material-symbols-outlined">close</span></button></div>
-    <p class="modal-intro">Esta por rechazar la solicitud de <strong id="rechazarEmpleadoNombre"></strong>.</p>
-    <form method="POST" id="formRechazarInc">
-      <div class="form-group"><label class="form-label">Observaciones (opcional)</label><textarea name="observaciones" class="form-input" rows="3"></textarea></div>
-      <div class="form-actions" style="display:flex;gap:12px;justify-content:flex-end"><button type="button" class="btn btn-outline" data-close-modal>Cancelar</button><button type="submit" class="btn btn-danger"><span class="material-symbols-outlined" style="font-size:18px">cancel</span>Si, rechazar</button></div>
-    </form>
-  </div>
-</div>
-{% endif %}
-{% endblock %}
-
-{% block scripts %}
-{% if puede_aprobar %}
-<script>
-(function() {
-  const actionBaseAprobar = "{{ url_for('incapacidad_aprobar', id=0) }}";
-  const actionBaseRechazar = "{{ url_for('incapacidad_rechazar', id=0) }}";
-  window.abrirModalAprobar = function(id, nombre) {
-    const form = document.getElementById('formAprobarInc');
-    form.action = actionBaseAprobar.replace('/0/', '/' + id + '/');
-    form.querySelector('textarea[name="observaciones"]').value = '';
-    document.getElementById('aprobarEmpleadoNombre').textContent = nombre;
-    document.getElementById('modalAprobarInc').classList.add('active');
-  };
-  window.abrirModalRechazar = function(id, nombre) {
-    const form = document.getElementById('formRechazarInc');
-    form.action = actionBaseRechazar.replace('/0/', '/' + id + '/');
-    form.querySelector('textarea[name="observaciones"]').value = '';
-    document.getElementById('rechazarEmpleadoNombre').textContent = nombre;
-    document.getElementById('modalRechazarInc').classList.add('active');
-  };
-})();
-</script>
-{% endif %}
+<style>
+.incap-list-wrap { max-width: 1120px; }
+.incap-header { display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px; }
+.incap-title { margin:0;font-size:1.35rem;color:#166534;font-weight:700; }
+.incap-intro { margin:4px 0 0 0;color:#6b7280;font-size:.92rem; }
+.incap-alert { display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid #fde68a;background:#fffbeb;color:#92400e;border-radius:10px;margin:10px 0 14px; }
+.incap-stats { display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 16px; }
+.incap-stat { display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;background:#fff;border:1px solid #e5e7eb;min-width:150px; }
+.incap-stat .n { font-size:1.25rem;font-weight:700;line-height:1; }
+.incap-stat .l { font-size:.82rem;color:#6b7280; }
+.incap-stat.p .n,.incap-stat.p .material-symbols-outlined { color:#b45309; }
+.incap-stat.a .n,.incap-stat.a .material-symbols-outlined { color:#047857; }
+.incap-stat.r .n,.incap-stat.r .material-symbols-outlined { color:#b91c1c; }
+.incap-table .data-table th, .incap-table .data-table td { white-space:nowrap; }
+.incap-table .data-table td:nth-child(8) { max-width:250px; white-space:normal; }
+@media (max-width: 900px) {
+  .incap-table .data-table { min-width: 1020px; }
+}
+</style>
 {% endblock %}
