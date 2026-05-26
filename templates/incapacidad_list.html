@@ -10,7 +10,7 @@
     <div>
       <h2 class="incap-title">Solicitudes de incapacidad medica</h2>
       {% if puede_aprobar %}
-      <p class="incap-intro">Revise cada solicitud y elija <strong>Aprobar</strong> o <strong>Rechazar</strong>.</p>
+      <p class="incap-intro">Revise cada solicitud y elija <strong>Aprobar</strong> o <strong>Rechazar</strong>. Al resolver, el empleado recibe un correo con la decision.</p>
       {% endif %}
     </div>
     <a href="{{ url_for('incapacidad_solicitar') }}" class="btn btn-primary btn-sm">
@@ -49,7 +49,7 @@
           <th>Descripcion</th>
           <th>Evidencia</th>
           <th>Resolucion</th>
-          {% if puede_aprobar %}<th style="min-width:220px">Acciones</th>{% endif %}
+          {% if puede_aprobar %}<th style="min-width:170px">Acciones</th>{% endif %}
         </tr>
       </thead>
       <tbody>
@@ -85,15 +85,22 @@
           <td>
             {% if r.estado == 'PENDIENTE' and r._puede_resolver %}
             <div style="display:flex;gap:6px;flex-wrap:wrap">
-              <button type="button" class="btn btn-success btn-sm" onclick="abrirAccionIncapacidad({{ r.id }}, 'aprobar', {{ r.apellidos_nombre|tojson }})">
-                  <span class="material-symbols-outlined" style="font-size:16px">check</span>Aprobar
+              <button type="button" class="btn btn-success btn-sm btn-incap-aprobar"
+                      data-id="{{ r.id }}" data-nombre="{{ r.apellidos_nombre|e }}">
+                <span class="material-symbols-outlined" style="font-size:16px">check</span>
+                Aprobar
               </button>
-              <button type="button" class="btn btn-danger btn-sm" onclick="abrirAccionIncapacidad({{ r.id }}, 'rechazar', {{ r.apellidos_nombre|tojson }})">
-                  <span class="material-symbols-outlined" style="font-size:16px">close</span>Rechazar
+              <button type="button" class="btn btn-danger btn-sm btn-incap-rechazar"
+                      data-id="{{ r.id }}" data-nombre="{{ r.apellidos_nombre|e }}">
+                <span class="material-symbols-outlined" style="font-size:16px">close</span>
+                Rechazar
               </button>
             </div>
             {% elif r.estado == 'PENDIENTE' %}
-            <span style="color:#9ca3af; font-size:0.85rem"><span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle">lock</span>Otro encargado</span>
+            <span title="Solo el encargado asignado puede resolverla" style="color:#9ca3af; font-size:0.85rem">
+              <span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle">lock</span>
+              Otro encargado
+            </span>
             {% else %}
             <span style="color:#6b7280; font-size:0.85rem">Resuelta</span>
             {% endif %}
@@ -113,27 +120,63 @@
   </div>
 </div>
 
-<div class="modal-overlay" id="modalAccionIncapacidad">
-  <div class="modal" style="max-width:520px">
+{% if puede_aprobar %}
+<!-- Modal Aprobar -->
+<div class="modal-overlay" id="modalAprobarIncap">
+  <div class="modal" style="max-width:460px">
     <div class="modal-header">
-      <h2 id="tituloAccionIncapacidad">Resolver solicitud</h2>
-      <button type="button" class="btn-icon" id="cerrarModalAccionIncapacidad">
-        <span class="material-symbols-outlined">close</span>
-      </button>
+      <h2>¿Aprobar solicitud de incapacidad?</h2>
+      <button type="button" class="btn-icon" data-close-modal><span class="material-symbols-outlined">close</span></button>
     </div>
-    <p class="modal-intro" id="mensajeAccionIncapacidad">Confirme la accion.</p>
-    <form method="POST" id="formAccionIncapacidad">
+    <p class="modal-intro">
+      Esta por aprobar la solicitud de <strong id="aprobarIncapEmpleadoNombre"></strong>.
+      El empleado recibira un correo notificando la aprobacion.
+    </p>
+    <form method="POST" id="formAprobarIncap">
       <div class="form-group">
         <label class="form-label">Observaciones (opcional)</label>
-        <textarea name="observaciones" class="form-input" rows="3" placeholder="Ej: Aprobado conforme a incapacidad medica..."></textarea>
+        <textarea name="observaciones" class="form-input" rows="2"
+                  placeholder="Ej: Aprobado conforme a incapacidad medica..."></textarea>
       </div>
       <div class="form-actions" style="display:flex;gap:12px;justify-content:flex-end">
-        <button type="button" class="btn btn-outline" id="cancelarAccionIncapacidad">Cancelar</button>
-        <button type="submit" class="btn" id="btnConfirmarAccionIncapacidad">Confirmar</button>
+        <button type="button" class="btn btn-outline" data-close-modal>Cancelar</button>
+        <button type="submit" class="btn btn-success">
+          <span class="material-symbols-outlined" style="font-size:18px">check_circle</span>
+          Si, aprobar
+        </button>
       </div>
     </form>
   </div>
 </div>
+
+<!-- Modal Rechazar -->
+<div class="modal-overlay" id="modalRechazarIncap">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <h2>¿Rechazar solicitud de incapacidad?</h2>
+      <button type="button" class="btn-icon" data-close-modal><span class="material-symbols-outlined">close</span></button>
+    </div>
+    <p class="modal-intro">
+      Esta por rechazar la solicitud de <strong id="rechazarIncapEmpleadoNombre"></strong>.
+      El empleado recibira un correo notificando el rechazo.
+    </p>
+    <form method="POST" id="formRechazarIncap">
+      <div class="form-group">
+        <label class="form-label">Observaciones (opcional)</label>
+        <textarea name="observaciones" class="form-input" rows="3"
+                  placeholder="Ej: Documentacion incompleta, fechas no coinciden..."></textarea>
+      </div>
+      <div class="form-actions" style="display:flex;gap:12px;justify-content:flex-end">
+        <button type="button" class="btn btn-outline" data-close-modal>Cancelar</button>
+        <button type="submit" class="btn btn-danger">
+          <span class="material-symbols-outlined" style="font-size:18px">cancel</span>
+          Si, rechazar
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
 
 <style>
 .incap-list-wrap { max-width: 1120px; }
@@ -150,38 +193,56 @@
 .incap-stat.r .n,.incap-stat.r .material-symbols-outlined { color:#b91c1c; }
 .incap-table .data-table th, .incap-table .data-table td { white-space:nowrap; }
 .incap-table .data-table td:nth-child(8) { max-width:250px; white-space:normal; }
+.modal-intro { margin:0 0 18px 0;padding:0;font-size:0.92rem;color:#6b7280;line-height:1.5; }
 @media (max-width: 900px) {
   .incap-table .data-table { min-width: 1020px; }
 }
 </style>
+{% endblock %}
 
+{% block scripts %}
+{% if puede_aprobar %}
 <script>
-(function() {
-  const modal = document.getElementById('modalAccionIncapacidad');
-  const form = document.getElementById('formAccionIncapacidad');
-  const titulo = document.getElementById('tituloAccionIncapacidad');
-  const mensaje = document.getElementById('mensajeAccionIncapacidad');
-  const btnConfirmar = document.getElementById('btnConfirmarAccionIncapacidad');
-  const baseAprobar = "{{ url_for('incapacidad_aprobar', id=0) }}";
-  const baseRechazar = "{{ url_for('incapacidad_rechazar', id=0) }}";
+document.addEventListener('DOMContentLoaded', function() {
+  var actionBaseAprobar = "{{ url_for('incapacidad_aprobar', id=0) }}";
+  var actionBaseRechazar = "{{ url_for('incapacidad_rechazar', id=0) }}";
+  var modalAprobar = document.getElementById('modalAprobarIncap');
+  var modalRechazar = document.getElementById('modalRechazarIncap');
+  var formAprobar = document.getElementById('formAprobarIncap');
+  var formRechazar = document.getElementById('formRechazarIncap');
 
-  if (!modal || !form) return;
+  function abrirModalAprobar(id, nombre) {
+    if (!formAprobar || !modalAprobar) return;
+    formAprobar.action = actionBaseAprobar.replace('/0/', '/' + id + '/');
+    var ta = formAprobar.querySelector('textarea[name="observaciones"]');
+    if (ta) ta.value = '';
+    var el = document.getElementById('aprobarIncapEmpleadoNombre');
+    if (el) el.textContent = nombre;
+    modalAprobar.classList.add('active');
+  }
 
-  window.abrirAccionIncapacidad = function(id, accion, nombre) {
-    const isAprobar = accion === 'aprobar';
-    form.action = (isAprobar ? baseAprobar : baseRechazar).replace('/0/', '/' + id + '/');
-    form.querySelector('textarea[name="observaciones"]').value = '';
-    titulo.textContent = isAprobar ? '¿Aprobar solicitud de incapacidad?' : '¿Rechazar solicitud de incapacidad?';
-    mensaje.textContent = (isAprobar ? 'Va a aprobar la solicitud de ' : 'Va a rechazar la solicitud de ') + nombre + '.';
-    btnConfirmar.textContent = isAprobar ? 'Aprobar' : 'Rechazar';
-    btnConfirmar.className = isAprobar ? 'btn btn-success' : 'btn btn-danger';
-    modal.classList.add('active');
-  };
+  function abrirModalRechazar(id, nombre) {
+    if (!formRechazar || !modalRechazar) return;
+    formRechazar.action = actionBaseRechazar.replace('/0/', '/' + id + '/');
+    var ta = formRechazar.querySelector('textarea[name="observaciones"]');
+    if (ta) ta.value = '';
+    var el = document.getElementById('rechazarIncapEmpleadoNombre');
+    if (el) el.textContent = nombre;
+    modalRechazar.classList.add('active');
+  }
 
-  function cerrar() { modal.classList.remove('active'); }
-  document.getElementById('cerrarModalAccionIncapacidad')?.addEventListener('click', cerrar);
-  document.getElementById('cancelarAccionIncapacidad')?.addEventListener('click', cerrar);
-  modal.addEventListener('click', function(ev) { if (ev.target === modal) cerrar(); });
-})();
+  document.addEventListener('click', function(e) {
+    var btnA = e.target.closest('.btn-incap-aprobar');
+    if (btnA) {
+      abrirModalAprobar(btnA.dataset.id, btnA.dataset.nombre || '');
+      return;
+    }
+    var btnR = e.target.closest('.btn-incap-rechazar');
+    if (btnR) {
+      abrirModalRechazar(btnR.dataset.id, btnR.dataset.nombre || '');
+    }
+  });
+});
 </script>
+{% endif %}
 {% endblock %}
