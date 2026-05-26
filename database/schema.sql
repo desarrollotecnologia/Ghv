@@ -197,6 +197,27 @@ CREATE TABLE IF NOT EXISTS solicitud_permiso (
     FOREIGN KEY (id_cedula) REFERENCES empleado(id_cedula) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS solicitud_incapacidad (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    id_cedula VARCHAR(50) NOT NULL,
+    area VARCHAR(100) NULL,
+    fecha_desde DATE NOT NULL,
+    fecha_hasta DATE NOT NULL,
+    dias_incapacidad INT NOT NULL DEFAULT 0,
+    evidencia VARCHAR(255) NOT NULL,
+    descripcion TEXT NOT NULL,
+    fecha_solicitud DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    estado ENUM('PENDIENTE','APROBADO','RECHAZADO') NOT NULL DEFAULT 'PENDIENTE',
+    observaciones TEXT NULL,
+    resuelto_por VARCHAR(150) NULL,
+    fecha_resolucion DATETIME NULL,
+    solicitante_email VARCHAR(150) NULL,
+    INDEX idx_incap_estado (estado),
+    INDEX idx_incap_cedula (id_cedula),
+    INDEX idx_incap_fecha_solicitud (fecha_solicitud),
+    FOREIGN KEY (id_cedula) REFERENCES empleado(id_cedula) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 -- ============================================================
 -- INSERTAR DATOS DE CATÁLOGOS
 -- ============================================================

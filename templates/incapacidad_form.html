@@ -1,0 +1,207 @@
+{% extends "base_empleado.html" if is_empleado else "base.html" %}
+
+{% block content %}
+<style>
+.gh-formato-wrap { max-width: 760px; margin: 0 auto; }
+.gh-formato-doc { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.06); }
+.gh-formato-header { display: flex; align-items: flex-start; gap: 20px; padding: 20px 24px; border-bottom: 1px solid #e5e7eb; background: #fafafa; }
+.gh-formato-logo img { height: 48px; display: block; }
+.gh-formato-meta table { border-collapse: collapse; font-size: 13px; }
+.gh-formato-meta td { padding: 4px 12px 4px 0; vertical-align: top; }
+.gh-formato-meta .celda-izq { font-weight: 600; color: #111; }
+.gh-formato-meta .celda-der { color: #374151; }
+.gh-formato-titulo { padding: 16px 24px 12px; font-size: 18px; font-weight: 700; color: #0b3518; letter-spacing: -0.2px; }
+.gh-formato-titulo-sub { padding: 0 24px 16px; font-size: 12px; color: #6b7280; }
+.gh-formato-body { padding: 8px 24px 24px; }
+.gh-formato-fila { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; align-items: end; }
+.gh-formato-fila.una { grid-template-columns: 1fr; }
+.gh-formato-fila.dos { grid-template-columns: 1fr 1fr; }
+.gh-formato-label { font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 4px; }
+.gh-formato-label .required { color: #dc2626; }
+.gh-formato-input { width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; }
+.gh-formato-input:read-only, .gh-formato-input[readonly] { background: #f3f4f6; color: #4b5563; }
+.gh-formato-motivo { min-height: 90px; resize: vertical; }
+.gh-formato-divider { height: 1px; background: #e5e7eb; margin: 24px 0 20px; }
+.gh-formato-firmas { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin-top: 20px; }
+.gh-formato-firma-celda { padding: 16px 12px; text-align: center; border-right: 1px solid #e5e7eb; background: #fafafa; min-height: 100px; }
+.gh-formato-firma-celda:last-child { border-right: none; }
+.gh-formato-firma-celda .tit { font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .3px; }
+.gh-formato-firma-celda .sub { font-size: 11px; color: #6b7280; margin-top: 12px; }
+.gh-formato-firma-gh { background: #f0fdf4; color: #166534; }
+.gh-formato-firma-gh .tit { color: #166534; }
+.gh-formato-actions { margin-top: 24px; padding-top: 20px; border-top: 1px solid #e5e7eb; display: flex; gap: 12px; flex-wrap: wrap; }
+.gh-formato-hint { font-size: 12px; color: #6b7280; margin-bottom: 16px; padding: 10px 14px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; }
+@media (max-width: 768px) {
+  .gh-formato-header { flex-direction: column; gap: 10px; padding: 14px; }
+  .gh-formato-logo img { height: 38px; }
+  .gh-formato-titulo { padding: 12px 14px 8px; font-size: 15px; }
+  .gh-formato-titulo-sub { padding: 0 14px 12px; }
+  .gh-formato-body { padding: 8px 14px 14px; }
+  .gh-formato-fila, .gh-formato-fila.dos { grid-template-columns: 1fr; gap: 10px; margin-bottom: 12px; }
+  .gh-formato-firmas { grid-template-columns: 1fr; }
+  .gh-formato-firma-celda { border-right: none; border-bottom: 1px solid #e5e7eb; min-height: auto; }
+  .gh-formato-firma-celda:last-child { border-bottom: none; }
+  .gh-formato-actions { margin-top: 14px; padding-top: 14px; flex-direction: column; }
+  .gh-formato-actions .btn { width: 100%; justify-content: center; }
+}
+</style>
+
+<div class="gh-formato-wrap">
+  <p class="gh-formato-hint">
+    Formato exclusivo para <strong>incapacidad medica</strong>. La evidencia medica es obligatoria (PDF o imagen).
+    El jefe inmediato recibe correo con boton de <strong>aprobar</strong> o <strong>rechazar</strong> y el archivo adjunto.
+  </p>
+
+  <form method="POST" action="{{ url_for('incapacidad_solicitar') }}" id="formIncapacidad" enctype="multipart/form-data">
+    <div class="gh-formato-doc">
+      <div class="gh-formato-header">
+        <div class="gh-formato-logo"><img src="{{ url_for('static', filename='img/logo_colbeef.png') }}" alt="Colbeef"></div>
+        <div class="gh-formato-meta">
+          <table>
+            <tr><td class="celda-izq">COLBEEF S.A.S</td><td class="celda-der">Codigo: GH-FR-INC-001</td></tr>
+            <tr><td class="celda-izq">GESTION HUMANA</td><td class="celda-der">Version: 01</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="gh-formato-titulo">FORMATO DE REPORTE DE INCAPACIDAD MEDICA</div>
+      <div class="gh-formato-titulo-sub">Fecha: {{ now_fecha|default('') }}</div>
+
+      <div class="gh-formato-body">
+        <div class="gh-formato-fila">
+          <div class="form-group">
+            <label class="gh-formato-label">Fecha</label>
+            <input type="text" class="gh-formato-input" value="{{ now_fecha|default('') }}" readonly>
+          </div>
+          <div class="form-group">
+            <label class="gh-formato-label">Area</label>
+            {% if empleado_actual %}
+            <input type="text" name="area" id="area" class="gh-formato-input" value="{{ empleado_actual.area or '' }}" readonly>
+            {% else %}
+            <input type="text" name="area" id="area" class="gh-formato-input" placeholder="Area">
+            {% endif %}
+          </div>
+          <div class="form-group">
+            <label class="gh-formato-label">Documento de identidad</label>
+            {% if empleado_actual %}
+            <input type="text" class="gh-formato-input" value="{{ empleado_actual.id_cedula }}" readonly>
+            <input type="hidden" name="id_cedula" value="{{ empleado_actual.id_cedula }}">
+            {% else %}
+            <select name="id_cedula" class="gh-formato-input" required id="id_cedula">
+              <option value="">— Seleccionar —</option>
+              {% for e in empleados or [] %}
+              <option value="{{ e.id_cedula }}" data-area="{{ e.area or '' }}" data-nombre="{{ e.apellidos_nombre or '' }}">{{ e.id_cedula }} – {{ e.apellidos_nombre or '' }}</option>
+              {% endfor %}
+            </select>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="gh-formato-fila una">
+          <div class="form-group">
+            <label class="gh-formato-label">Nombre completo</label>
+            {% if empleado_actual %}
+            <input type="text" class="gh-formato-input" value="{{ empleado_actual.apellidos_nombre }}" readonly>
+            {% else %}
+            <input type="text" class="gh-formato-input" id="nombreCompleto" value="" readonly placeholder="Seleccione documento de identidad">
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="gh-formato-fila dos">
+          <div class="form-group">
+            <label class="gh-formato-label">Fecha desde <span class="required">*</span></label>
+            <input type="date" name="fecha_desde" id="fecha_desde" class="gh-formato-input" required>
+          </div>
+          <div class="form-group">
+            <label class="gh-formato-label">Fecha hasta <span class="required">*</span></label>
+            <input type="date" name="fecha_hasta" id="fecha_hasta" class="gh-formato-input" required>
+          </div>
+        </div>
+
+        <div class="gh-formato-fila una">
+          <div class="form-group">
+            <label class="gh-formato-label">Dias de incapacidad</label>
+            <input type="text" id="dias_incapacidad_view" class="gh-formato-input" value="0" readonly>
+          </div>
+        </div>
+
+        <div class="gh-formato-fila una">
+          <div class="form-group">
+            <label class="gh-formato-label">Evidencia medica <span class="required">*</span> <span style="font-size:12px;color:#6b7280">(PDF, JPG, PNG, WEBP - max. 5 MB)</span></label>
+            <input type="file" name="evidencia" class="gh-formato-input" accept=".pdf,.jpg,.jpeg,.png,.webp" required>
+          </div>
+        </div>
+
+        <div class="gh-formato-fila una">
+          <div class="form-group">
+            <label class="gh-formato-label">Descripcion de lo ocurrido / diagnostico <span class="required">*</span></label>
+            <textarea name="descripcion" class="gh-formato-input gh-formato-motivo" rows="4" required placeholder="Describa lo ocurrido y lo indicado por el medico"></textarea>
+          </div>
+        </div>
+
+        <div class="gh-formato-divider"></div>
+
+        <div class="gh-formato-firmas">
+          <div class="gh-formato-firma-celda">
+            <div class="tit">Firma Solicitante</div>
+            <div class="sub">
+              {% if empleado_actual %}
+              Nombre: {{ empleado_actual.apellidos_nombre }}<br>C.C: {{ empleado_actual.id_cedula }}
+              {% else %}
+              Se diligencia automaticamente con la solicitud
+              {% endif %}
+            </div>
+          </div>
+          <div class="gh-formato-firma-celda">
+            <div class="tit">V.B Jefe Inmediato</div>
+          </div>
+          <div class="gh-formato-firma-celda gh-formato-firma-gh">
+            <div class="tit">Firma Recibido Gestion Humana</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="gh-formato-actions">
+      <button type="submit" class="btn btn-primary">
+        <span class="material-symbols-outlined" style="font-size:18px">send</span>
+        Enviar solicitud
+      </button>
+      <a href="{{ url_for('empleado_portal') if is_empleado else url_for('incapacidad_index') }}" class="btn btn-outline">Cancelar</a>
+    </div>
+  </form>
+</div>
+
+<script>
+(function() {
+  var sel = document.getElementById('id_cedula');
+  var area = document.getElementById('area');
+  var nombreCompleto = document.getElementById('nombreCompleto');
+  if (sel && area) {
+    sel.addEventListener('change', function() {
+      var opt = sel.options[sel.selectedIndex];
+      if (opt && opt.value) {
+        area.value = opt.getAttribute('data-area') || '';
+        if (nombreCompleto) nombreCompleto.value = (opt.getAttribute('data-nombre') || '').trim();
+      } else if (nombreCompleto) {
+        nombreCompleto.value = '';
+      }
+    });
+  }
+
+  var d1 = document.getElementById('fecha_desde');
+  var d2 = document.getElementById('fecha_hasta');
+  var out = document.getElementById('dias_incapacidad_view');
+  function calcDias() {
+    if (!d1 || !d2 || !out || !d1.value || !d2.value) { if (out) out.value = '0'; return; }
+    var a = new Date(d1.value + 'T00:00:00');
+    var b = new Date(d2.value + 'T00:00:00');
+    var ms = b - a;
+    var dias = Math.floor(ms / 86400000) + 1;
+    out.value = dias > 0 ? String(dias) : '0';
+  }
+  if (d1) d1.addEventListener('change', calcDias);
+  if (d2) d2.addEventListener('change', calcDias);
+})();
+</script>
+{% endblock %}

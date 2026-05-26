@@ -20,6 +20,7 @@ from mail_utils import (
     notificar_nueva_solicitud_permiso,
     notificar_resolucion_permiso,
     notificar_resolucion_vacaciones,
+    notificar_resolucion_incapacidad,
     notificar_nueva_solicitud_vacaciones,
     notificar_encargado_nueva_solicitud,
     notificar_gh_resolucion_por_jefe,
@@ -296,6 +297,14 @@ def _create_vacaciones_email_token(solicitud_id, action, actor_email=None):
 
 def _read_vacaciones_email_token(token):
     return _read_email_action_token(token, "vacaciones")
+
+
+def _create_incapacidad_email_token(solicitud_id, action, actor_email=None):
+    return _create_email_action_token("incapacidad", solicitud_id, action, actor_email=actor_email)
+
+
+def _read_incapacidad_email_token(token):
+    return _read_email_action_token(token, "incapacidad")
 
 
 def _safe_resuelto_por_permiso(value):
@@ -1866,6 +1875,19 @@ def _can_view_incapacitados(user=None):
     return rol in ("ADMIN", "COORD. GH", "GH INFORMADA") or _is_gerencia_user(user)
 
 
+def _calc_dias_incapacidad(fecha_desde, fecha_hasta):
+    """Calcula dias de incapacidad inclusivos."""
+    try:
+        fd = fecha_desde.date() if hasattr(fecha_desde, "date") else fecha_desde
+        fh = fecha_hasta.date() if hasattr(fecha_hasta, "date") else fecha_hasta
+        if not fd or not fh:
+            return 0
+        dias = (fh - fd).days + 1
+        return dias if dias > 0 else 1
+    except Exception:
+        return 0
+
+
 def _puede_resolver_solicitud(solicitud):
     """Un usuario puede resolver (aprobar/rechazar) una solicitud si:
     - Es ADMIN o COORD. GH (visibilidad global), o
@@ -2134,7 +2156,7 @@ def permiso_solicitar():
                 flash("No puede enviar solicitudes a nombre de otro empleado.", "error")
                 return redirect(url_for("permiso_solicitar"))
         tipo = (request.form.get("tipo") or "Permiso").strip()
-        _tipos_permitidos = ("Permiso", "Licencia", "Médico", "Incapacidad médica", "Personal", "Capacitación", "Calamidad doméstica", "Otro")
+        _tipos_permitidos = ("Permiso", "Licencia", "Médico", "Personal", "Capacitación", "Calamidad doméstica", "Otro")
         if tipo not in _tipos_permitidos:
             tipo = "Permiso"
         fecha_desde = request.form.get("fecha_desde")
@@ -2164,11 +2186,11 @@ def permiso_solicitar():
         except ValueError:
             flash("Fechas inválidas.", "error")
             return redirect(url_for("permiso_solicitar"))
-        requiere_evidencia = permiso_remunerado == 0 or tipo == "Incapacidad médica"
+        requiere_evidencia = permiso_remunerado == 0
         if requiere_evidencia:
             evidencia_file = request.files.get("evidencia")
             if not evidencia_file or not evidencia_file.filename:
-                flash("Debe adjuntar evidencia (PDF o imagen) para permiso no remunerado o incapacidad médica.", "error")
+                flash("Debe adjuntar evidencia (PDF o imagen) para permiso no remunerado.", "error")
                 return redirect(url_for("permiso_solicitar"))
         emp = query("SELECT id_cedula, apellidos_nombre, direccion_email, area FROM empleado WHERE id_cedula = %s AND estado = 'ACTIVO'", (id_cedula,), one=True)
         if not emp:
@@ -2314,7 +2336,7 @@ def permiso_editar(id):
 
     if request.method == "POST":
         tipo = (request.form.get("tipo") or "Permiso").strip()
-        _tipos_permitidos = ("Permiso", "Licencia", "Médico", "Incapacidad médica", "Personal", "Capacitación", "Calamidad doméstica", "Otro")
+        _tipos_permitidos = ("Permiso", "Licencia", "Médico", "Personal", "Capacitación", "Calamidad doméstica", "Otro")
         if tipo not in _tipos_permitidos:
             tipo = "Permiso"
 
@@ -2371,11 +2393,11 @@ def permiso_editar(id):
             evidencia_ruta = os.path.join("permisos", nombre_safe)
             evidencia_full_path = os.path.join(upload_dir, nombre_safe)
             evidencia_file.save(evidencia_full_path)
-        requiere_evidencia = permiso_remunerado == 0 or tipo == "Incapacidad médica"
+        requiere_evidencia = permiso_remunerado == 0
         if requiere_evidencia and not evidencia_ruta:
-            flash("Debes adjuntar evidencia (PDF o imagen) para permiso no remunerado o incapacidad médica.", "error")
+            flash("Debes adjuntar evidencia (PDF o imagen) para permiso no remunerado.", "error")
             return redirect(url_for("permiso_editar", id=id))
-        if permiso_remunerado == 1 and tipo != "Incapacidad médica":
+        if permiso_remunerado == 1:
             evidencia_ruta = None
 
         try:
@@ -2895,6 +2917,360 @@ def vacaciones_mis_solicitudes():
     )
 
 
+@app.route("/incapacidades/solicitar", methods=["GET", "POST"])
+@login_required
+def incapacidad_solicitar():
+    """Formulario dedicado para solicitud de incapacidad medica."""
+    user = get_current_user()
+    if _is_logistica_coordinator(user):
+        flash("Coordinacion logistica solo puede aprobar o rechazar solicitudes del equipo.", "info")
+        return redirect(url_for("incapacidad_index"))
+    if session.get("encargado_mode"):
+        flash("En modo jefe solo puedes revisar solicitudes que envia tu equipo.", "info")
+        return redirect(url_for("incapacidad_index"))
+
+    rol = (user.get("rol") or "").strip().upper()
+    modo_empleado = bool(session.get("employee_mode") or session.get("employee_vac_mode")) and _can_employee_vacation_mode(user)
+    if session.get("employee_mode") and not modo_empleado:
+        session.pop("employee_mode", None)
+    is_empleado = rol == "EMPLEADO" or modo_empleado
+    id_cedula_empleado = (user.get("id_cedula") or "").strip() or None
+
+    if request.method == "POST":
+        id_cedula = (request.form.get("id_cedula") or "").strip()
+        if id_cedula_empleado:
+            id_cedula = id_cedula_empleado
+            if request.form.get("id_cedula", "").strip() != id_cedula_empleado:
+                flash("No puede enviar solicitudes a nombre de otro empleado.", "error")
+                return redirect(url_for("incapacidad_solicitar"))
+
+        fecha_desde = (request.form.get("fecha_desde") or "").strip()
+        fecha_hasta = (request.form.get("fecha_hasta") or "").strip()
+        descripcion = (request.form.get("descripcion") or "").strip()
+        area = (request.form.get("area") or "").strip() or None
+        if not id_cedula or not fecha_desde or not fecha_hasta:
+            flash("Complete empleado, fecha desde y fecha hasta.", "error")
+            return redirect(url_for("incapacidad_solicitar"))
+        if not descripcion:
+            flash("La descripcion de lo ocurrido es obligatoria.", "error")
+            return redirect(url_for("incapacidad_solicitar"))
+        try:
+            d_desde = datetime.strptime(fecha_desde, "%Y-%m-%d").date()
+            d_hasta = datetime.strptime(fecha_hasta, "%Y-%m-%d").date()
+            if d_desde > d_hasta:
+                flash("La fecha desde no puede ser mayor que la fecha hasta.", "error")
+                return redirect(url_for("incapacidad_solicitar"))
+        except ValueError:
+            flash("Fechas invalidas.", "error")
+            return redirect(url_for("incapacidad_solicitar"))
+
+        evidencia_file = request.files.get("evidencia")
+        if not evidencia_file or not evidencia_file.filename:
+            flash("Debe adjuntar evidencia medica (PDF o imagen).", "error")
+            return redirect(url_for("incapacidad_solicitar"))
+        ext = os.path.splitext(secure_filename(evidencia_file.filename))[1].lower()
+        if ext not in (".pdf", ".jpg", ".jpeg", ".png", ".webp"):
+            flash("La evidencia debe ser PDF o imagen (JPG, PNG, WEBP).", "error")
+            return redirect(url_for("incapacidad_solicitar"))
+        evidencia_file.seek(0, 2)
+        size = evidencia_file.tell()
+        evidencia_file.seek(0)
+        if size > 5 * 1024 * 1024:
+            flash("La evidencia no debe superar 5 MB.", "error")
+            return redirect(url_for("incapacidad_solicitar"))
+
+        emp = query(
+            "SELECT id_cedula, apellidos_nombre, direccion_email, area FROM empleado WHERE id_cedula = %s AND estado = 'ACTIVO'",
+            (id_cedula,), one=True
+        )
+        if not emp:
+            flash("No se encontro un empleado activo con esa cedula.", "error")
+            return redirect(url_for("incapacidad_solicitar"))
+        if id_cedula_empleado:
+            area = emp.get("area")
+        elif not area and emp.get("area"):
+            area = emp["area"]
+
+        upload_dir = os.path.join(current_app.instance_path, "uploads", "incapacidades")
+        os.makedirs(upload_dir, exist_ok=True)
+        nombre_safe = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{id_cedula}{ext}"
+        evidencia_ruta = os.path.join("incapacidades", nombre_safe)
+        evidencia_full_path = os.path.join(upload_dir, nombre_safe)
+        evidencia_file.save(evidencia_full_path)
+
+        dias = _calc_dias_incapacidad(d_desde, d_hasta)
+        execute(
+            "INSERT INTO solicitud_incapacidad (id_cedula, area, fecha_desde, fecha_hasta, dias_incapacidad, evidencia, descripcion, solicitante_email) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+            (id_cedula, area, fecha_desde, fecha_hasta, dias, evidencia_ruta, descripcion, user.get("email")),
+        )
+        row = query("SELECT * FROM solicitud_incapacidad WHERE id_cedula = %s ORDER BY id DESC LIMIT 1", (id_cedula,), one=True)
+        encargado = _obtener_encargado_de(id_cedula)
+        correos_ok = False
+        if encargado and encargado.get("email") and row and row.get("id"):
+            try:
+                t_ap = _create_incapacidad_email_token(row["id"], "aprobar", actor_email=encargado["email"])
+                t_re = _create_incapacidad_email_token(row["id"], "rechazar", actor_email=encargado["email"])
+                approve_url = url_for("incapacidad_email_action", token=t_ap, _external=True)
+                reject_url = url_for("incapacidad_email_action", token=t_re, _external=True)
+                correos_ok = notificar_encargado_nueva_solicitud(
+                    app, row, emp["apellidos_nombre"], encargado["email"], encargado.get("nombre"),
+                    tipo="incapacidad", evidencia_path=evidencia_full_path,
+                    approve_url=approve_url, reject_url=reject_url,
+                )
+            except Exception:
+                correos_ok = False
+        if correos_ok:
+            flash("Solicitud de incapacidad registrada. Se envio notificacion al jefe inmediato.", "success")
+        else:
+            flash("Solicitud de incapacidad registrada. No se pudo notificar al jefe inmediato.", "info")
+        return redirect(url_for("incapacidad_mis_solicitudes" if is_empleado else "incapacidad_index"))
+
+    now_fecha = datetime.now().strftime("%d-%m-%Y")
+    if id_cedula_empleado:
+        emp_actual = query(
+            "SELECT id_cedula, apellidos_nombre, area FROM empleado WHERE id_cedula = %s AND estado = 'ACTIVO'",
+            (id_cedula_empleado,), one=True,
+        )
+        if emp_actual:
+            return render_template(
+                "incapacidad_form.html",
+                active_page="Solicitud de incapacidad",
+                empleados=None,
+                is_empleado=is_empleado,
+                empleado_actual=emp_actual,
+                now_fecha=now_fecha,
+            )
+    empleados = query("SELECT id_cedula, apellidos_nombre, area FROM empleado WHERE estado = 'ACTIVO' ORDER BY apellidos_nombre")
+    return render_template(
+        "incapacidad_form.html",
+        active_page="Solicitud de incapacidad",
+        empleados=empleados,
+        is_empleado=False,
+        empleado_actual=None,
+        now_fecha=now_fecha,
+    )
+
+
+@app.route("/incapacidades")
+@login_required
+def incapacidad_index():
+    if _is_employee_mode():
+        return redirect(url_for("incapacidad_solicitar"))
+    if not _puede_ver_listado_solicitudes():
+        return redirect(url_for("incapacidad_solicitar"))
+    sql = (
+        "SELECT i.id, i.id_cedula, e.apellidos_nombre, e.direccion_email, e.id_user_encargado, "
+        "i.area, i.fecha_desde, i.fecha_hasta, i.dias_incapacidad, i.descripcion, i.evidencia, "
+        "i.estado, i.observaciones, i.resuelto_por, i.fecha_resolucion, i.fecha_solicitud, "
+        "u.nombre AS resuelto_por_nombre "
+        "FROM solicitud_incapacidad i "
+        "JOIN empleado e ON e.id_cedula = i.id_cedula "
+        "LEFT JOIN usuario u ON u.id_user = i.resuelto_por "
+    )
+    params = []
+    enc_where, enc_params = _sql_filtro_encargado("e")
+    if enc_where:
+        sql += " WHERE " + enc_where
+        params.extend(enc_params)
+    sql += " ORDER BY CASE i.estado WHEN 'PENDIENTE' THEN 0 ELSE 1 END, i.fecha_solicitud DESC, i.id DESC"
+    rows = query(sql, tuple(params))
+    cur_user = get_current_user() or {}
+    es_admin_coord = _es_admin_o_coord(cur_user)
+    for r in rows:
+        r["_puede_resolver"] = es_admin_coord or ((r.get("id_user_encargado") or "") == (cur_user.get("id_user") or ""))
+    return render_template(
+        "incapacidad_list.html",
+        active_page="Listado incapacidades",
+        rows=rows,
+        puede_aprobar=_puede_ver_listado_solicitudes(),
+    )
+
+
+@app.route("/incapacidades/mis-solicitudes")
+@login_required
+def incapacidad_mis_solicitudes():
+    user = get_current_user()
+    if _is_logistica_coordinator(user):
+        flash("Coordinacion logistica no tiene modulo de solicitudes propias.", "info")
+        return redirect(url_for("incapacidad_index"))
+    if session.get("encargado_mode"):
+        flash("En modo jefe solo puedes revisar solicitudes que envia tu equipo.", "info")
+        return redirect(url_for("incapacidad_index"))
+    id_cedula = (user.get("id_cedula") or "").strip()
+    if not id_cedula:
+        flash("No tiene cedula vinculada.", "error")
+        return redirect(url_for("incapacidad_solicitar"))
+    rows = query(
+        "SELECT id, fecha_solicitud, area, fecha_desde, fecha_hasta, dias_incapacidad, descripcion, estado, fecha_resolucion "
+        "FROM solicitud_incapacidad WHERE id_cedula = %s ORDER BY fecha_solicitud DESC",
+        (id_cedula,),
+    )
+    return render_template(
+        "incapacidad_mis_solicitudes.html",
+        active_page="Mis incapacidades",
+        rows=rows,
+    )
+
+
+@app.route("/incapacidades/<int:id>/evidencia")
+@login_required
+def incapacidad_evidencia(id):
+    solicitud = query("SELECT id_cedula, evidencia FROM solicitud_incapacidad WHERE id = %s", (id,), one=True)
+    if not solicitud or not (solicitud.get("evidencia") or "").strip():
+        flash("No hay evidencia adjunta para esta solicitud.", "info")
+        return redirect(url_for("incapacidad_index"))
+    user = get_current_user() or {}
+    if (solicitud.get("id_cedula") or "").strip() != (user.get("id_cedula") or "").strip():
+        if not _puede_resolver_solicitud(solicitud) and not _can_view_incapacitados(user):
+            flash("No tienes acceso a la evidencia.", "error")
+            return redirect(url_for("home"))
+    evidencia_ruta = (solicitud["evidencia"] or "").strip()
+    if ".." in evidencia_ruta or evidencia_ruta.startswith("/"):
+        flash("Ruta de evidencia no valida.", "error")
+        return redirect(url_for("incapacidad_index"))
+    uploads_dir = os.path.join(current_app.instance_path, "uploads")
+    full_path = os.path.normpath(os.path.join(uploads_dir, evidencia_ruta))
+    if not full_path.startswith(os.path.normpath(uploads_dir)) or not os.path.isfile(full_path):
+        flash("Archivo de evidencia no encontrado.", "error")
+        return redirect(url_for("incapacidad_index"))
+    return send_file(full_path, as_attachment=False, download_name=os.path.basename(evidencia_ruta), mimetype=None)
+
+
+@app.route("/incapacidades/email-action")
+def incapacidad_email_action():
+    token = (request.args.get("token") or "").strip()
+    payload, error = _read_incapacidad_email_token(token)
+    if error:
+        return render_template("incapacidad_email_action.html", estado="error", mensaje=error, solicitud=None, token="", accion="", actor_email=""), 400
+    solicitud = query(
+        "SELECT i.*, e.apellidos_nombre FROM solicitud_incapacidad i "
+        "LEFT JOIN empleado e ON e.id_cedula = i.id_cedula WHERE i.id = %s",
+        (payload["sid"],), one=True,
+    )
+    if not solicitud:
+        return render_template("incapacidad_email_action.html", estado="error", mensaje="La solicitud ya no existe o fue eliminada.", solicitud=None, token="", accion="", actor_email=payload.get("by") or ""), 404
+    if solicitud.get("estado") != "PENDIENTE":
+        return render_template("incapacidad_email_action.html", estado="resuelta", mensaje="Este enlace ya fue utilizado y la solicitud ya fue resuelta.", solicitud=solicitud, token="", accion="", actor_email=payload.get("by") or "")
+    return render_template(
+        "incapacidad_email_action.html",
+        estado="confirmar",
+        mensaje="Confirme la accion para resolver la solicitud de incapacidad.",
+        solicitud=solicitud,
+        token=token,
+        accion=payload["action"],
+        actor_email=payload.get("by") or "",
+    )
+
+
+@app.route("/incapacidades/email-action/confirm", methods=["POST"])
+def incapacidad_email_action_confirm():
+    token = (request.form.get("token") or "").strip()
+    observaciones = (request.form.get("observaciones") or "").strip()
+    payload, error = _read_incapacidad_email_token(token)
+    if error:
+        return render_template("incapacidad_email_action.html", estado="error", mensaje=error, solicitud=None, token="", accion="", actor_email=""), 400
+    solicitud = query("SELECT * FROM solicitud_incapacidad WHERE id = %s", (payload["sid"],), one=True)
+    if not solicitud:
+        return render_template("incapacidad_email_action.html", estado="error", mensaje="La solicitud no existe.", solicitud=None, token="", accion="", actor_email=payload.get("by") or ""), 404
+    if solicitud.get("estado") != "PENDIENTE":
+        return render_template("incapacidad_email_action.html", estado="resuelta", mensaje="Este enlace ya fue utilizado y la solicitud ya fue resuelta.", solicitud=solicitud, token="", accion="", actor_email=payload.get("by") or "")
+
+    cur_user = get_current_user()
+    resolver_id = payload.get("by") or ((cur_user or {}).get("id_user") if cur_user else None) or "EMAIL-LINK"
+    nuevo_estado = "APROBADO" if payload["action"] == "aprobar" else "RECHAZADO"
+    execute(
+        "UPDATE solicitud_incapacidad SET estado = %s, observaciones = %s, resuelto_por = %s, fecha_resolucion = NOW() WHERE id = %s",
+        (nuevo_estado, observaciones or None, resolver_id, payload["sid"]),
+    )
+    solicitud["estado"] = nuevo_estado
+    solicitud["observaciones"] = observaciones or None
+    emp = query("SELECT apellidos_nombre FROM empleado WHERE id_cedula = %s", (solicitud["id_cedula"],), one=True)
+    email_empleado = _resolver_email_empleado(solicitud["id_cedula"])
+    notificar_resolucion_incapacidad(
+        app, solicitud, emp["apellidos_nombre"] if emp else "", email_empleado,
+        aprobado=(nuevo_estado == "APROBADO"), observaciones=observaciones,
+    )
+    registrar_audit(
+        f"Solicitud de incapacidad {'aprobada' if nuevo_estado == 'APROBADO' else 'rechazada'} por enlace correo",
+        "incapacidades",
+        f"id={payload['sid']} cédula={solicitud.get('id_cedula')} actor={resolver_id}",
+    )
+    return render_template(
+        "incapacidad_email_action.html",
+        estado="ok",
+        mensaje=f"Solicitud {nuevo_estado.lower()} correctamente.",
+        solicitud=solicitud,
+        token="",
+        accion="",
+        actor_email=payload.get("by") or "",
+    )
+
+
+@app.route("/incapacidades/<int:id>/aprobar", methods=["POST"])
+@login_required
+def incapacidad_aprobar(id):
+    if _is_employee_mode():
+        flash("En modo empleado no se pueden aprobar solicitudes.", "error")
+        return redirect(url_for("incapacidad_solicitar"))
+    cur_user = get_current_user()
+    if not cur_user:
+        flash("Tu sesion expiro. Inicia sesion de nuevo.", "error")
+        return redirect(url_for("login"))
+    observaciones = (request.form.get("observaciones") or "").strip()
+    solicitud = query("SELECT * FROM solicitud_incapacidad WHERE id = %s", (id,), one=True)
+    if not solicitud:
+        flash("Solicitud de incapacidad no encontrada.", "error")
+        return redirect(url_for("incapacidad_index"))
+    if not _puede_resolver_solicitud(solicitud):
+        flash("No tiene permiso para aprobar esta solicitud (no es el encargado asignado).", "error")
+        return redirect(url_for("incapacidad_index"))
+    if solicitud["estado"] != "PENDIENTE":
+        flash("La solicitud ya fue resuelta. Se actualiza la lista.", "info")
+        return redirect(url_for("incapacidad_index"))
+    execute(
+        "UPDATE solicitud_incapacidad SET estado = 'APROBADO', observaciones = %s, resuelto_por = %s, fecha_resolucion = NOW() WHERE id = %s",
+        (observaciones or None, cur_user["id_user"], id),
+    )
+    emp = query("SELECT apellidos_nombre FROM empleado WHERE id_cedula = %s", (solicitud["id_cedula"],), one=True)
+    email_empleado = _resolver_email_empleado(solicitud["id_cedula"])
+    correo_ok = notificar_resolucion_incapacidad(app, solicitud, emp["apellidos_nombre"] if emp else "", email_empleado, aprobado=True, observaciones=observaciones)
+    flash("Solicitud de incapacidad aprobada." + (" Se notifico al empleado por correo." if correo_ok else " No se pudo enviar el correo."), "success" if correo_ok else "warning")
+    return redirect(url_for("incapacidad_index"))
+
+
+@app.route("/incapacidades/<int:id>/rechazar", methods=["POST"])
+@login_required
+def incapacidad_rechazar(id):
+    if _is_employee_mode():
+        flash("En modo empleado no se pueden rechazar solicitudes.", "error")
+        return redirect(url_for("incapacidad_solicitar"))
+    cur_user = get_current_user()
+    if not cur_user:
+        flash("Tu sesion expiro. Inicia sesion de nuevo.", "error")
+        return redirect(url_for("login"))
+    observaciones = (request.form.get("observaciones") or "").strip()
+    solicitud = query("SELECT * FROM solicitud_incapacidad WHERE id = %s", (id,), one=True)
+    if not solicitud:
+        flash("Solicitud de incapacidad no encontrada.", "error")
+        return redirect(url_for("incapacidad_index"))
+    if not _puede_resolver_solicitud(solicitud):
+        flash("No tiene permiso para rechazar esta solicitud (no es el encargado asignado).", "error")
+        return redirect(url_for("incapacidad_index"))
+    if solicitud["estado"] != "PENDIENTE":
+        flash("La solicitud ya fue resuelta. Se actualiza la lista.", "info")
+        return redirect(url_for("incapacidad_index"))
+    execute(
+        "UPDATE solicitud_incapacidad SET estado = 'RECHAZADO', observaciones = %s, resuelto_por = %s, fecha_resolucion = NOW() WHERE id = %s",
+        (observaciones or None, cur_user["id_user"], id),
+    )
+    emp = query("SELECT apellidos_nombre FROM empleado WHERE id_cedula = %s", (solicitud["id_cedula"],), one=True)
+    email_empleado = _resolver_email_empleado(solicitud["id_cedula"])
+    correo_ok = notificar_resolucion_incapacidad(app, solicitud, emp["apellidos_nombre"] if emp else "", email_empleado, aprobado=False, observaciones=observaciones)
+    flash("Solicitud de incapacidad rechazada." + (" Se notifico al empleado por correo." if correo_ok else " No se pudo enviar el correo."), "success" if correo_ok else "warning")
+    return redirect(url_for("incapacidad_index"))
+
+
 @app.route("/incapacitados")
 @login_required
 def incapacitados_dashboard():
@@ -2918,39 +3294,30 @@ def incapacitados_dashboard():
     area = (request.args.get("area") or "").strip()
 
     where = [
-        "REPLACE(LOWER(TRIM(COALESCE(p.tipo, ''))), 'á', 'a') LIKE 'incapacidad%'",
-        "p.fecha_desde >= %s",
-        "p.fecha_desde < %s",
+        "i.fecha_desde >= %s",
+        "i.fecha_desde < %s",
     ]
     params = [mes_inicio, mes_siguiente]
     if estado != "TODOS":
-        where.append("p.estado = %s")
+        where.append("i.estado = %s")
         params.append(estado)
     if area:
-        where.append("COALESCE(p.area, e.area) = %s")
+        where.append("COALESCE(i.area, e.area) = %s")
         params.append(area)
     if buscar:
-        where.append("(e.apellidos_nombre LIKE %s OR p.id_cedula LIKE %s)")
+        where.append("(e.apellidos_nombre LIKE %s OR i.id_cedula LIKE %s)")
         like = f"%{buscar.replace('%', '\\%')}%"
         params.extend([like, like])
     sql_base = (
-        "SELECT p.id, p.id_cedula, e.apellidos_nombre, COALESCE(p.area, e.area) AS area, p.tipo, p.estado, "
-        "p.fecha_desde, p.fecha_hasta, p.motivo, {motivo_cambio_col} p.observaciones, p.fecha_solicitud "
-        "FROM solicitud_permiso p "
-        "JOIN empleado e ON e.id_cedula = p.id_cedula "
+        "SELECT i.id, i.id_cedula, e.apellidos_nombre, COALESCE(i.area, e.area) AS area, "
+        "'Incapacidad medica' AS tipo, i.estado, i.fecha_desde, i.fecha_hasta, "
+        "i.descripcion AS motivo, '' AS motivo_cambio_empleado, i.observaciones, i.fecha_solicitud, i.dias_incapacidad "
+        "FROM solicitud_incapacidad i "
+        "JOIN empleado e ON e.id_cedula = i.id_cedula "
         f"WHERE {' AND '.join(where)} "
-        "ORDER BY p.fecha_desde DESC, p.fecha_solicitud DESC, p.id DESC"
+        "ORDER BY i.fecha_desde DESC, i.fecha_solicitud DESC, i.id DESC"
     )
-    try:
-        sql = sql_base.format(motivo_cambio_col="p.motivo_cambio_empleado, ")
-        rows = query(sql, tuple(params))
-    except Exception as e:
-        # Compatibilidad en entornos donde aún no existe la columna motivo_cambio_empleado.
-        if "motivo_cambio_empleado" in str(e).lower():
-            sql = sql_base.format(motivo_cambio_col="'' AS motivo_cambio_empleado, ")
-            rows = query(sql, tuple(params))
-        else:
-            raise
+    rows = query(sql_base, tuple(params))
 
     total_dias = 0
     personas_set = set()
@@ -2959,18 +3326,9 @@ def incapacitados_dashboard():
     people_days = {}
 
     for r in rows:
-        fd = r.get("fecha_desde")
-        fh = r.get("fecha_hasta")
-        fd_date = fd.date() if hasattr(fd, "date") else fd
-        fh_date = fh.date() if hasattr(fh, "date") else fh
-        dias = 0
-        try:
-            if fd_date and fh_date:
-                dias = (fh_date - fd_date).days + 1
-                if dias < 1:
-                    dias = 1
-        except Exception:
-            dias = 0
+        dias = int(r.get("dias_incapacidad") or 0)
+        if dias < 1:
+            dias = _calc_dias_incapacidad(r.get("fecha_desde"), r.get("fecha_hasta"))
         r["dias_incapacidad"] = dias
         total_dias += dias
 
@@ -3026,43 +3384,28 @@ def incapacitados_dashboard():
 @app.route("/incapacitados/<int:id>")
 @login_required
 def incapacitado_detalle(id):
-    """Detalle ampliado de una incapacidad registrada desde permisos."""
+    """Detalle ampliado de una incapacidad registrada desde el modulo dedicado."""
     user = get_current_user()
     if not _can_view_incapacitados(user):
         flash("No tienes acceso a este detalle.", "error")
         return redirect(url_for("home"))
 
-    sql_base = (
-        "SELECT p.*, e.apellidos_nombre, COALESCE(p.area, e.area) AS area_final, e.direccion_email, "
-        "u.nombre AS resuelto_por_nombre, {motivo_cambio_col} "
-        "REPLACE(LOWER(TRIM(COALESCE(p.tipo, ''))), 'á', 'a') AS tipo_norm "
-        "FROM solicitud_permiso p "
-        "JOIN empleado e ON e.id_cedula = p.id_cedula "
-        "LEFT JOIN usuario u ON u.id_user = p.resuelto_por "
-        "WHERE p.id = %s"
+    solicitud = query(
+        "SELECT i.*, e.apellidos_nombre, COALESCE(i.area, e.area) AS area_final, e.direccion_email, "
+        "u.nombre AS resuelto_por_nombre "
+        "FROM solicitud_incapacidad i "
+        "JOIN empleado e ON e.id_cedula = i.id_cedula "
+        "LEFT JOIN usuario u ON u.id_user = i.resuelto_por "
+        "WHERE i.id = %s",
+        (id,), one=True,
     )
-    try:
-        solicitud = query(sql_base.format(motivo_cambio_col="p.motivo_cambio_empleado, "), (id,), one=True)
-    except Exception as e:
-        if "motivo_cambio_empleado" in str(e).lower():
-            solicitud = query(sql_base.format(motivo_cambio_col="'' AS motivo_cambio_empleado, "), (id,), one=True)
-        else:
-            raise
-
-    if not solicitud or not str(solicitud.get("tipo_norm") or "").startswith("incapacidad"):
+    if not solicitud:
         flash("No se encontró el detalle de incapacidad solicitado.", "error")
         return redirect(url_for("incapacitados_dashboard"))
 
-    fd = solicitud.get("fecha_desde")
-    fh = solicitud.get("fecha_hasta")
-    try:
-        fd_date = fd.date() if hasattr(fd, "date") else fd
-        fh_date = fh.date() if hasattr(fh, "date") else fh
-        dias = (fh_date - fd_date).days + 1 if fd_date and fh_date else 0
-        if dias < 1:
-            dias = 1
-    except Exception:
-        dias = 0
+    dias = int(solicitud.get("dias_incapacidad") or 0)
+    if dias < 1:
+        dias = _calc_dias_incapacidad(solicitud.get("fecha_desde"), solicitud.get("fecha_hasta"))
     solicitud["dias_incapacidad"] = dias
 
     rp = (solicitud.get("resuelto_por") or "").strip()
@@ -3086,7 +3429,7 @@ def incapacitado_evidencia(id):
     if not _can_view_incapacitados(user):
         flash("No tienes acceso a la evidencia.", "error")
         return redirect(url_for("home"))
-    solicitud = query("SELECT id, evidencia FROM solicitud_permiso WHERE id = %s", (id,), one=True)
+    solicitud = query("SELECT id, evidencia FROM solicitud_incapacidad WHERE id = %s", (id,), one=True)
     if not solicitud or not (solicitud.get("evidencia") or "").strip():
         flash("No hay evidencia adjunta para esta incapacidad.", "info")
         return redirect(url_for("incapacitado_detalle", id=id))

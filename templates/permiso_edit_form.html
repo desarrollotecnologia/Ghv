@@ -57,7 +57,7 @@
         <div>
           <label class="permiso-edit-label">Tipo</label>
           <select class="permiso-edit-input" name="tipo" required>
-            {% for t in ['Permiso','Licencia','Médico','Incapacidad médica','Personal','Capacitación','Calamidad doméstica','Otro'] %}
+            {% for t in ['Permiso','Licencia','Médico','Personal','Capacitación','Calamidad doméstica','Otro'] %}
             <option value="{{ t }}" {{ 'selected' if solicitud.tipo == t else '' }}>{{ t }}</option>
             {% endfor %}
           </select>
@@ -89,7 +89,7 @@
         <div class="permiso-edit-full">
           <label class="permiso-edit-label">Evidencia (PDF o foto)</label>
           <input class="permiso-edit-input" type="file" name="evidencia" accept=".pdf,.jpg,.jpeg,.png,.webp">
-          <p class="permiso-edit-hint">Obligatoria para incapacidad médica o permiso no remunerado.</p>
+          <p class="permiso-edit-hint">Obligatoria para permiso no remunerado.</p>
         </div>
       </div>
 

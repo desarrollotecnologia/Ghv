@@ -187,7 +187,6 @@
                             <option value="Permiso">Permiso</option>
                             <option value="Licencia">Licencia</option>
                             <option value="Médico">Médico</option>
-                            <option value="Incapacidad médica">Incapacidad médica</option>
                             <option value="Personal">Personal</option>
                             <option value="Capacitación">Capacitación</option>
                             <option value="Calamidad doméstica">Calamidad doméstica</option>
@@ -265,13 +264,11 @@
         actualizarNombre();
     }
     var remunerado = document.getElementById('permisoRemunerado');
-    var tipoSel = document.querySelector('select[name="tipo"]');
     var rowEvidencia = document.getElementById('rowEvidencia');
     var evidenciaInput = document.getElementById('evidencia');
     function toggleEvidencia() {
         var esNoRemunerado = remunerado && remunerado.value === '0';
-        var esIncapacidad = tipoSel && tipoSel.value === 'Incapacidad médica';
-        var requiere = !!(esNoRemunerado || esIncapacidad);
+        var requiere = !!esNoRemunerado;
         if (rowEvidencia) rowEvidencia.style.display = requiere ? '' : 'none';
         if (evidenciaInput) {
             evidenciaInput.required = requiere;
@@ -281,7 +278,6 @@
     if (remunerado) {
         remunerado.addEventListener('change', toggleEvidencia);
     }
-    if (tipoSel) tipoSel.addEventListener('change', toggleEvidencia);
     toggleEvidencia();
 })();
 </script>

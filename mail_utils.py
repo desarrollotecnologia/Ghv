@@ -616,6 +616,29 @@ def _tabla_detalle_vacaciones(solicitud, empleado_nombre=None, incluir_empleado=
     return f'<table class="mail-table"><tbody>{rows_html}</tbody></table>'
 
 
+def _tabla_detalle_incapacidad(solicitud, empleado_nombre=None, incluir_empleado=True):
+    """Tabla HTML con el detalle de una solicitud de incapacidad."""
+    def _fmt(v):
+        if v is None or v == "":
+            return "—"
+        if hasattr(v, "strftime"):
+            return v.strftime("%d/%m/%Y")
+        return str(v)
+
+    filas = []
+    if incluir_empleado and empleado_nombre:
+        filas.append(("<th>Empleado</th>", f"<td>{html_escape(empleado_nombre)}</td>"))
+    filas.append(("<th>Cedula</th>", f"<td>{html_escape(str(solicitud.get('id_cedula') or '—'))}</td>"))
+    filas.append(("<th>Area</th>", f"<td>{html_escape(str(solicitud.get('area') or '—'))}</td>"))
+    filas.append(("<th>Fecha desde</th>", f"<td>{html_escape(_fmt(solicitud.get('fecha_desde')))}</td>"))
+    filas.append(("<th>Fecha hasta</th>", f"<td>{html_escape(_fmt(solicitud.get('fecha_hasta')))}</td>"))
+    dias = solicitud.get("dias_incapacidad")
+    filas.append(("<th>Dias incapacidad</th>", f"<td>{html_escape(str(dias if dias is not None else '—'))}</td>"))
+    filas.append(("<th>Descripcion</th>", f"<td>{html_escape(str(solicitud.get('descripcion') or '—'))}</td>"))
+    rows_html = "".join(f"<tr>{th}{td}</tr>" for th, td in filas)
+    return f'<table class="mail-table"><tbody>{rows_html}</tbody></table>'
+
+
 def notificar_resolucion_vacaciones(app, solicitud, empleado_nombre, empleado_email, aprobado, observaciones=None):
     """Notifica al empleado (o a MAIL_PRUEBAS_CC si no hay correo) la resolución
     de su solicitud de vacaciones. Sin PDF, solo detalle + badge."""
@@ -669,6 +692,39 @@ def notificar_resolucion_vacaciones(app, solicitud, empleado_nombre, empleado_em
     if app and hasattr(app, "logger"):
         app.logger.info(f"[Vacaciones] Resolución id={id_sol} → resultado_enviado={ok}")
     return ok
+
+
+def notificar_resolucion_incapacidad(app, solicitud, empleado_nombre, empleado_email, aprobado, observaciones=None):
+    """Notifica al empleado la resolucion de su solicitud de incapacidad."""
+    original_email = (empleado_email or "").strip()
+    if not original_email:
+        empleado_email = app.config.get("MAIL_PRUEBAS_CC", "").split(",")[0].strip() or None
+        if app and hasattr(app, "logger"):
+            app.logger.info(f"[Incapacidades] Empleado {empleado_nombre} sin correo en BD; enviando a MAIL_PRUEBAS_CC={empleado_email or 'no configurado'}")
+    else:
+        empleado_email = original_email
+    if not empleado_email:
+        if app and hasattr(app, "logger"):
+            app.logger.warning("[Incapacidades] No se envio correo de resolucion: empleado sin direccion_email y MAIL_PRUEBAS_CC vacio")
+        return False
+
+    estado_label = "Aprobada" if aprobado else "Rechazada"
+    badge_class = "aprobado" if aprobado else "rechazado"
+    subject = f"Resolucion: incapacidad {estado_label} - {empleado_nombre}"
+    tabla = _tabla_detalle_incapacidad(solicitud, empleado_nombre=empleado_nombre, incluir_empleado=False)
+    nombre_safe = html_escape(empleado_nombre or "—")
+    obs_html = f'<p><strong>Observaciones:</strong> {html_escape(observaciones)}</p>' if observaciones else ""
+    body_content = f"""
+    <p>Estimado/a <strong>{nombre_safe}</strong>,</p>
+    <p>Le informamos que su solicitud de <strong>incapacidad medica</strong> ha sido <strong>{estado_label.lower()}</strong>.</p>
+    <p><span class="mail-badge {badge_class}">{estado_label}</span></p>
+    {tabla}
+    {obs_html}
+    <p>Saludos cordiales,<br/><strong>Sistema de Gestion Humana - Colbeef</strong></p>
+    """
+    body = _wrap_html(body_content, title=subject, subtitle=f"Solicitud de incapacidad {estado_label}")
+    plain = _strip_html(body_content)
+    return send_mail(empleado_email, subject, body, body_text=plain, app=app)
 
 
 def notificar_nueva_solicitud_vacaciones(app, solicitud, empleado_nombre):
@@ -774,6 +830,11 @@ def notificar_encargado_nueva_solicitud(
         subtitle = "Nueva solicitud de vacaciones"
         tabla = _tabla_detalle_vacaciones(solicitud, empleado_nombre=empleado_nombre, incluir_empleado=True)
         intro = "una <strong>nueva solicitud de vacaciones</strong>"
+    elif tipo_norm == "incapacidad":
+        subject = f"[Acción requerida] Nueva solicitud de incapacidad – {empleado_nombre}"
+        subtitle = "Nueva solicitud de incapacidad"
+        tabla = _tabla_detalle_incapacidad(solicitud, empleado_nombre=empleado_nombre, incluir_empleado=True)
+        intro = "una <strong>nueva solicitud de incapacidad medica</strong>"
     else:
         subject = f"[Acción requerida] Nueva solicitud de permiso – {empleado_nombre}"
         subtitle = "Nueva solicitud de permiso"

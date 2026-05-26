@@ -239,16 +239,28 @@
                 <span class="material-symbols-outlined">beach_access</span>
                 <span class="nav-label">Solicitud de vacaciones</span>
             </a>
+            <a href="{{ url_for('incapacidad_solicitar') }}" class="nav-item {{ 'active' if active_page == 'Solicitud de incapacidad' }}">
+                <span class="material-symbols-outlined">medical_services</span>
+                <span class="nav-label">Solicitud de incapacidad</span>
+            </a>
             {% endif %}
             {% if not employee_vac_mode %}
             <a href="{{ url_for('vacaciones_index') }}" class="nav-item {{ 'active' if active_page == 'Listado vacaciones' }}">
                 <span class="material-symbols-outlined">list</span>
                 <span class="nav-label">{{ 'Solicitudes vacaciones empleados' if encargado_mode else 'Listado vacaciones' }}</span>
             </a>
+            <a href="{{ url_for('incapacidad_index') }}" class="nav-item {{ 'active' if active_page == 'Listado incapacidades' }}">
+                <span class="material-symbols-outlined">monitor_heart</span>
+                <span class="nav-label">{{ 'Solicitudes incapacidad empleados' if encargado_mode else 'Listado incapacidades' }}</span>
+            </a>
             {% if not encargado_mode and not is_logistica_coordinator %}
             <a href="{{ url_for('vacaciones_mis_solicitudes') }}" class="nav-item {{ 'active' if active_page == 'Mis solicitudes de vacaciones' }}">
                 <span class="material-symbols-outlined">event_note</span>
                 <span class="nav-label">Mis vacaciones</span>
+            </a>
+            <a href="{{ url_for('incapacidad_mis_solicitudes') }}" class="nav-item {{ 'active' if active_page == 'Mis incapacidades' }}">
+                <span class="material-symbols-outlined">clinical_notes</span>
+                <span class="nav-label">Mis incapacidades</span>
             </a>
             {% endif %}
             {% endif %}
