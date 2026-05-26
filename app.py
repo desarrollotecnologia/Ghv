@@ -3170,7 +3170,7 @@ def incapacidad_evidencia(id):
         if not full_path.startswith(os.path.normpath(uploads_dir)) or not os.path.isfile(full_path):
             flash("Archivo de evidencia no encontrado.", "error")
             return redirect(url_for("incapacidad_index"))
-        return send_file(full_path, as_attachment=False, download_name=os.path.basename(evidencia_ruta), mimetype=None)
+        return send_file(full_path, as_attachment=True, download_name=os.path.basename(evidencia_ruta), mimetype=None)
     except Exception as e:
         try:
             current_app.logger.exception("[Incapacidades] Error al abrir evidencia id=%s: %s", id, e)
@@ -3503,7 +3503,7 @@ def incapacitado_evidencia(id):
         if not full_path.startswith(os.path.normpath(uploads_dir)) or not os.path.isfile(full_path):
             flash("Archivo de evidencia no encontrado.", "error")
             return redirect(url_for("incapacitado_detalle", id=id))
-        return send_file(full_path, as_attachment=False, download_name=os.path.basename(evidencia_ruta), mimetype=None)
+        return send_file(full_path, as_attachment=True, download_name=os.path.basename(evidencia_ruta), mimetype=None)
     except Exception as e:
         try:
             current_app.logger.exception("[Incapacitados] Error al abrir evidencia id=%s: %s", id, e)

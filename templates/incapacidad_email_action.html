@@ -19,7 +19,7 @@
       <label>Evidencia</label>
       <span>
         {% if solicitud.evidencia %}
-        <a href="{{ url_for('incapacidad_evidencia', id=solicitud.id) }}" target="_blank" rel="noopener" class="btn btn-outline btn-sm">Ver evidencia</a>
+        <a href="{{ url_for('incapacidad_evidencia', id=solicitud.id) }}" class="btn btn-outline btn-sm">Descargar evidencia</a>
         {% else %}—{% endif %}
       </span>
     </div>

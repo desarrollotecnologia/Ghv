@@ -70,7 +70,7 @@
         <td>{{ r.descripcion or '—' }}</td>
         <td>
           {% if r.evidencia %}
-          <a href="{{ url_for('incapacidad_evidencia', id=r.id) }}" target="_blank" rel="noopener" class="btn btn-outline btn-sm">Ver</a>
+          <a href="{{ url_for('incapacidad_evidencia', id=r.id) }}" class="btn btn-outline btn-sm">Descargar</a>
           {% else %}—{% endif %}
         </td>
         <td>
