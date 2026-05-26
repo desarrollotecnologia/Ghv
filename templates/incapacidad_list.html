@@ -203,32 +203,32 @@
 {% block scripts %}
 {% if puede_aprobar %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(function() {
   var actionBaseAprobar = "{{ url_for('incapacidad_aprobar', id=0) }}";
   var actionBaseRechazar = "{{ url_for('incapacidad_rechazar', id=0) }}";
-  var modalAprobar = document.getElementById('modalAprobarIncap');
-  var modalRechazar = document.getElementById('modalRechazarIncap');
-  var formAprobar = document.getElementById('formAprobarIncap');
-  var formRechazar = document.getElementById('formRechazarIncap');
 
   function abrirModalAprobar(id, nombre) {
-    if (!formAprobar || !modalAprobar) return;
-    formAprobar.action = actionBaseAprobar.replace('/0/', '/' + id + '/');
-    var ta = formAprobar.querySelector('textarea[name="observaciones"]');
+    var form = document.getElementById('formAprobarIncap');
+    var modal = document.getElementById('modalAprobarIncap');
+    if (!form || !modal) return;
+    form.action = actionBaseAprobar.replace('/0/', '/' + id + '/');
+    var ta = form.querySelector('textarea[name="observaciones"]');
     if (ta) ta.value = '';
     var el = document.getElementById('aprobarIncapEmpleadoNombre');
     if (el) el.textContent = nombre;
-    modalAprobar.classList.add('active');
+    modal.classList.add('active');
   }
 
   function abrirModalRechazar(id, nombre) {
-    if (!formRechazar || !modalRechazar) return;
-    formRechazar.action = actionBaseRechazar.replace('/0/', '/' + id + '/');
-    var ta = formRechazar.querySelector('textarea[name="observaciones"]');
+    var form = document.getElementById('formRechazarIncap');
+    var modal = document.getElementById('modalRechazarIncap');
+    if (!form || !modal) return;
+    form.action = actionBaseRechazar.replace('/0/', '/' + id + '/');
+    var ta = form.querySelector('textarea[name="observaciones"]');
     if (ta) ta.value = '';
     var el = document.getElementById('rechazarIncapEmpleadoNombre');
     if (el) el.textContent = nombre;
-    modalRechazar.classList.add('active');
+    modal.classList.add('active');
   }
 
   document.addEventListener('click', function(e) {
@@ -242,7 +242,7 @@ document.addEventListener('DOMContentLoaded', function() {
       abrirModalRechazar(btnR.dataset.id, btnR.dataset.nombre || '');
     }
   });
-});
+})();
 </script>
 {% endif %}
 {% endblock %}
