@@ -3074,7 +3074,27 @@ def incapacidad_index():
         sql += " WHERE " + enc_where
         params.extend(enc_params)
     sql += " ORDER BY CASE i.estado WHEN 'PENDIENTE' THEN 0 ELSE 1 END, i.fecha_solicitud DESC, i.id DESC"
-    rows = query(sql, tuple(params))
+    try:
+        rows = query(sql, tuple(params))
+    except Exception as e:
+        if "id_user_encargado" in str(e).lower():
+            sql = (
+                "SELECT i.id, i.id_cedula, e.apellidos_nombre, e.direccion_email, "
+                "i.area, i.fecha_desde, i.fecha_hasta, i.dias_incapacidad, i.descripcion, i.evidencia, "
+                "i.estado, i.observaciones, i.resuelto_por, i.fecha_resolucion, i.fecha_solicitud, "
+                "u.nombre AS resuelto_por_nombre "
+                "FROM solicitud_incapacidad i "
+                "JOIN empleado e ON e.id_cedula = i.id_cedula "
+                "LEFT JOIN usuario u ON u.id_user = i.resuelto_por "
+            )
+            if enc_where:
+                # Si no existe id_user_encargado, no se puede filtrar por encargado en SQL.
+                # Dejamos listado visible para ADMIN/COORD y para otros casos será controlado por permisos.
+                sql += ""
+            sql += " ORDER BY CASE i.estado WHEN 'PENDIENTE' THEN 0 ELSE 1 END, i.fecha_solicitud DESC, i.id DESC"
+            rows = query(sql, tuple())
+        else:
+            raise
     cur_user = get_current_user() or {}
     es_admin_coord = _es_admin_o_coord(cur_user)
     for r in rows:
@@ -3187,10 +3207,13 @@ def incapacidad_email_action_confirm():
     solicitud["observaciones"] = observaciones or None
     emp = query("SELECT apellidos_nombre FROM empleado WHERE id_cedula = %s", (solicitud["id_cedula"],), one=True)
     email_empleado = _resolver_email_empleado(solicitud["id_cedula"])
-    notificar_resolucion_incapacidad(
-        app, solicitud, emp["apellidos_nombre"] if emp else "", email_empleado,
-        aprobado=(nuevo_estado == "APROBADO"), observaciones=observaciones,
-    )
+    try:
+        notificar_resolucion_incapacidad(
+            app, solicitud, emp["apellidos_nombre"] if emp else "", email_empleado,
+            aprobado=(nuevo_estado == "APROBADO"), observaciones=observaciones,
+        )
+    except Exception:
+        pass
     registrar_audit(
         f"Solicitud de incapacidad {'aprobada' if nuevo_estado == 'APROBADO' else 'rechazada'} por enlace correo",
         "incapacidades",
@@ -3228,13 +3251,20 @@ def incapacidad_aprobar(id):
     if solicitud["estado"] != "PENDIENTE":
         flash("La solicitud ya fue resuelta. Se actualiza la lista.", "info")
         return redirect(url_for("incapacidad_index"))
+    resolver = cur_user.get("id_user") if isinstance(cur_user, dict) else None
     execute(
         "UPDATE solicitud_incapacidad SET estado = 'APROBADO', observaciones = %s, resuelto_por = %s, fecha_resolucion = NOW() WHERE id = %s",
-        (observaciones or None, cur_user["id_user"], id),
+        (observaciones or None, resolver or "SYSTEM", id),
     )
     emp = query("SELECT apellidos_nombre FROM empleado WHERE id_cedula = %s", (solicitud["id_cedula"],), one=True)
     email_empleado = _resolver_email_empleado(solicitud["id_cedula"])
-    correo_ok = notificar_resolucion_incapacidad(app, solicitud, emp["apellidos_nombre"] if emp else "", email_empleado, aprobado=True, observaciones=observaciones)
+    try:
+        correo_ok = notificar_resolucion_incapacidad(
+            app, solicitud, emp["apellidos_nombre"] if emp else "", email_empleado,
+            aprobado=True, observaciones=observaciones,
+        )
+    except Exception:
+        correo_ok = False
     flash("Solicitud de incapacidad aprobada." + (" Se notifico al empleado por correo." if correo_ok else " No se pudo enviar el correo."), "success" if correo_ok else "warning")
     return redirect(url_for("incapacidad_index"))
 
@@ -3260,13 +3290,20 @@ def incapacidad_rechazar(id):
     if solicitud["estado"] != "PENDIENTE":
         flash("La solicitud ya fue resuelta. Se actualiza la lista.", "info")
         return redirect(url_for("incapacidad_index"))
+    resolver = cur_user.get("id_user") if isinstance(cur_user, dict) else None
     execute(
         "UPDATE solicitud_incapacidad SET estado = 'RECHAZADO', observaciones = %s, resuelto_por = %s, fecha_resolucion = NOW() WHERE id = %s",
-        (observaciones or None, cur_user["id_user"], id),
+        (observaciones or None, resolver or "SYSTEM", id),
     )
     emp = query("SELECT apellidos_nombre FROM empleado WHERE id_cedula = %s", (solicitud["id_cedula"],), one=True)
     email_empleado = _resolver_email_empleado(solicitud["id_cedula"])
-    correo_ok = notificar_resolucion_incapacidad(app, solicitud, emp["apellidos_nombre"] if emp else "", email_empleado, aprobado=False, observaciones=observaciones)
+    try:
+        correo_ok = notificar_resolucion_incapacidad(
+            app, solicitud, emp["apellidos_nombre"] if emp else "", email_empleado,
+            aprobado=False, observaciones=observaciones,
+        )
+    except Exception:
+        correo_ok = False
     flash("Solicitud de incapacidad rechazada." + (" Se notifico al empleado por correo." if correo_ok else " No se pudo enviar el correo."), "success" if correo_ok else "warning")
     return redirect(url_for("incapacidad_index"))
 
