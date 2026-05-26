@@ -85,16 +85,12 @@
           <td>
             {% if r.estado == 'PENDIENTE' and r._puede_resolver %}
             <div style="display:flex;gap:6px;flex-wrap:wrap">
-              <form method="POST" action="{{ url_for('incapacidad_aprobar', id=r.id) }}" style="margin:0" onsubmit="return confirm('¿Aprobar solicitud de incapacidad?');">
-                <button type="submit" class="btn btn-success btn-sm">
+              <button type="button" class="btn btn-success btn-sm" onclick="abrirAccionIncapacidad({{ r.id }}, 'aprobar', {{ r.apellidos_nombre|tojson }})">
                   <span class="material-symbols-outlined" style="font-size:16px">check</span>Aprobar
-                </button>
-              </form>
-              <form method="POST" action="{{ url_for('incapacidad_rechazar', id=r.id) }}" style="margin:0" onsubmit="return confirm('¿Rechazar solicitud de incapacidad?');">
-                <button type="submit" class="btn btn-danger btn-sm">
+              </button>
+              <button type="button" class="btn btn-danger btn-sm" onclick="abrirAccionIncapacidad({{ r.id }}, 'rechazar', {{ r.apellidos_nombre|tojson }})">
                   <span class="material-symbols-outlined" style="font-size:16px">close</span>Rechazar
-                </button>
-              </form>
+              </button>
             </div>
             {% elif r.estado == 'PENDIENTE' %}
             <span style="color:#9ca3af; font-size:0.85rem"><span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle">lock</span>Otro encargado</span>
@@ -117,6 +113,28 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modalAccionIncapacidad">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <h2 id="tituloAccionIncapacidad">Resolver solicitud</h2>
+      <button type="button" class="btn-icon" id="cerrarModalAccionIncapacidad">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+    <p class="modal-intro" id="mensajeAccionIncapacidad">Confirme la accion.</p>
+    <form method="POST" id="formAccionIncapacidad">
+      <div class="form-group">
+        <label class="form-label">Observaciones (opcional)</label>
+        <textarea name="observaciones" class="form-input" rows="3" placeholder="Ej: Aprobado conforme a incapacidad medica..."></textarea>
+      </div>
+      <div class="form-actions" style="display:flex;gap:12px;justify-content:flex-end">
+        <button type="button" class="btn btn-outline" id="cancelarAccionIncapacidad">Cancelar</button>
+        <button type="submit" class="btn" id="btnConfirmarAccionIncapacidad">Confirmar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <style>
 .incap-list-wrap { max-width: 1120px; }
 .incap-header { display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px; }
@@ -136,4 +154,34 @@
   .incap-table .data-table { min-width: 1020px; }
 }
 </style>
+
+<script>
+(function() {
+  const modal = document.getElementById('modalAccionIncapacidad');
+  const form = document.getElementById('formAccionIncapacidad');
+  const titulo = document.getElementById('tituloAccionIncapacidad');
+  const mensaje = document.getElementById('mensajeAccionIncapacidad');
+  const btnConfirmar = document.getElementById('btnConfirmarAccionIncapacidad');
+  const baseAprobar = "{{ url_for('incapacidad_aprobar', id=0) }}";
+  const baseRechazar = "{{ url_for('incapacidad_rechazar', id=0) }}";
+
+  if (!modal || !form) return;
+
+  window.abrirAccionIncapacidad = function(id, accion, nombre) {
+    const isAprobar = accion === 'aprobar';
+    form.action = (isAprobar ? baseAprobar : baseRechazar).replace('/0/', '/' + id + '/');
+    form.querySelector('textarea[name="observaciones"]').value = '';
+    titulo.textContent = isAprobar ? '¿Aprobar solicitud de incapacidad?' : '¿Rechazar solicitud de incapacidad?';
+    mensaje.textContent = (isAprobar ? 'Va a aprobar la solicitud de ' : 'Va a rechazar la solicitud de ') + nombre + '.';
+    btnConfirmar.textContent = isAprobar ? 'Aprobar' : 'Rechazar';
+    btnConfirmar.className = isAprobar ? 'btn btn-success' : 'btn btn-danger';
+    modal.classList.add('active');
+  };
+
+  function cerrar() { modal.classList.remove('active'); }
+  document.getElementById('cerrarModalAccionIncapacidad')?.addEventListener('click', cerrar);
+  document.getElementById('cancelarAccionIncapacidad')?.addEventListener('click', cerrar);
+  modal.addEventListener('click', function(ev) { if (ev.target === modal) cerrar(); });
+})();
+</script>
 {% endblock %}
