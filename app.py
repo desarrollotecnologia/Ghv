@@ -1900,11 +1900,18 @@ def _puede_resolver_solicitud(solicitud):
         return True
     try:
         emp = query(
-            "SELECT id_user_encargado FROM empleado WHERE id_cedula = %s",
+            "SELECT id_user_encargado FROM empleado "
+            "WHERE id_cedula COLLATE utf8mb4_unicode_ci = %s COLLATE utf8mb4_unicode_ci",
             (solicitud.get("id_cedula"),), one=True,
         )
     except Exception:
-        return False
+        try:
+            emp = query(
+                "SELECT id_user_encargado FROM empleado WHERE id_cedula = %s",
+                (solicitud.get("id_cedula"),), one=True,
+            )
+        except Exception:
+            return False
     if not emp:
         return False
     return (emp.get("id_user_encargado") or "") == (user.get("id_user") or "")
@@ -3078,21 +3085,22 @@ def incapacidad_index():
         rows = query(sql, tuple(params))
     except Exception as e:
         if "id_user_encargado" in str(e).lower():
-            sql = (
-                "SELECT i.id, i.id_cedula, e.apellidos_nombre, e.direccion_email, "
-                "i.area, i.fecha_desde, i.fecha_hasta, i.dias_incapacidad, i.descripcion, i.evidencia, "
-                "i.estado, i.observaciones, i.resuelto_por, i.fecha_resolucion, i.fecha_solicitud, "
-                "u.nombre AS resuelto_por_nombre "
-                "FROM solicitud_incapacidad i "
-                "JOIN empleado e ON e.id_cedula COLLATE utf8mb4_unicode_ci = i.id_cedula COLLATE utf8mb4_unicode_ci "
-                "LEFT JOIN usuario u ON u.id_user = i.resuelto_por "
-            )
-            if enc_where:
-                # Si no existe id_user_encargado, no se puede filtrar por encargado en SQL.
-                # Dejamos listado visible para ADMIN/COORD y para otros casos será controlado por permisos.
-                sql += ""
-            sql += " ORDER BY CASE i.estado WHEN 'PENDIENTE' THEN 0 ELSE 1 END, i.fecha_solicitud DESC, i.id DESC"
-            rows = query(sql, tuple())
+            # Si falta empleado.id_user_encargado en este entorno, evitamos exponer datos
+            # a jefes no-admin porque no hay forma segura de filtrar por responsable.
+            if not _es_admin_o_coord(cur_user):
+                rows = []
+            else:
+                sql = (
+                    "SELECT i.id, i.id_cedula, e.apellidos_nombre, e.direccion_email, "
+                    "i.area, i.fecha_desde, i.fecha_hasta, i.dias_incapacidad, i.descripcion, i.evidencia, "
+                    "i.estado, i.observaciones, i.resuelto_por, i.fecha_resolucion, i.fecha_solicitud, "
+                    "u.nombre AS resuelto_por_nombre "
+                    "FROM solicitud_incapacidad i "
+                    "JOIN empleado e ON e.id_cedula COLLATE utf8mb4_unicode_ci = i.id_cedula COLLATE utf8mb4_unicode_ci "
+                    "LEFT JOIN usuario u ON u.id_user = i.resuelto_por "
+                    "ORDER BY CASE i.estado WHEN 'PENDIENTE' THEN 0 ELSE 1 END, i.fecha_solicitud DESC, i.id DESC"
+                )
+                rows = query(sql, tuple())
         else:
             raise
     cur_user = get_current_user() or {}
@@ -3136,25 +3144,33 @@ def incapacidad_mis_solicitudes():
 @app.route("/incapacidades/<int:id>/evidencia")
 @login_required
 def incapacidad_evidencia(id):
-    solicitud = query("SELECT id_cedula, evidencia FROM solicitud_incapacidad WHERE id = %s", (id,), one=True)
-    if not solicitud or not (solicitud.get("evidencia") or "").strip():
-        flash("No hay evidencia adjunta para esta solicitud.", "info")
+    try:
+        solicitud = query("SELECT id_cedula, evidencia FROM solicitud_incapacidad WHERE id = %s", (id,), one=True)
+        if not solicitud or not (solicitud.get("evidencia") or "").strip():
+            flash("No hay evidencia adjunta para esta solicitud.", "info")
+            return redirect(url_for("incapacidad_index"))
+        user = get_current_user() or {}
+        if (solicitud.get("id_cedula") or "").strip() != (user.get("id_cedula") or "").strip():
+            if not _puede_resolver_solicitud(solicitud) and not _can_view_incapacitados(user):
+                flash("No tienes acceso a la evidencia.", "error")
+                return redirect(url_for("home"))
+        evidencia_ruta = (solicitud["evidencia"] or "").strip()
+        if ".." in evidencia_ruta or evidencia_ruta.startswith("/"):
+            flash("Ruta de evidencia no valida.", "error")
+            return redirect(url_for("incapacidad_index"))
+        uploads_dir = os.path.join(current_app.instance_path, "uploads")
+        full_path = os.path.normpath(os.path.join(uploads_dir, evidencia_ruta))
+        if not full_path.startswith(os.path.normpath(uploads_dir)) or not os.path.isfile(full_path):
+            flash("Archivo de evidencia no encontrado.", "error")
+            return redirect(url_for("incapacidad_index"))
+        return send_file(full_path, as_attachment=False, download_name=os.path.basename(evidencia_ruta), mimetype=None)
+    except Exception as e:
+        try:
+            current_app.logger.exception("[Incapacidades] Error al abrir evidencia id=%s: %s", id, e)
+        except Exception:
+            pass
+        flash("No se pudo abrir la evidencia en este momento. Intente nuevamente.", "error")
         return redirect(url_for("incapacidad_index"))
-    user = get_current_user() or {}
-    if (solicitud.get("id_cedula") or "").strip() != (user.get("id_cedula") or "").strip():
-        if not _puede_resolver_solicitud(solicitud) and not _can_view_incapacitados(user):
-            flash("No tienes acceso a la evidencia.", "error")
-            return redirect(url_for("home"))
-    evidencia_ruta = (solicitud["evidencia"] or "").strip()
-    if ".." in evidencia_ruta or evidencia_ruta.startswith("/"):
-        flash("Ruta de evidencia no valida.", "error")
-        return redirect(url_for("incapacidad_index"))
-    uploads_dir = os.path.join(current_app.instance_path, "uploads")
-    full_path = os.path.normpath(os.path.join(uploads_dir, evidencia_ruta))
-    if not full_path.startswith(os.path.normpath(uploads_dir)) or not os.path.isfile(full_path):
-        flash("Archivo de evidencia no encontrado.", "error")
-        return redirect(url_for("incapacidad_index"))
-    return send_file(full_path, as_attachment=False, download_name=os.path.basename(evidencia_ruta), mimetype=None)
 
 
 @app.route("/incapacidades/email-action")
@@ -3466,20 +3482,28 @@ def incapacitado_evidencia(id):
     if not _can_view_incapacitados(user):
         flash("No tienes acceso a la evidencia.", "error")
         return redirect(url_for("home"))
-    solicitud = query("SELECT id, evidencia FROM solicitud_incapacidad WHERE id = %s", (id,), one=True)
-    if not solicitud or not (solicitud.get("evidencia") or "").strip():
-        flash("No hay evidencia adjunta para esta incapacidad.", "info")
-        return redirect(url_for("incapacitado_detalle", id=id))
-    evidencia_ruta = (solicitud["evidencia"] or "").strip()
-    if ".." in evidencia_ruta or evidencia_ruta.startswith("/"):
-        flash("Ruta de evidencia no válida.", "error")
-        return redirect(url_for("incapacitado_detalle", id=id))
-    uploads_dir = os.path.join(current_app.instance_path, "uploads")
-    full_path = os.path.normpath(os.path.join(uploads_dir, evidencia_ruta))
-    if not full_path.startswith(os.path.normpath(uploads_dir)) or not os.path.isfile(full_path):
-        flash("Archivo de evidencia no encontrado.", "error")
-        return redirect(url_for("incapacitado_detalle", id=id))
-    return send_file(full_path, as_attachment=False, download_name=os.path.basename(evidencia_ruta), mimetype=None)
+    try:
+        solicitud = query("SELECT id, evidencia FROM solicitud_incapacidad WHERE id = %s", (id,), one=True)
+        if not solicitud or not (solicitud.get("evidencia") or "").strip():
+            flash("No hay evidencia adjunta para esta incapacidad.", "info")
+            return redirect(url_for("incapacitado_detalle", id=id))
+        evidencia_ruta = (solicitud["evidencia"] or "").strip()
+        if ".." in evidencia_ruta or evidencia_ruta.startswith("/"):
+            flash("Ruta de evidencia no válida.", "error")
+            return redirect(url_for("incapacitado_detalle", id=id))
+        uploads_dir = os.path.join(current_app.instance_path, "uploads")
+        full_path = os.path.normpath(os.path.join(uploads_dir, evidencia_ruta))
+        if not full_path.startswith(os.path.normpath(uploads_dir)) or not os.path.isfile(full_path):
+            flash("Archivo de evidencia no encontrado.", "error")
+            return redirect(url_for("incapacitado_detalle", id=id))
+        return send_file(full_path, as_attachment=False, download_name=os.path.basename(evidencia_ruta), mimetype=None)
+    except Exception as e:
+        try:
+            current_app.logger.exception("[Incapacitados] Error al abrir evidencia id=%s: %s", id, e)
+        except Exception:
+            pass
+        flash("No se pudo abrir la evidencia en este momento.", "error")
+        return redirect(url_for("incapacitados_dashboard"))
 
 
 
