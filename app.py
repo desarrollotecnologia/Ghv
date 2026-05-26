@@ -3170,7 +3170,12 @@ def incapacidad_evidencia(id):
         if not full_path.startswith(os.path.normpath(uploads_dir)) or not os.path.isfile(full_path):
             flash("Archivo de evidencia no encontrado.", "error")
             return redirect(url_for("incapacidad_index"))
-        return send_file(full_path, as_attachment=True, download_name=os.path.basename(evidencia_ruta), mimetype=None)
+        with open(full_path, "rb") as f:
+            data = f.read()
+        resp = make_response(data)
+        resp.headers["Content-Type"] = "application/octet-stream"
+        resp.headers["Content-Disposition"] = f'attachment; filename="{os.path.basename(evidencia_ruta)}"'
+        return resp
     except Exception as e:
         try:
             current_app.logger.exception("[Incapacidades] Error al abrir evidencia id=%s: %s", id, e)
@@ -3503,7 +3508,12 @@ def incapacitado_evidencia(id):
         if not full_path.startswith(os.path.normpath(uploads_dir)) or not os.path.isfile(full_path):
             flash("Archivo de evidencia no encontrado.", "error")
             return redirect(url_for("incapacitado_detalle", id=id))
-        return send_file(full_path, as_attachment=True, download_name=os.path.basename(evidencia_ruta), mimetype=None)
+        with open(full_path, "rb") as f:
+            data = f.read()
+        resp = make_response(data)
+        resp.headers["Content-Type"] = "application/octet-stream"
+        resp.headers["Content-Disposition"] = f'attachment; filename="{os.path.basename(evidencia_ruta)}"'
+        return resp
     except Exception as e:
         try:
             current_app.logger.exception("[Incapacitados] Error al abrir evidencia id=%s: %s", id, e)
