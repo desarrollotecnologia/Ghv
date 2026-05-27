@@ -7,8 +7,8 @@ USE gestio_humana;
 -- US-0003 gestor.contratacion@colbeef.com (GESTOR DE CONTRATACION)
 UPDATE usuario SET id_cedula = 'CEDULA_US0003' WHERE id_user = 'US-0003';
 
--- US-0004 coordinacion.gestionhumana@colbeef.com (COORD. GH)
-UPDATE usuario SET id_cedula = 'CEDULA_US0004' WHERE id_user = 'US-0004';
+-- US-0004 coordinacion.gestionhumana@colbeef.com (COORD. GH) — VERA MORA CINDY LEOMAR
+UPDATE usuario SET id_cedula = '1098661407' WHERE id_user = 'US-0004';
 
 -- US-0005 bienestarsocial@colbeef.com (BIENESTAR SOCIAL)
 UPDATE usuario SET id_cedula = 'CEDULA_US0005' WHERE id_user = 'US-0005';
