@@ -52,10 +52,10 @@ def main():
     print("Antes COORD:", coord)
 
     cur.execute(
-        "UPDATE usuario SET id_cedula=%s, rol='COORD. GH', estado=1 WHERE id_user=%s",
+        "UPDATE usuario SET id_cedula=%s, rol='ADMIN', acciones='TODOS LOS CAMBIOS', estado=1 WHERE id_user=%s",
         (CEDULA, ID_COORD),
     )
-    print(f"OK: {ID_COORD} COORD. GH + cédula {CEDULA}")
+    print(f"OK: {ID_COORD} ADMIN + cédula {CEDULA}")
 
     cur.execute("SELECT id_user FROM usuario WHERE id_user=%s", (ID_EMP,))
     emp_user = cur.fetchone()

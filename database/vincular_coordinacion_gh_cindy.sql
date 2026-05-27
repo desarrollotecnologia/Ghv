@@ -32,9 +32,10 @@ SET rol = 'EMPLEADO',
     nombre = 'VERA MORA CINDY LEOMAR'
 WHERE id_user = CONCAT('EMP-', @CEDULA);
 
--- US-0004 sigue siendo COORD. GH (cuenta de trabajo)
+-- US-0004 = cuenta de trabajo Cindy (ADMIN / Coordinación GH)
 UPDATE usuario
-SET rol = 'COORD. GH',
+SET rol = 'ADMIN',
+    acciones = 'TODOS LOS CAMBIOS',
     id_cedula = @CEDULA,
     estado = 1
 WHERE id_user = 'US-0004';
