@@ -243,6 +243,15 @@ def _linked_accounts_for_user(user):
     return rows
 
 
+def _can_show_switch_to_employee(user):
+    """Puede usar 'Cambiar a empleado' si tiene cédula vinculada (y cuenta EMPLEADO o modo sesión)."""
+    if not user or not _can_use_account_switch(user):
+        return False
+    if (user.get("rol") or "").strip().upper() == "EMPLEADO":
+        return False
+    return bool(str(user.get("id_cedula") or "").strip())
+
+
 def _is_api_request():
     """True si la petición espera JSON (rutas /api/ o Accept: application/json)."""
     return request.path.startswith("/api/") or "application/json" in request.accept_mimetypes
@@ -685,7 +694,7 @@ def inject_user():
         if _can_use_account_switch(user):
             linked = _linked_accounts_for_user(user)
             switchable_accounts = [a for a in linked if (a.get("id_user") or "") != (user.get("id_user") or "")]
-            can_switch_to_employee = bool(switchable_accounts)
+            can_switch_to_employee = _can_show_switch_to_employee(user) and not session.get("switch_back_user_id")
         can_enter_employee_vac_mode = _can_employee_vacation_mode(user)
         # Excepción: ADMIN y COORD. GH no deben entrar al modo jefe encargado.
         can_enter_encargado_mode = _can_encargado_mode(user) and (not _es_admin_o_coord(user))
@@ -811,21 +820,31 @@ def cambiar_a_modo_empleado():
         flash("Tu cuenta principal no tiene cédula vinculada. Pide al administrador vincular id_cedula.", "warning")
         return redirect(url_for("home"))
     emp_user = _find_employee_account(user)
-    if not emp_user:
-        flash("No se encontró cuenta EMPLEADO vinculada a tu cédula. Pide al administrador que la cree/vincule.", "warning")
-        return redirect(url_for("home"))
-    if emp_user.get("id_user") == user.get("id_user"):
-        flash("Ya estás en tu cuenta de empleado.", "info")
+    if emp_user and emp_user.get("id_user") != user.get("id_user"):
+        session["switch_back_user_id"] = user.get("id_user")
+        session["user_id"] = emp_user.get("id_user")
+        session.pop("employee_mode", None)
+        session.pop("employee_vac_mode", None)
+        session.pop("encargado_mode", None)
+        registrar_audit(
+            "Cambio de cuenta a modo empleado",
+            "auth",
+            f"from={user.get('id_user','')} to={emp_user.get('id_user','')}",
+        )
+        flash("Ahora estás en modo empleado. Tus solicitudes irán a tu jefe inmediato.", "success")
         return redirect(url_for("empleado_portal"))
-    session["switch_back_user_id"] = user.get("id_user")
-    session["user_id"] = emp_user.get("id_user")
+    # Sin cuenta EMPLEADO separada: modo empleado en la misma sesión (COORD. GH con cédula)
+    session["employee_mode"] = True
+    session.pop("employee_vac_mode", None)
+    session.pop("encargado_mode", None)
+    session.pop("encargado_mode_opt_out", None)
     registrar_audit(
-        "Cambio de cuenta a modo empleado",
+        "Modo empleado activado (misma cuenta)",
         "auth",
-        f"from={user.get('id_user','')} to={emp_user.get('id_user','')}",
+        f"id_user={user.get('id_user','')} cedula={user.get('id_cedula','')}",
     )
-    flash("Ahora estás en modo empleado. Tus solicitudes irán a tu jefe inmediato.", "success")
-    return redirect(url_for("empleado_portal"))
+    flash("Modo empleado activado. Puede solicitar permisos y vacaciones con su cédula vinculada.", "success")
+    return redirect(url_for("permiso_solicitar"))
 
 
 @app.route("/cuenta/cambiar", methods=["POST"])
