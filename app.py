@@ -1945,22 +1945,46 @@ def _icd11_access_token():
     client_secret = (current_app.config.get("ICD11_CLIENT_SECRET") or "").strip()
     if not client_id or not client_secret:
         return None, "Credenciales CIE-11 no configuradas (ICD11_CLIENT_ID / ICD11_CLIENT_SECRET)."
+    if client_id.lower().startswith("tu_") or client_secret.lower().startswith("tu_"):
+        return None, "Credenciales CIE-11 pendientes: reemplaza tu_client_id y tu_client_secret por las llaves reales."
     now = datetime.utcnow()
     if _ICD11_TOKEN_CACHE.get("access_token") and _ICD11_TOKEN_CACHE.get("expires_at") and _ICD11_TOKEN_CACHE["expires_at"] > now:
         return _ICD11_TOKEN_CACHE["access_token"], None
-    payload = urllib.parse.urlencode({"grant_type": "client_credentials", "scope": "icdapi_access"}).encode("utf-8")
-    req = urllib.request.Request(
-        "https://icdaccessmanagement.who.int/connect/token",
-        data=payload,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        method="POST",
-    )
-    import base64
-    credentials = f"{client_id}:{client_secret}".encode("utf-8")
-    req.add_header("Authorization", "Basic " + base64.b64encode(credentials).decode("ascii"))
-    try:
+
+    def _token_request(use_basic=True):
+        payload_data = {"grant_type": "client_credentials", "scope": "icdapi_access"}
+        if not use_basic:
+            # Algunos ejemplos oficiales aceptan client_id/client_secret en el body.
+            payload_data.update({"client_id": client_id, "client_secret": client_secret})
+        payload = urllib.parse.urlencode(payload_data).encode("utf-8")
+        req = urllib.request.Request(
+            "https://icdaccessmanagement.who.int/connect/token",
+            data=payload,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            method="POST",
+        )
+        if use_basic:
+            import base64
+            credentials = f"{client_id}:{client_secret}".encode("utf-8")
+            req.add_header("Authorization", "Basic " + base64.b64encode(credentials).decode("ascii"))
         with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+            return json.loads(resp.read().decode("utf-8"))
+
+    try:
+        data = _token_request(use_basic=True)
+    except urllib.error.HTTPError as exc:
+        detail = ""
+        try:
+            detail = exc.read().decode("utf-8", errors="ignore")
+        except Exception:
+            detail = ""
+        if exc.code == 400:
+            try:
+                data = _token_request(use_basic=False)
+            except Exception:
+                return None, "No se pudo autenticar contra CIE-11: revise que el ClientId y ClientSecret sean reales y esten activos."
+        else:
+            return None, f"No se pudo autenticar contra CIE-11: HTTP {exc.code} {detail[:160]}"
     except Exception as exc:
         return None, f"No se pudo autenticar contra CIE-11: {exc}"
     token = data.get("access_token")
@@ -1986,30 +2010,43 @@ def _icd11_search(query_text):
     token, error = _icd11_access_token()
     if error:
         return None, error
-    release = (current_app.config.get("ICD11_RELEASE") or "").strip()
     lang = (current_app.config.get("ICD11_LANGUAGE") or "es").strip()
     params = urllib.parse.urlencode({"q": query_text, "useFlexisearch": "true", "flatResults": "true"})
-    if release:
+    configured_release = (current_app.config.get("ICD11_RELEASE") or "").strip()
+    releases = []
+    if configured_release:
+        releases.append(configured_release)
+    releases.extend(["2025-01", "2024-01", "2023-01", "2022-02", "2019-04"])
+
+    payload = None
+    last_error = None
+    for release in dict.fromkeys(releases):
         url = f"https://id.who.int/icd/release/11/{release}/mms/search?{params}"
-    else:
-        url = f"https://id.who.int/icd/release/11/mms/search?{params}"
-    req = urllib.request.Request(
-        url,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/json",
-            "Accept-Language": lang,
-            "API-Version": "v2",
-        },
-        method="GET",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        return None, f"CIE-11 respondio error HTTP {exc.code}."
-    except Exception as exc:
-        return None, f"No se pudo consultar CIE-11: {exc}"
+        req = urllib.request.Request(
+            url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
+                "Accept-Language": lang,
+                "API-Version": "v2",
+            },
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+                current_app.config["ICD11_RELEASE"] = release
+                break
+        except urllib.error.HTTPError as exc:
+            last_error = f"HTTP {exc.code} en release {release}"
+            if exc.code == 404:
+                continue
+            return None, f"CIE-11 respondio error {last_error}."
+        except Exception as exc:
+            last_error = str(exc)
+            return None, f"No se pudo consultar CIE-11: {exc}"
+    if payload is None:
+        return None, f"CIE-11 respondio 404 en releases probados. Configure ICD11_RELEASE en .env. Ultimo error: {last_error or 'sin detalle'}."
     results = payload.get("destinationEntities") or payload.get("matchingEntities") or []
     items = []
     for item in results[:15]:
