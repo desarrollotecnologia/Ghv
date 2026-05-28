@@ -651,6 +651,13 @@ def _tabla_detalle_incapacidad(solicitud, empleado_nombre=None, incluir_empleado
     filas.append(("<th>Fecha hasta</th>", f"<td>{html_escape(_fmt(solicitud.get('fecha_hasta')))}</td>"))
     dias = solicitud.get("dias_incapacidad")
     filas.append(("<th>Dias incapacidad</th>", f"<td>{html_escape(str(dias if dias is not None else '—'))}</td>"))
+    cie = " ".join(x for x in [solicitud.get("cie11_codigo"), solicitud.get("cie11_titulo")] if x)
+    if cie:
+        filas.append(("<th>CIE-11</th>", f"<td>{html_escape(cie)}</td>"))
+    if solicitud.get("origen_atencion"):
+        filas.append(("<th>Origen atencion</th>", f"<td>{html_escape(str(solicitud.get('origen_atencion')))}</td>"))
+    if solicitud.get("accidente_transito"):
+        filas.append(("<th>Accidente transito</th>", "<td>Si</td>"))
     filas.append(("<th>Descripcion</th>", f"<td>{html_escape(str(solicitud.get('descripcion') or '—'))}</td>"))
     rows_html = "".join(f"<tr>{th}{td}</tr>" for th, td in filas)
     return f'<table class="mail-table"><tbody>{rows_html}</tbody></table>'

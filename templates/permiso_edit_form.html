@@ -57,7 +57,7 @@
         <div>
           <label class="permiso-edit-label">Tipo</label>
           <select class="permiso-edit-input" name="tipo" required>
-            {% for t in ['Permiso','Licencia','Médico','Personal','Capacitación','Calamidad doméstica','Otro'] %}
+            {% for t in ['Cita Medica','Calamidad domestica','Ejercer derecho al voto','Jurado de votacion','Diligencias personales','Examenes Medicos','Reuniones Escolares'] %}
             <option value="{{ t }}" {{ 'selected' if solicitud.tipo == t else '' }}>{{ t }}</option>
             {% endfor %}
           </select>

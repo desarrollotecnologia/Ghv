@@ -18,7 +18,7 @@
         <div class="detail-field"><label>Cédula</label><span>{{ solicitud.id_cedula or '—' }}</span></div>
         <div class="detail-field"><label>Área</label><span>{{ solicitud.area_final or '—' }}</span></div>
         <div class="detail-field"><label>Estado</label><span>{{ solicitud.estado or '—' }}</span></div>
-        <div class="detail-field"><label>Tipo</label><span>{{ solicitud.tipo or '—' }}</span></div>
+        <div class="detail-field"><label>Tipo</label><span>Incapacidad médica</span></div>
         <div class="detail-field"><label>Días incapacidad</label><span>{{ solicitud.dias_incapacidad or 0 }}</span></div>
         <div class="detail-field"><label>Fecha desde</label><span>{{ solicitud.fecha_desde|fecha_display }}</span></div>
         <div class="detail-field"><label>Fecha hasta</label><span>{{ solicitud.fecha_hasta|fecha_display }}</span></div>
@@ -26,8 +26,12 @@
         <div class="detail-field"><label>Hora final</label><span>{{ solicitud.hora_fin or '—' }}</span></div>
         <div class="detail-field"><label>Fecha solicitud</label><span>{{ solicitud.fecha_solicitud|fecha_display }}</span></div>
         <div class="detail-field"><label>Fecha resolución</label><span>{{ solicitud.fecha_resolucion|fecha_display if solicitud.fecha_resolucion else '—' }}</span></div>
-        <div class="detail-field" style="grid-column:1/-1"><label>Motivo</label><span>{{ solicitud.motivo or '—' }}</span></div>
-        <div class="detail-field" style="grid-column:1/-1"><label>Motivo de cambio/edición</label><span>{{ solicitud.motivo_cambio_empleado or '—' }}</span></div>
+        <div class="detail-field"><label>CIE-11</label><span>{{ solicitud.cie11_codigo or '—' }}</span></div>
+        <div class="detail-field" style="grid-column:1/-1"><label>Diagnóstico</label><span>{{ solicitud.cie11_titulo or '—' }}</span></div>
+        <div class="detail-field" style="grid-column:1/-1"><label>Descripción</label><span>{{ solicitud.descripcion or '—' }}</span></div>
+        <div class="detail-field"><label>Origen atención</label><span>{{ solicitud.origen_atencion or '—' }}</span></div>
+        <div class="detail-field"><label>Accidente de tránsito</label><span>{{ 'Sí' if solicitud.accidente_transito else 'No' }}</span></div>
+        <div class="detail-field"><label>Vehículo propio</label><span>{{ 'Sí' if solicitud.vehiculo_propio else 'No' }}</span></div>
         <div class="detail-field" style="grid-column:1/-1"><label>Comentario del aprobador</label><span>{{ solicitud.observaciones or '—' }}</span></div>
         <div class="detail-field"><label>Resuelto por</label><span>{{ solicitud.resuelto_por_display or '—' }}</span></div>
         <div class="detail-field"><label>Email empleado</label><span>{{ solicitud.direccion_email or '—' }}</span></div>
@@ -38,6 +42,18 @@
         <a href="{{ url_for('incapacitado_evidencia', id=solicitud.id) }}" class="btn btn-primary" target="_blank" rel="noopener">
             <span class="material-symbols-outlined" style="font-size:18px">attach_file</span>
             Descargar evidencia adjunta
+        </a>
+        {% endif %}
+        {% if solicitud.historial_clinico %}
+        <a href="{{ url_for('incapacitado_adjunto', id=solicitud.id, campo='historial_clinico') }}" class="btn btn-outline" target="_blank" rel="noopener">
+            <span class="material-symbols-outlined" style="font-size:18px">clinical_notes</span>
+            Descargar historial clínico
+        </a>
+        {% endif %}
+        {% if solicitud.soat %}
+        <a href="{{ url_for('incapacitado_adjunto', id=solicitud.id, campo='soat') }}" class="btn btn-outline" target="_blank" rel="noopener">
+            <span class="material-symbols-outlined" style="font-size:18px">description</span>
+            Descargar SOAT
         </a>
         {% endif %}
         <a href="{{ url_for('incapacitados_dashboard') }}" class="btn btn-outline">Cerrar</a>

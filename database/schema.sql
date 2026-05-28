@@ -206,6 +206,15 @@ CREATE TABLE IF NOT EXISTS solicitud_incapacidad (
     dias_incapacidad INT NOT NULL DEFAULT 0,
     evidencia VARCHAR(255) NOT NULL,
     descripcion TEXT NOT NULL,
+    cie11_codigo VARCHAR(50) NULL,
+    cie11_titulo VARCHAR(255) NULL,
+    cie11_uri VARCHAR(255) NULL,
+    origen_atencion ENUM('EPS','ARL') NULL,
+    requiere_historial TINYINT(1) NOT NULL DEFAULT 0,
+    historial_clinico VARCHAR(255) NULL,
+    accidente_transito TINYINT(1) NOT NULL DEFAULT 0,
+    vehiculo_propio TINYINT(1) NOT NULL DEFAULT 0,
+    soat VARCHAR(255) NULL,
     fecha_solicitud DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     estado ENUM('PENDIENTE','APROBADO','RECHAZADO') NOT NULL DEFAULT 'PENDIENTE',
     observaciones TEXT NULL,
@@ -214,6 +223,7 @@ CREATE TABLE IF NOT EXISTS solicitud_incapacidad (
     solicitante_email VARCHAR(150) NULL,
     INDEX idx_incap_estado (estado),
     INDEX idx_incap_cedula (id_cedula),
+    INDEX idx_incap_cie11_codigo (cie11_codigo),
     INDEX idx_incap_fecha_solicitud (fecha_solicitud),
     FOREIGN KEY (id_cedula) REFERENCES empleado(id_cedula) ON DELETE CASCADE
 ) ENGINE=InnoDB;

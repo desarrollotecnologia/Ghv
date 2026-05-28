@@ -42,3 +42,9 @@ class Config:
     SIGNATURE_IMAGE_PATH = (os.getenv("SIGNATURE_IMAGE_PATH") or "").strip()
     # Cierre automático de sesión por inactividad (minutos).
     SESSION_TIMEOUT_MINUTES = int(os.getenv("SESSION_TIMEOUT_MINUTES", "30"))
+
+    # API CIE-11 (WHO ICD API). Configurar en .env, no dejar credenciales en código.
+    ICD11_CLIENT_ID = (os.getenv("ICD11_CLIENT_ID") or "").strip()
+    ICD11_CLIENT_SECRET = (os.getenv("ICD11_CLIENT_SECRET") or "").strip()
+    ICD11_RELEASE = (os.getenv("ICD11_RELEASE") or "").strip()
+    ICD11_LANGUAGE = (os.getenv("ICD11_LANGUAGE") or "es").strip()

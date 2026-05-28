@@ -20,6 +20,77 @@ CREATE TABLE IF NOT EXISTS solicitud_incapacidad (
     INDEX idx_incap_fecha_solicitud (fecha_solicitud)
 ) ENGINE=InnoDB;
 
+-- Campos adicionales para CIE-11 y soportes especiales.
+SET @sql_col := IF(
+    NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'solicitud_incapacidad' AND COLUMN_NAME = 'cie11_codigo'),
+    'ALTER TABLE solicitud_incapacidad ADD COLUMN cie11_codigo VARCHAR(50) NULL AFTER descripcion',
+    'SELECT "cie11_codigo ya existe" AS info'
+);
+PREPARE stmt_col FROM @sql_col; EXECUTE stmt_col; DEALLOCATE PREPARE stmt_col;
+
+SET @sql_col := IF(
+    NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'solicitud_incapacidad' AND COLUMN_NAME = 'cie11_titulo'),
+    'ALTER TABLE solicitud_incapacidad ADD COLUMN cie11_titulo VARCHAR(255) NULL AFTER cie11_codigo',
+    'SELECT "cie11_titulo ya existe" AS info'
+);
+PREPARE stmt_col FROM @sql_col; EXECUTE stmt_col; DEALLOCATE PREPARE stmt_col;
+
+SET @sql_col := IF(
+    NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'solicitud_incapacidad' AND COLUMN_NAME = 'cie11_uri'),
+    'ALTER TABLE solicitud_incapacidad ADD COLUMN cie11_uri VARCHAR(255) NULL AFTER cie11_titulo',
+    'SELECT "cie11_uri ya existe" AS info'
+);
+PREPARE stmt_col FROM @sql_col; EXECUTE stmt_col; DEALLOCATE PREPARE stmt_col;
+
+SET @sql_col := IF(
+    NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'solicitud_incapacidad' AND COLUMN_NAME = 'origen_atencion'),
+    'ALTER TABLE solicitud_incapacidad ADD COLUMN origen_atencion ENUM(''EPS'',''ARL'') NULL AFTER cie11_uri',
+    'SELECT "origen_atencion ya existe" AS info'
+);
+PREPARE stmt_col FROM @sql_col; EXECUTE stmt_col; DEALLOCATE PREPARE stmt_col;
+
+SET @sql_col := IF(
+    NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'solicitud_incapacidad' AND COLUMN_NAME = 'requiere_historial'),
+    'ALTER TABLE solicitud_incapacidad ADD COLUMN requiere_historial TINYINT(1) NOT NULL DEFAULT 0 AFTER origen_atencion',
+    'SELECT "requiere_historial ya existe" AS info'
+);
+PREPARE stmt_col FROM @sql_col; EXECUTE stmt_col; DEALLOCATE PREPARE stmt_col;
+
+SET @sql_col := IF(
+    NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'solicitud_incapacidad' AND COLUMN_NAME = 'historial_clinico'),
+    'ALTER TABLE solicitud_incapacidad ADD COLUMN historial_clinico VARCHAR(255) NULL AFTER requiere_historial',
+    'SELECT "historial_clinico ya existe" AS info'
+);
+PREPARE stmt_col FROM @sql_col; EXECUTE stmt_col; DEALLOCATE PREPARE stmt_col;
+
+SET @sql_col := IF(
+    NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'solicitud_incapacidad' AND COLUMN_NAME = 'accidente_transito'),
+    'ALTER TABLE solicitud_incapacidad ADD COLUMN accidente_transito TINYINT(1) NOT NULL DEFAULT 0 AFTER historial_clinico',
+    'SELECT "accidente_transito ya existe" AS info'
+);
+PREPARE stmt_col FROM @sql_col; EXECUTE stmt_col; DEALLOCATE PREPARE stmt_col;
+
+SET @sql_col := IF(
+    NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'solicitud_incapacidad' AND COLUMN_NAME = 'vehiculo_propio'),
+    'ALTER TABLE solicitud_incapacidad ADD COLUMN vehiculo_propio TINYINT(1) NOT NULL DEFAULT 0 AFTER accidente_transito',
+    'SELECT "vehiculo_propio ya existe" AS info'
+);
+PREPARE stmt_col FROM @sql_col; EXECUTE stmt_col; DEALLOCATE PREPARE stmt_col;
+
+SET @sql_col := IF(
+    NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'solicitud_incapacidad' AND COLUMN_NAME = 'soat'),
+    'ALTER TABLE solicitud_incapacidad ADD COLUMN soat VARCHAR(255) NULL AFTER vehiculo_propio',
+    'SELECT "soat ya existe" AS info'
+);
+PREPARE stmt_col FROM @sql_col; EXECUTE stmt_col; DEALLOCATE PREPARE stmt_col;
+
+SET @sql_idx := IF(
+    NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'solicitud_incapacidad' AND INDEX_NAME = 'idx_incap_cie11_codigo'),
+    'ALTER TABLE solicitud_incapacidad ADD INDEX idx_incap_cie11_codigo (cie11_codigo)',
+    'SELECT "idx_incap_cie11_codigo ya existe" AS info'
+);
+PREPARE stmt_idx FROM @sql_idx; EXECUTE stmt_idx; DEALLOCATE PREPARE stmt_idx;
+
 -- En algunas bases legadas empleado.id_cedula usa collation/tipo distinto.
 -- Para evitar Error 3780, agregamos FK solo si es compatible.
 SET @can_fk := (

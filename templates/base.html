@@ -247,9 +247,9 @@
                 <span class="material-symbols-outlined">beach_access</span>
                 <span class="nav-label">Solicitud de vacaciones</span>
             </a>
-            <a href="{{ url_for('incapacidad_solicitar') }}" class="nav-item {{ 'active' if active_page == 'Solicitud de incapacidad' }}">
+            <a href="{{ url_for('incapacidad_solicitar') }}" class="nav-item {{ 'active' if active_page in ['Solicitud de incapacidad', 'Reporte de Incapacidad'] }}">
                 <span class="material-symbols-outlined">medical_services</span>
-                <span class="nav-label">Solicitud de incapacidad</span>
+                <span class="nav-label">Reporte de Incapacidad</span>
             </a>
             {% endif %}
             {% if not employee_vac_mode %}

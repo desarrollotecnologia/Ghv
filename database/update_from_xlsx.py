@@ -5,7 +5,7 @@ Truncates and re-imports all tables to ensure data is in sync.
 import os
 import sys
 import argparse
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import openpyxl
 import mysql.connector
 from dotenv import load_dotenv
@@ -59,16 +59,34 @@ def clean_int(val):
 
 
 def clean_date_str(val):
-    """Convert datetime/date/string to 'D/M/YYYY' string for VARCHAR storage."""
+    """Convert Excel/date/string to 'DD/MM/YYYY' string for VARCHAR storage.
+
+    Regla única para la app: las fechas de Excel se guardan como texto
+    colombiano DD/MM/YYYY. Esto evita que cumpleaños, aniversarios y detalles
+    interpreten 01/02 como enero 2 cuando en el Excel correcto es febrero 1.
+    """
     if val is None:
         return None
     if isinstance(val, datetime):
-        return f"{val.day}/{val.month}/{val.year}"
+        return val.strftime("%d/%m/%Y")
     if isinstance(val, date):
-        return f"{val.day}/{val.month}/{val.year}"
+        return val.strftime("%d/%m/%Y")
+    if isinstance(val, (int, float)):
+        try:
+            # Excel serial date (Windows epoch). OpenPyXL usa 1899-12-30.
+            d = date(1899, 12, 30) + timedelta(days=int(val))
+            return d.strftime("%d/%m/%Y")
+        except Exception:
+            return None
     s = str(val).strip()
     if not s or s in ('None', 'nan'):
         return None
+    for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d", "%d-%m-%Y", "%d-%m-%y"):
+        try:
+            return datetime.strptime(s, fmt).strftime("%d/%m/%Y")
+        except ValueError:
+            pass
+    # No aceptar MM/DD ambiguo acá: si llega texto ambiguo, debe corregirse en Excel.
     return s
 
 

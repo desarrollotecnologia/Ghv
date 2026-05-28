@@ -109,6 +109,43 @@
         </div>
 
         <div class="detail-card">
+            <h4 class="related-title"><span class="material-symbols-outlined">coronavirus</span>Enfermedades más prevalentes</h4>
+            {% if disease_stats %}
+            {% if enfermedad_prevalente %}
+            <p style="margin:0 0 10px;color:#166534;font-size:0.9rem;">
+                Mayor prevalencia: <strong>{{ enfermedad_prevalente.codigo }}</strong> · {{ enfermedad_prevalente.titulo }}
+            </p>
+            {% endif %}
+            <div class="table-wrapper">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>CIE-11</th>
+                            <th>Diagnóstico</th>
+                            <th>Casos</th>
+                            <th>Días</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for d in disease_stats %}
+                        <tr>
+                            <td>{{ d.codigo }}</td>
+                            <td>{{ d.titulo }}</td>
+                            <td>{{ d.casos }}</td>
+                            <td>{{ d.dias }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted">No hay diagnósticos CIE-11 para los filtros seleccionados.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="area-emp-layout" style="margin-bottom:16px;">
+        <div class="detail-card">
             <h4 class="related-title"><span class="material-symbols-outlined">leaderboard</span>Personas con más días</h4>
             {% if top_people %}
             <div class="table-wrapper">
@@ -152,7 +189,7 @@
                         <th>Hasta</th>
                         <th>Días</th>
                         <th>Estado</th>
-                        <th>Motivo</th>
+                        <th>Diagnóstico / Motivo</th>
                         <th>Detalle</th>
                     </tr>
                 </thead>
@@ -176,6 +213,11 @@
                             {% endif %}
                         </td>
                         <td>
+                            {% if r.cie11_codigo or r.cie11_titulo %}
+                            <div style="font-size:12px;color:#166534;margin-bottom:4px;">
+                                <strong>{{ r.cie11_codigo or 'CIE-11' }}</strong> {{ r.cie11_titulo or '' }}
+                            </div>
+                            {% endif %}
                             {{ r.motivo or '—' }}
                             {% if r.motivo_cambio_empleado %}
                             <div style="margin-top:4px;font-size:12px;color:#166534;">

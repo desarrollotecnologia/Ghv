@@ -11,12 +11,17 @@ import sys
 import subprocess
 import mysql.connector
 import io
+import json
+import urllib.parse
+import urllib.request
+import urllib.error
 from datetime import datetime, date, timedelta
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from config import Config
 from mail_utils import (
+    send_mail,
     notificar_nueva_solicitud_permiso,
     notificar_resolucion_permiso,
     notificar_resolucion_vacaciones,
@@ -1264,7 +1269,20 @@ def parse_fecha(fecha_str):
         return None
     if isinstance(fecha_str, date):
         return fecha_str
+    if isinstance(fecha_str, (int, float)):
+        try:
+            if float(fecha_str) > 20000:
+                return date(1899, 12, 30) + timedelta(days=int(fecha_str))
+        except Exception:
+            pass
     s = str(fecha_str).strip()
+    if s.replace(".", "", 1).isdigit():
+        try:
+            n = float(s)
+            if n > 20000:
+                return date(1899, 12, 30) + timedelta(days=int(n))
+        except Exception:
+            pass
     # Orden: DD/MM primero (estándar Colombia/Latam), luego ISO, luego MM/DD (US)
     for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y"):
         try:
@@ -1907,6 +1925,127 @@ def _calc_dias_incapacidad(fecha_desde, fecha_hasta):
         return 0
 
 
+TIPOS_PERMISO_VALIDOS = (
+    "Cita Medica",
+    "Calamidad domestica",
+    "Ejercer derecho al voto",
+    "Jurado de votacion",
+    "Diligencias personales",
+    "Examenes Medicos",
+    "Reuniones Escolares",
+)
+
+
+_ICD11_TOKEN_CACHE = {"access_token": None, "expires_at": None}
+
+
+def _icd11_access_token():
+    """Obtiene token OAuth2 para API CIE-11 usando credenciales del .env."""
+    client_id = (current_app.config.get("ICD11_CLIENT_ID") or "").strip()
+    client_secret = (current_app.config.get("ICD11_CLIENT_SECRET") or "").strip()
+    if not client_id or not client_secret:
+        return None, "Credenciales CIE-11 no configuradas (ICD11_CLIENT_ID / ICD11_CLIENT_SECRET)."
+    now = datetime.utcnow()
+    if _ICD11_TOKEN_CACHE.get("access_token") and _ICD11_TOKEN_CACHE.get("expires_at") and _ICD11_TOKEN_CACHE["expires_at"] > now:
+        return _ICD11_TOKEN_CACHE["access_token"], None
+    payload = urllib.parse.urlencode({"grant_type": "client_credentials", "scope": "icdapi_access"}).encode("utf-8")
+    req = urllib.request.Request(
+        "https://icdaccessmanagement.who.int/connect/token",
+        data=payload,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    import base64
+    credentials = f"{client_id}:{client_secret}".encode("utf-8")
+    req.add_header("Authorization", "Basic " + base64.b64encode(credentials).decode("ascii"))
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        return None, f"No se pudo autenticar contra CIE-11: {exc}"
+    token = data.get("access_token")
+    if not token:
+        return None, "CIE-11 no devolvio token de acceso."
+    expires_in = int(data.get("expires_in") or 3600)
+    _ICD11_TOKEN_CACHE["access_token"] = token
+    _ICD11_TOKEN_CACHE["expires_at"] = now + timedelta(seconds=max(60, expires_in - 120))
+    return token, None
+
+
+def _icd11_clean_text(value):
+    if value is None:
+        return ""
+    if isinstance(value, dict):
+        value = value.get("@value") or value.get("label") or value.get("title") or ""
+    text = re.sub(r"<[^>]+>", "", str(value))
+    return " ".join(text.split())
+
+
+def _icd11_search(query_text):
+    """Busca diagnosticos en la linealizacion MMS de CIE-11."""
+    token, error = _icd11_access_token()
+    if error:
+        return None, error
+    release = (current_app.config.get("ICD11_RELEASE") or "").strip()
+    lang = (current_app.config.get("ICD11_LANGUAGE") or "es").strip()
+    params = urllib.parse.urlencode({"q": query_text, "useFlexisearch": "true", "flatResults": "true"})
+    if release:
+        url = f"https://id.who.int/icd/release/11/{release}/mms/search?{params}"
+    else:
+        url = f"https://id.who.int/icd/release/11/mms/search?{params}"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+            "Accept-Language": lang,
+            "API-Version": "v2",
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        return None, f"CIE-11 respondio error HTTP {exc.code}."
+    except Exception as exc:
+        return None, f"No se pudo consultar CIE-11: {exc}"
+    results = payload.get("destinationEntities") or payload.get("matchingEntities") or []
+    items = []
+    for item in results[:15]:
+        title = _icd11_clean_text(item.get("title") or item.get("label"))
+        code = _icd11_clean_text(item.get("theCode") or item.get("code"))
+        uri = item.get("id") or item.get("@id") or ""
+        if title or code:
+            items.append({"code": code, "title": title, "uri": uri})
+    return items, None
+
+
+def _notificar_historial_incapacidad(app, solicitud, empleado_nombre, empleado_email):
+    """Correo al empleado cuando la incapacidad supera 3 dias."""
+    if not empleado_email:
+        return False
+    cie = " ".join(x for x in [solicitud.get("cie11_codigo"), solicitud.get("cie11_titulo")] if x)
+    entidad = solicitud.get("origen_atencion") or "EPS/ARL"
+    body = f"""
+    <p>Hola <strong>{empleado_nombre or 'colaborador'}</strong>,</p>
+    <p>Tu reporte de incapacidad supera los <strong>3 dias</strong>. Por favor carga o entrega a Gestion Humana el <strong>historial clinico</strong> emitido por <strong>{entidad}</strong>.</p>
+    <table class="mail-table">
+      <tr><th>Fecha desde</th><td>{solicitud.get('fecha_desde')}</td></tr>
+      <tr><th>Fecha hasta</th><td>{solicitud.get('fecha_hasta')}</td></tr>
+      <tr><th>Dias</th><td>{solicitud.get('dias_incapacidad')}</td></tr>
+      <tr><th>CIE-11</th><td>{cie or 'Pendiente'}</td></tr>
+    </table>
+    <p>Si fue accidente de transito, recuerda anexar el <strong>SOAT</strong> cuando el vehiculo sea propio.</p>
+    """
+    return send_mail(
+        [empleado_email],
+        "Historial clinico requerido por incapacidad mayor a 3 dias",
+        body,
+        app=app,
+    )
+
+
 def _puede_resolver_solicitud(solicitud):
     """Un usuario puede resolver (aprobar/rechazar) una solicitud si:
     - Es ADMIN o COORD. GH (visibilidad global), o
@@ -2181,10 +2320,9 @@ def permiso_solicitar():
             if request.form.get("id_cedula", "").strip() != id_cedula_empleado:
                 flash("No puede enviar solicitudes a nombre de otro empleado.", "error")
                 return redirect(url_for("permiso_solicitar"))
-        tipo = (request.form.get("tipo") or "Permiso").strip()
-        _tipos_permitidos = ("Permiso", "Licencia", "Médico", "Personal", "Capacitación", "Calamidad doméstica", "Otro")
-        if tipo not in _tipos_permitidos:
-            tipo = "Permiso"
+        tipo = (request.form.get("tipo") or "Diligencias personales").strip()
+        if tipo not in TIPOS_PERMISO_VALIDOS:
+            tipo = "Diligencias personales"
         fecha_desde = request.form.get("fecha_desde")
         fecha_hasta = request.form.get("fecha_hasta")
         motivo = (request.form.get("motivo") or "").strip()
@@ -2361,10 +2499,9 @@ def permiso_editar(id):
     is_empleado = rol == "EMPLEADO" or modo_empleado
 
     if request.method == "POST":
-        tipo = (request.form.get("tipo") or "Permiso").strip()
-        _tipos_permitidos = ("Permiso", "Licencia", "Médico", "Personal", "Capacitación", "Calamidad doméstica", "Otro")
-        if tipo not in _tipos_permitidos:
-            tipo = "Permiso"
+        tipo = (request.form.get("tipo") or "Diligencias personales").strip()
+        if tipo not in TIPOS_PERMISO_VALIDOS:
+            tipo = "Diligencias personales"
 
         fecha_desde = (request.form.get("fecha_desde") or "").strip()
         fecha_hasta = (request.form.get("fecha_hasta") or "").strip()
@@ -2943,6 +3080,18 @@ def vacaciones_mis_solicitudes():
     )
 
 
+@app.route("/api/cie11/search")
+@login_required
+def api_cie11_search():
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 2:
+        return jsonify(ok=True, results=[])
+    results, error = _icd11_search(q)
+    if error:
+        return jsonify(ok=False, error=error, results=[]), 502
+    return jsonify(ok=True, results=results)
+
+
 @app.route("/incapacidades/solicitar", methods=["GET", "POST"])
 @login_required
 def incapacidad_solicitar():
@@ -2972,10 +3121,19 @@ def incapacidad_solicitar():
 
         fecha_desde = (request.form.get("fecha_desde") or "").strip()
         fecha_hasta = (request.form.get("fecha_hasta") or "").strip()
+        cie11_codigo = (request.form.get("cie11_codigo") or "").strip()
+        cie11_titulo = (request.form.get("cie11_titulo") or "").strip()
+        cie11_uri = (request.form.get("cie11_uri") or "").strip()
         descripcion = (request.form.get("descripcion") or "").strip()
+        origen_atencion = (request.form.get("origen_atencion") or "").strip().upper()
+        accidente_transito = 1 if (request.form.get("accidente_transito") or "").strip() == "1" else 0
+        vehiculo_propio = 1 if (request.form.get("vehiculo_propio") or "").strip() == "1" else 0
         area = (request.form.get("area") or "").strip() or None
         if not id_cedula or not fecha_desde or not fecha_hasta:
             flash("Complete empleado, fecha desde y fecha hasta.", "error")
+            return redirect(url_for("incapacidad_solicitar"))
+        if not cie11_codigo or not cie11_titulo:
+            flash("Debe seleccionar un diagnostico CIE-11.", "error")
             return redirect(url_for("incapacidad_solicitar"))
         if not descripcion:
             flash("La descripcion de lo ocurrido es obligatoria.", "error")
@@ -2988,6 +3146,12 @@ def incapacidad_solicitar():
                 return redirect(url_for("incapacidad_solicitar"))
         except ValueError:
             flash("Fechas invalidas.", "error")
+            return redirect(url_for("incapacidad_solicitar"))
+
+        dias = _calc_dias_incapacidad(d_desde, d_hasta)
+        requiere_historial = 1 if dias > 3 else 0
+        if requiere_historial and origen_atencion not in ("EPS", "ARL"):
+            flash("Si la incapacidad supera 3 dias debe indicar si el historial clinico es de EPS o ARL.", "error")
             return redirect(url_for("incapacidad_solicitar"))
 
         evidencia_file = request.files.get("evidencia")
@@ -3005,6 +3169,15 @@ def incapacidad_solicitar():
             flash("La evidencia no debe superar 5 MB.", "error")
             return redirect(url_for("incapacidad_solicitar"))
 
+        historial_file = request.files.get("historial_clinico")
+        if requiere_historial and (not historial_file or not historial_file.filename):
+            flash("Debe adjuntar historial clinico cuando la incapacidad supera 3 dias.", "error")
+            return redirect(url_for("incapacidad_solicitar"))
+        soat_file = request.files.get("soat")
+        if accidente_transito and vehiculo_propio and (not soat_file or not soat_file.filename):
+            flash("Debe adjuntar SOAT si fue accidente de transito y el vehiculo es propio.", "error")
+            return redirect(url_for("incapacidad_solicitar"))
+
         emp = query(
             "SELECT id_cedula, apellidos_nombre, direccion_email, area FROM empleado WHERE id_cedula = %s AND estado = 'ACTIVO'",
             (id_cedula,), one=True
@@ -3019,17 +3192,48 @@ def incapacidad_solicitar():
 
         upload_dir = os.path.join(current_app.instance_path, "uploads", "incapacidades")
         os.makedirs(upload_dir, exist_ok=True)
-        nombre_safe = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{id_cedula}{ext}"
-        evidencia_ruta = os.path.join("incapacidades", nombre_safe)
-        evidencia_full_path = os.path.join(upload_dir, nombre_safe)
-        evidencia_file.save(evidencia_full_path)
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
 
-        dias = _calc_dias_incapacidad(d_desde, d_hasta)
-        execute(
-            "INSERT INTO solicitud_incapacidad (id_cedula, area, fecha_desde, fecha_hasta, dias_incapacidad, evidencia, descripcion, solicitante_email) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-            (id_cedula, area, fecha_desde, fecha_hasta, dias, evidencia_ruta, descripcion, user.get("email")),
-        )
+        def _guardar_adjunto(file_obj, prefijo):
+            if not file_obj or not file_obj.filename:
+                return None, None
+            ext_local = os.path.splitext(secure_filename(file_obj.filename))[1].lower()
+            if ext_local not in (".pdf", ".jpg", ".jpeg", ".png", ".webp"):
+                raise ValueError("Los adjuntos deben ser PDF o imagen (JPG, PNG, WEBP).")
+            file_obj.seek(0, 2)
+            size_local = file_obj.tell()
+            file_obj.seek(0)
+            if size_local > 5 * 1024 * 1024:
+                raise ValueError("Los adjuntos no deben superar 5 MB.")
+            nombre_local = f"{ts}_{id_cedula}_{prefijo}{ext_local}"
+            ruta_rel = os.path.join("incapacidades", nombre_local)
+            ruta_abs = os.path.join(upload_dir, nombre_local)
+            file_obj.save(ruta_abs)
+            return ruta_rel, ruta_abs
+
+        try:
+            evidencia_ruta, evidencia_full_path = _guardar_adjunto(evidencia_file, "evidencia")
+            historial_ruta, _historial_full_path = _guardar_adjunto(historial_file, "historial")
+            soat_ruta, _soat_full_path = _guardar_adjunto(soat_file, "soat")
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("incapacidad_solicitar"))
+
+        try:
+            execute(
+                "INSERT INTO solicitud_incapacidad (id_cedula, area, fecha_desde, fecha_hasta, dias_incapacidad, evidencia, descripcion, solicitante_email, cie11_codigo, cie11_titulo, cie11_uri, origen_atencion, requiere_historial, historial_clinico, accidente_transito, vehiculo_propio, soat) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (id_cedula, area, fecha_desde, fecha_hasta, dias, evidencia_ruta, descripcion, user.get("email"), cie11_codigo, cie11_titulo, cie11_uri, origen_atencion or None, requiere_historial, historial_ruta, accidente_transito, vehiculo_propio, soat_ruta),
+            )
+        except Exception as e:
+            if "Unknown column" in str(e):
+                execute(
+                    "INSERT INTO solicitud_incapacidad (id_cedula, area, fecha_desde, fecha_hasta, dias_incapacidad, evidencia, descripcion, solicitante_email) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (id_cedula, area, fecha_desde, fecha_hasta, dias, evidencia_ruta, f"{cie11_codigo} - {cie11_titulo}\n\n{descripcion}", user.get("email")),
+                )
+            else:
+                raise
         row = query("SELECT * FROM solicitud_incapacidad WHERE id_cedula = %s ORDER BY id DESC LIMIT 1", (id_cedula,), one=True)
         encargado = _obtener_encargado_de(id_cedula)
         correos_ok = False
@@ -3057,6 +3261,11 @@ def incapacidad_solicitar():
         else:
             detalle = f" Motivo: {motivo_correo}" if motivo_correo else ""
             flash("Solicitud de incapacidad registrada. No se pudo notificar al jefe inmediato." + detalle, "info")
+        if dias > 3 and row:
+            try:
+                _notificar_historial_incapacidad(app, row, emp["apellidos_nombre"], emp.get("direccion_email"))
+            except Exception:
+                pass
         return redirect(url_for("incapacidad_mis_solicitudes" if is_empleado else "incapacidad_index"))
 
     now_fecha = datetime.now().strftime("%d-%m-%Y")
@@ -3068,7 +3277,7 @@ def incapacidad_solicitar():
         if emp_actual:
             return render_template(
                 "incapacidad_form.html",
-                active_page="Solicitud de incapacidad",
+                active_page="Reporte de Incapacidad",
                 empleados=None,
                 is_empleado=is_empleado,
                 empleado_actual=emp_actual,
@@ -3077,7 +3286,7 @@ def incapacidad_solicitar():
     empleados = query("SELECT id_cedula, apellidos_nombre, area FROM empleado WHERE estado = 'ACTIVO' ORDER BY apellidos_nombre")
     return render_template(
         "incapacidad_form.html",
-        active_page="Solicitud de incapacidad",
+        active_page="Reporte de Incapacidad",
         empleados=empleados,
         is_empleado=False,
         empleado_actual=None,
@@ -3461,19 +3670,37 @@ def incapacitados_dashboard():
     sql_base = (
         "SELECT i.id, i.id_cedula, e.apellidos_nombre, COALESCE(i.area, e.area) AS area, "
         "'Incapacidad medica' AS tipo, i.estado, i.fecha_desde, i.fecha_hasta, "
-        "i.descripcion AS motivo, '' AS motivo_cambio_empleado, i.observaciones, i.fecha_solicitud, i.dias_incapacidad "
+        "i.descripcion AS motivo, '' AS motivo_cambio_empleado, i.observaciones, i.fecha_solicitud, i.dias_incapacidad, "
+        "i.cie11_codigo, i.cie11_titulo, i.origen_atencion, i.accidente_transito "
         "FROM solicitud_incapacidad i "
         "JOIN empleado e ON e.id_cedula COLLATE utf8mb4_unicode_ci = i.id_cedula COLLATE utf8mb4_unicode_ci "
         f"WHERE {' AND '.join(where)} "
         "ORDER BY i.fecha_desde DESC, i.fecha_solicitud DESC, i.id DESC"
     )
-    rows = query(sql_base, tuple(params))
+    try:
+        rows = query(sql_base, tuple(params))
+    except Exception as e:
+        if "Unknown column" in str(e):
+            sql_base = (
+                "SELECT i.id, i.id_cedula, e.apellidos_nombre, COALESCE(i.area, e.area) AS area, "
+                "'Incapacidad medica' AS tipo, i.estado, i.fecha_desde, i.fecha_hasta, "
+                "i.descripcion AS motivo, '' AS motivo_cambio_empleado, i.observaciones, i.fecha_solicitud, i.dias_incapacidad, "
+                "NULL AS cie11_codigo, NULL AS cie11_titulo, NULL AS origen_atencion, 0 AS accidente_transito "
+                "FROM solicitud_incapacidad i "
+                "JOIN empleado e ON e.id_cedula COLLATE utf8mb4_unicode_ci = i.id_cedula COLLATE utf8mb4_unicode_ci "
+                f"WHERE {' AND '.join(where)} "
+                "ORDER BY i.fecha_desde DESC, i.fecha_solicitud DESC, i.id DESC"
+            )
+            rows = query(sql_base, tuple(params))
+        else:
+            raise
 
     total_dias = 0
     personas_set = set()
     areas_set = set()
     area_stats = {}
     people_days = {}
+    disease_stats = {}
 
     for r in rows:
         dias = int(r.get("dias_incapacidad") or 0)
@@ -3496,6 +3723,14 @@ def incapacitados_dashboard():
         if ced:
             st["personas"].add(ced)
 
+        cie_key = (r.get("cie11_codigo") or "").strip() or "SIN CODIGO"
+        cie_title = (r.get("cie11_titulo") or "").strip() or (r.get("motivo") or "Sin diagnostico CIE-11")
+        ds = disease_stats.setdefault(cie_key, {"codigo": cie_key, "titulo": cie_title, "casos": 0, "dias": 0, "personas": set()})
+        ds["casos"] += 1
+        ds["dias"] += dias
+        if ced:
+            ds["personas"].add(ced)
+
     area_stats_list = [
         {
             "area": a,
@@ -3513,6 +3748,18 @@ def incapacitados_dashboard():
     ]
     top_people.sort(key=lambda x: x["dias"], reverse=True)
 
+    disease_stats_list = [
+        {
+            "codigo": v["codigo"],
+            "titulo": v["titulo"],
+            "casos": v["casos"],
+            "dias": v["dias"],
+            "personas": len(v["personas"]),
+        }
+        for v in disease_stats.values()
+    ]
+    disease_stats_list.sort(key=lambda x: (x["casos"], x["dias"]), reverse=True)
+
     return render_template(
         "incapacitados_dashboard.html",
         active_page="Incapacitados",
@@ -3527,6 +3774,8 @@ def incapacitados_dashboard():
         total_dias=total_dias,
         area_stats=area_stats_list,
         top_people=top_people[:10],
+        disease_stats=disease_stats_list[:10],
+        enfermedad_prevalente=disease_stats_list[0] if disease_stats_list else None,
         areas_list=sorted(list(areas_set)),
     )
 
@@ -3606,6 +3855,46 @@ def incapacitado_evidencia(id):
             pass
         flash("No se pudo abrir la evidencia en este momento.", "error")
         return redirect(url_for("incapacitados_dashboard"))
+
+
+@app.route("/incapacitados/<int:id>/adjunto/<campo>")
+@login_required
+def incapacitado_adjunto(id, campo):
+    """Descarga soportes adicionales de incapacidad."""
+    user = get_current_user()
+    if not _can_view_incapacitados(user):
+        flash("No tienes acceso a este adjunto.", "error")
+        return redirect(url_for("home"))
+    if campo not in ("historial_clinico", "soat"):
+        flash("Adjunto no valido.", "error")
+        return redirect(url_for("incapacitado_detalle", id=id))
+    try:
+        solicitud = query(f"SELECT id, {campo} AS ruta FROM solicitud_incapacidad WHERE id = %s", (id,), one=True)
+        if not solicitud or not (solicitud.get("ruta") or "").strip():
+            flash("No hay archivo adjunto para descargar.", "info")
+            return redirect(url_for("incapacitado_detalle", id=id))
+        ruta_rel = (solicitud["ruta"] or "").strip()
+        if ".." in ruta_rel or ruta_rel.startswith("/"):
+            flash("Ruta de adjunto no valida.", "error")
+            return redirect(url_for("incapacitado_detalle", id=id))
+        uploads_dir = os.path.join(current_app.instance_path, "uploads")
+        full_path = os.path.normpath(os.path.join(uploads_dir, ruta_rel))
+        if not full_path.startswith(os.path.normpath(uploads_dir)) or not os.path.isfile(full_path):
+            flash("Archivo adjunto no encontrado.", "error")
+            return redirect(url_for("incapacitado_detalle", id=id))
+        with open(full_path, "rb") as f:
+            data = f.read()
+        resp = make_response(data)
+        resp.headers["Content-Type"] = "application/octet-stream"
+        resp.headers["Content-Disposition"] = f'attachment; filename="{os.path.basename(ruta_rel)}"'
+        return resp
+    except Exception as e:
+        try:
+            current_app.logger.exception("[Incapacitados] Error al abrir adjunto id=%s campo=%s: %s", id, campo, e)
+        except Exception:
+            pass
+        flash("No se pudo abrir el adjunto en este momento.", "error")
+        return redirect(url_for("incapacitado_detalle", id=id))
 
 
 

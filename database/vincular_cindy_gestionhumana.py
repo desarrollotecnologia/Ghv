@@ -87,15 +87,37 @@ def main():
             )
             print(f"OK: creado {ID_EMP} -> {alt}")
 
+    cur.execute(
+        "SELECT id_user FROM usuario WHERE email = %s AND estado = 1 LIMIT 1",
+        ("gerencia.financiera@colbeef.com",),
+    )
+    jefe = cur.fetchone()
+    if jefe:
+        cur.execute(
+            "UPDATE empleado SET id_user_encargado = %s WHERE id_cedula = %s",
+            (jefe["id_user"], CEDULA),
+        )
+        print(f"OK: jefe inmediato = {jefe['id_user']} (gerencia.financiera@colbeef.com)")
+    else:
+        print("AVISO: no existe usuario gerencia.financiera@colbeef.com — asigne jefe manualmente")
+
     conn.commit()
 
     cur.execute(
         "SELECT id_user, email, rol, id_cedula FROM usuario WHERE id_user IN (%s, %s) OR id_cedula=%s ORDER BY id_user",
         (ID_COORD, ID_EMP, CEDULA),
     )
-    print("\n--- Resultado ---")
+    print("\n--- Usuarios ---")
     for r in cur.fetchall():
         print(r)
+
+    cur.execute(
+        "SELECT e.id_cedula, e.apellidos_nombre, e.id_user_encargado, u.nombre, u.email "
+        "FROM empleado e LEFT JOIN usuario u ON u.id_user = e.id_user_encargado WHERE e.id_cedula = %s",
+        (CEDULA,),
+    )
+    print("\n--- Empleado + jefe ---")
+    print(cur.fetchone())
 
     conn.close()
     print("\nCindy debe cerrar sesión y volver a entrar con coordinacion.gestionhumana@colbeef.com")

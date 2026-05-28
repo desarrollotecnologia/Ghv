@@ -88,9 +88,9 @@
                 <span class="material-symbols-outlined" style="font-size:20px">beach_access</span>
                 Solicitud de vacaciones
             </a>
-            <a href="{{ url_for('incapacidad_solicitar') }}" class="{{ 'active' if active_page == 'Solicitud de incapacidad' else '' }}">
+            <a href="{{ url_for('incapacidad_solicitar') }}" class="{{ 'active' if active_page in ['Solicitud de incapacidad', 'Reporte de Incapacidad'] else '' }}">
                 <span class="material-symbols-outlined" style="font-size:20px">medical_services</span>
-                Solicitud de incapacidad
+                Reporte de Incapacidad
             </a>
             <a href="{{ url_for('empleado_mis_solicitudes') }}" class="{{ 'active' if active_page == 'Mis solicitudes' else '' }}">
                 <span class="material-symbols-outlined" style="font-size:20px">list</span>

@@ -31,6 +31,13 @@
 .gh-formato-firma-gh .tit { color: #166534; }
 .gh-formato-actions { margin-top: 24px; padding-top: 20px; border-top: 1px solid #e5e7eb; display: flex; gap: 12px; flex-wrap: wrap; }
 .gh-formato-hint { font-size: 12px; color: #6b7280; margin-bottom: 16px; padding: 10px 14px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; }
+.cie-search-box { position: relative; }
+.cie-results { display:none; position:absolute; z-index:20; left:0; right:0; top:100%; background:#fff; border:1px solid #d1d5db; border-radius:10px; box-shadow:0 10px 25px rgba(0,0,0,.12); max-height:260px; overflow:auto; margin-top:4px; }
+.cie-result { width:100%; border:0; background:#fff; text-align:left; padding:10px 12px; cursor:pointer; border-bottom:1px solid #f3f4f6; }
+.cie-result:hover { background:#f0fdf4; }
+.cie-code { font-weight:700; color:#166534; margin-right:6px; }
+.cie-selected { display:none; margin-top:8px; padding:10px 12px; border-radius:8px; background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; font-size:13px; }
+.incap-extra { display:none; }
 @media (max-width: 768px) {
   .gh-formato-header { flex-direction: column; gap: 10px; padding: 14px; }
   .gh-formato-logo img { height: 38px; }
@@ -48,7 +55,7 @@
 
 <div class="gh-formato-wrap">
   <p class="gh-formato-hint">
-    Formato exclusivo para <strong>incapacidad medica</strong>. La evidencia medica es obligatoria (PDF o imagen).
+    Formato exclusivo para <strong>reporte de incapacidad</strong>. Seleccione el diagnostico CIE-11 y adjunte la evidencia medica obligatoria.
     El jefe inmediato recibe correo con boton de <strong>aprobar</strong> o <strong>rechazar</strong> y el archivo adjunto.
   </p>
 
@@ -63,7 +70,7 @@
           </table>
         </div>
       </div>
-      <div class="gh-formato-titulo">FORMATO DE REPORTE DE INCAPACIDAD MEDICA</div>
+      <div class="gh-formato-titulo">REPORTE DE INCAPACIDAD</div>
       <div class="gh-formato-titulo-sub">Fecha: {{ now_fecha|default('') }}</div>
 
       <div class="gh-formato-body">
@@ -133,9 +140,59 @@
         </div>
 
         <div class="gh-formato-fila una">
+          <div class="form-group cie-search-box">
+            <label class="gh-formato-label">Diagnostico CIE-11 <span class="required">*</span></label>
+            <input type="text" id="cie11_buscar" class="gh-formato-input" autocomplete="off" placeholder="Busque por codigo o diagnostico, ej: migraña, lumbalgia, A00">
+            <input type="hidden" name="cie11_codigo" id="cie11_codigo" required>
+            <input type="hidden" name="cie11_titulo" id="cie11_titulo" required>
+            <input type="hidden" name="cie11_uri" id="cie11_uri">
+            <div class="cie-results" id="cie11_results"></div>
+            <div class="cie-selected" id="cie11_selected"></div>
+            <p class="gh-formato-label" style="margin-top:6px;font-weight:400;font-size:12px">
+              La busqueda consulta la API oficial CIE-11 (WHO ICD API).
+            </p>
+          </div>
+        </div>
+
+        <div class="gh-formato-fila una">
           <div class="form-group">
-            <label class="gh-formato-label">Descripcion de lo ocurrido / diagnostico <span class="required">*</span></label>
-            <textarea name="descripcion" class="gh-formato-input gh-formato-motivo" rows="4" required placeholder="Describa lo ocurrido y lo indicado por el medico"></textarea>
+            <label class="gh-formato-label">Descripcion de lo ocurrido <span class="required">*</span></label>
+            <textarea name="descripcion" class="gh-formato-input gh-formato-motivo" rows="4" required placeholder="Describa como ocurrio y cualquier dato importante del soporte medico"></textarea>
+          </div>
+        </div>
+
+        <div class="gh-formato-fila una incap-extra" id="rowHistorial">
+          <div class="form-group">
+            <label class="gh-formato-label">Historial clinico por incapacidad mayor a 3 dias <span class="required">*</span></label>
+            <select name="origen_atencion" id="origen_atencion" class="gh-formato-input" style="margin-bottom:8px">
+              <option value="">— Seleccionar origen —</option>
+              <option value="EPS">EPS</option>
+              <option value="ARL">ARL</option>
+            </select>
+            <input type="file" name="historial_clinico" id="historial_clinico" class="gh-formato-input" accept=".pdf,.jpg,.jpeg,.png,.webp">
+            <p class="gh-formato-label" style="margin-top:6px;font-weight:400;font-size:12px">Tambien se enviara un correo al empleado recordando cargar/entregar este soporte.</p>
+          </div>
+        </div>
+
+        <div class="gh-formato-fila una">
+          <div class="form-group">
+            <label class="gh-formato-label">¿Fue accidente de transito?</label>
+            <select name="accidente_transito" id="accidente_transito" class="gh-formato-input" style="max-width:220px">
+              <option value="0">No</option>
+              <option value="1">Si</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="gh-formato-fila una incap-extra" id="rowSoat">
+          <div class="form-group">
+            <label class="gh-formato-label">Vehiculo propio / SOAT</label>
+            <select name="vehiculo_propio" id="vehiculo_propio" class="gh-formato-input" style="max-width:260px;margin-bottom:8px">
+              <option value="0">No, el vehiculo no es propio</option>
+              <option value="1">Si, carro o moto propio</option>
+            </select>
+            <input type="file" name="soat" id="soat" class="gh-formato-input" accept=".pdf,.jpg,.jpeg,.png,.webp">
+            <p class="gh-formato-label" style="margin-top:6px;font-weight:400;font-size:12px">Si el vehiculo es propio, el SOAT es obligatorio.</p>
           </div>
         </div>
 
@@ -192,6 +249,13 @@
   var d1 = document.getElementById('fecha_desde');
   var d2 = document.getElementById('fecha_hasta');
   var out = document.getElementById('dias_incapacidad_view');
+  var rowHistorial = document.getElementById('rowHistorial');
+  var origenAtencion = document.getElementById('origen_atencion');
+  var historialInput = document.getElementById('historial_clinico');
+  var accidenteTransito = document.getElementById('accidente_transito');
+  var vehiculoPropio = document.getElementById('vehiculo_propio');
+  var rowSoat = document.getElementById('rowSoat');
+  var soatInput = document.getElementById('soat');
   function calcDias() {
     if (!d1 || !d2 || !out || !d1.value || !d2.value) { if (out) out.value = '0'; return; }
     var a = new Date(d1.value + 'T00:00:00');
@@ -199,9 +263,114 @@
     var ms = b - a;
     var dias = Math.floor(ms / 86400000) + 1;
     out.value = dias > 0 ? String(dias) : '0';
+    toggleHistorial();
   }
   if (d1) d1.addEventListener('change', calcDias);
   if (d2) d2.addEventListener('change', calcDias);
+
+  function toggleHistorial() {
+    var dias = parseInt((out && out.value) || '0', 10) || 0;
+    var requiere = dias > 3;
+    if (rowHistorial) rowHistorial.style.display = requiere ? 'grid' : 'none';
+    if (origenAtencion) origenAtencion.required = requiere;
+    if (historialInput) {
+      historialInput.required = requiere;
+      if (!requiere) historialInput.value = '';
+    }
+  }
+
+  function toggleSoat() {
+    var accidente = accidenteTransito && accidenteTransito.value === '1';
+    var propio = vehiculoPropio && vehiculoPropio.value === '1';
+    if (rowSoat) rowSoat.style.display = accidente ? 'grid' : 'none';
+    if (soatInput) {
+      soatInput.required = !!(accidente && propio);
+      if (!accidente || !propio) soatInput.value = '';
+    }
+  }
+  if (accidenteTransito) accidenteTransito.addEventListener('change', toggleSoat);
+  if (vehiculoPropio) vehiculoPropio.addEventListener('change', toggleSoat);
+  toggleHistorial();
+  toggleSoat();
+
+  var cieInput = document.getElementById('cie11_buscar');
+  var cieResults = document.getElementById('cie11_results');
+  var cieSelected = document.getElementById('cie11_selected');
+  var cieCode = document.getElementById('cie11_codigo');
+  var cieTitle = document.getElementById('cie11_titulo');
+  var cieUri = document.getElementById('cie11_uri');
+  var cieTimer = null;
+
+  function clearCieSelected() {
+    if (cieCode) cieCode.value = '';
+    if (cieTitle) cieTitle.value = '';
+    if (cieUri) cieUri.value = '';
+    if (cieSelected) {
+      cieSelected.style.display = 'none';
+      cieSelected.textContent = '';
+    }
+  }
+
+  function renderCieResults(items) {
+    if (!cieResults) return;
+    if (!items || !items.length) {
+      cieResults.innerHTML = '<div class="cie-result">Sin resultados</div>';
+      cieResults.style.display = 'block';
+      return;
+    }
+    function esc(value) {
+      return String(value || '').replace(/[&<>"']/g, function(ch) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+      });
+    }
+    cieResults.innerHTML = items.map(function(item) {
+      return '<button type="button" class="cie-result" data-code="' + esc(item.code) + '" data-title="' + esc(item.title) + '" data-uri="' + esc(item.uri) + '"><span class="cie-code">' + esc(item.code || 'Sin codigo') + '</span>' + esc(item.title) + '</button>';
+    }).join('');
+    cieResults.style.display = 'block';
+  }
+
+  if (cieInput && cieResults) {
+    cieInput.addEventListener('input', function() {
+      clearCieSelected();
+      var q = cieInput.value.trim();
+      clearTimeout(cieTimer);
+      if (q.length < 2) {
+        cieResults.style.display = 'none';
+        cieResults.innerHTML = '';
+        return;
+      }
+      cieTimer = setTimeout(function() {
+        cieResults.innerHTML = '<div class="cie-result">Buscando en CIE-11...</div>';
+        cieResults.style.display = 'block';
+        fetch('{{ url_for("api_cie11_search") }}?q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' } })
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            if (!data.ok) {
+              cieResults.innerHTML = '<div class="cie-result">' + (data.error || 'No se pudo consultar CIE-11') + '</div>';
+              return;
+            }
+            renderCieResults(data.results || []);
+          })
+          .catch(function() {
+            cieResults.innerHTML = '<div class="cie-result">Error consultando CIE-11</div>';
+          });
+      }, 350);
+    });
+
+    cieResults.addEventListener('click', function(ev) {
+      var btn = ev.target.closest('.cie-result');
+      if (!btn || !btn.dataset) return;
+      if (cieCode) cieCode.value = btn.dataset.code || '';
+      if (cieTitle) cieTitle.value = btn.dataset.title || '';
+      if (cieUri) cieUri.value = btn.dataset.uri || '';
+      cieInput.value = ((btn.dataset.code || '') + ' - ' + (btn.dataset.title || '')).trim();
+      if (cieSelected) {
+        cieSelected.textContent = 'Seleccionado: ' + cieInput.value;
+        cieSelected.style.display = 'block';
+      }
+      cieResults.style.display = 'none';
+    });
+  }
 })();
 </script>
 {% endblock %}

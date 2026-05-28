@@ -40,13 +40,22 @@ SET rol = 'ADMIN',
     estado = 1
 WHERE id_user = 'US-0004';
 
--- 3) Verificación
+-- 3) Jefe inmediato de Cindy (modo empleado: permisos/vacaciones → Gerencia Financiera)
+UPDATE empleado
+SET id_user_encargado = (
+    SELECT id_user FROM usuario WHERE email = 'gerencia.financiera@colbeef.com' LIMIT 1
+)
+WHERE id_cedula = @CEDULA;
+
+-- 4) Verificación
 SELECT id_user, nombre, email, rol, id_cedula
 FROM usuario
 WHERE id_user IN ('US-0004', CONCAT('EMP-', @CEDULA))
    OR id_cedula = @CEDULA
 ORDER BY id_user;
 
-SELECT e.id_cedula, e.apellidos_nombre, e.area, e.estado
+SELECT e.id_cedula, e.apellidos_nombre, e.area, e.estado,
+       e.id_user_encargado, j.nombre AS jefe_nombre, j.email AS jefe_email
 FROM empleado e
+LEFT JOIN usuario j ON j.id_user = e.id_user_encargado
 WHERE e.id_cedula = @CEDULA;
