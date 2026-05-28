@@ -3162,8 +3162,7 @@ def incapacidad_solicitar():
             flash("Debe seleccionar un diagnostico CIE-11.", "error")
             return redirect(url_for("incapacidad_solicitar"))
         if not descripcion:
-            flash("La descripcion de lo ocurrido es obligatoria.", "error")
-            return redirect(url_for("incapacidad_solicitar"))
+            descripcion = f"{cie11_codigo} - {cie11_titulo}"
         try:
             d_desde = datetime.strptime(fecha_desde, "%Y-%m-%d").date()
             d_hasta = datetime.strptime(fecha_hasta, "%Y-%m-%d").date()
@@ -3256,7 +3255,7 @@ def incapacidad_solicitar():
                 execute(
                     "INSERT INTO solicitud_incapacidad (id_cedula, area, fecha_desde, fecha_hasta, dias_incapacidad, evidencia, descripcion, solicitante_email) "
                     "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-                    (id_cedula, area, fecha_desde, fecha_hasta, dias, evidencia_ruta, f"{cie11_codigo} - {cie11_titulo}\n\n{descripcion}", user.get("email")),
+                    (id_cedula, area, fecha_desde, fecha_hasta, dias, evidencia_ruta, descripcion, user.get("email")),
                 )
             else:
                 raise
