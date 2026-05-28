@@ -1264,9 +1264,15 @@ def home():
 # ── CUMPLEAÑOS ────────────────────────────────────────────────
 
 def parse_fecha(fecha_str):
-    """Parsea fecha desde string. Prioriza DD/MM/YYYY (Colombia) para que cumpleaños coincidan con la fecha real."""
+    """Parsea fechas con regla Colombia: DD/MM/YYYY o ISO YYYY-MM-DD.
+
+    No acepta MM/DD/YYYY porque ese fallback fue la causa de fechas invertidas
+    en cumpleaños, ingresos y datos importados.
+    """
     if not fecha_str:
         return None
+    if isinstance(fecha_str, datetime):
+        return fecha_str.date()
     if isinstance(fecha_str, date):
         return fecha_str
     if isinstance(fecha_str, (int, float)):
@@ -1283,13 +1289,32 @@ def parse_fecha(fecha_str):
                 return date(1899, 12, 30) + timedelta(days=int(n))
         except Exception:
             pass
-    # Orden: DD/MM primero (estándar Colombia/Latam), luego ISO, luego MM/DD (US)
-    for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y"):
+    if "T" in s and len(s) >= 10:
+        s = s[:10]
+    elif len(s) >= 10 and s[4:5] == "-" and s[7:8] == "-" and s[10:11] in (" ", "T"):
+        s = s[:10]
+
+    for fmt in ("%d/%m/%Y", "%d/%m/%y", "%d-%m-%Y", "%d-%m-%y", "%Y-%m-%d", "%Y/%m/%d"):
         try:
             return datetime.strptime(s, fmt).date()
         except (ValueError, AttributeError):
             continue
     return None
+
+
+def normalizar_fecha_colombia(fecha_val, etiqueta="fecha", permitir_futura=True):
+    """Normaliza una fecha de formulario/importacion a DD/MM/YYYY o devuelve error."""
+    if fecha_val is None:
+        return None, None
+    raw = str(fecha_val).strip()
+    if not raw:
+        return None, None
+    d = parse_fecha(fecha_val)
+    if not d:
+        return None, f"{etiqueta} invalida. Use formato DD/MM/AAAA."
+    if not permitir_futura and d > date.today():
+        return None, f"{etiqueta} ({raw}) no puede ser una fecha futura."
+    return d.strftime("%d/%m/%Y"), None
 
 
 def _fecha_ddmmyyyy(fecha_val):
@@ -1323,44 +1348,8 @@ def format_record_dates(record, keys):
 
 
 def parse_fecha_evento(fecha_str):
-    """Parser para eventos (cumpleaños/aniversario).
-
-    Regla:
-    - Si es ambiguo con '/', usa DD/MM/YYYY (estándar Colombia/Latam).
-    - Si no es ambiguo, respeta el formato detectado.
-    """
-    if not fecha_str:
-        return None
-    if isinstance(fecha_str, date):
-        return fecha_str
-    s = str(fecha_str).strip()
-    if not s:
-        return None
-    try:
-        # ISO o datetime iso
-        return datetime.fromisoformat(s).date()
-    except Exception:
-        pass
-
-    if "/" in s:
-        parts = s.split("/")
-        if len(parts) == 3:
-            try:
-                a = int(parts[0])
-                b = int(parts[1])
-                y = int(parts[2])
-                if y < 100:
-                    y += 2000 if y < 50 else 1900
-                # Desambiguación por rango:
-                if a > 12 and b <= 12:
-                    return date(y, b, a)  # DD/MM
-                if b > 12 and a <= 12:
-                    return date(y, a, b)  # MM/DD
-                # Ambiguo (a<=12 y b<=12): preferir DD/MM (estándar Colombia/Latam).
-                return date(y, b, a)
-            except Exception:
-                pass
-    return parse_fecha(s)
+    """Parser para eventos; usa la misma regla Colombia del resto del sistema."""
+    return parse_fecha(fecha_str)
 
 
 @app.template_filter("fecha_display")
@@ -4797,8 +4786,13 @@ def api_empleado_update(id_cedula):
     vals = []
     for key in allowed:
         if key in data:
+            value = data[key]
+            if key == "fecha_nacimiento":
+                value, error = normalizar_fecha_colombia(value, "Fecha de nacimiento", permitir_futura=False)
+                if error:
+                    return jsonify({"error": error}), 400
             sets.append(f"{key} = %s")
-            vals.append(data[key])
+            vals.append(value)
     if not sets:
         return jsonify({"error": "Sin cambios"}), 400
     vals.append(id_cedula)
@@ -5094,6 +5088,10 @@ def _procesar_hijos_form(id_cedula, request_form, reemplazar=False):
         hijo_id = _g(ids, i)
         identificacion = _g(identificaciones, i) or None
         fecha_nac = _g(fechas, i) or None
+        if fecha_nac:
+            fecha_nac, fecha_err = normalizar_fecha_colombia(fecha_nac, f"Fecha de nacimiento del hijo {nombre}", permitir_futura=False)
+            if fecha_err:
+                raise ValueError(fecha_err)
         sexo = _g(sexos, i) or None
         estado = _g(estados, i) or "ACTIVO"
         if hijo_id:
@@ -5212,12 +5210,24 @@ def crear_empleado():
         if existing:
             flash(f"Ya existe un empleado con cédula {cedula}", "error")
             return redirect(url_for("crear_empleado"))
-        fi_raw = request.form.get("fecha_ingreso", "").strip()
-        if fi_raw:
-            fi_parsed = parse_fecha(fi_raw)
-            if fi_parsed and fi_parsed > date.today():
-                flash(f"La fecha de ingreso ({fi_raw}) no puede ser una fecha futura.", "error")
+        date_fields_no_future = {
+            "fecha_expedicion": "Fecha de expedicion",
+            "fecha_ingreso": "Fecha de ingreso",
+            "fecha_nacimiento": "Fecha de nacimiento",
+        }
+        fechas_normalizadas = {}
+        for field, label in date_fields_no_future.items():
+            valor, error = normalizar_fecha_colombia(request.form.get(field, ""), label, permitir_futura=False)
+            if error:
+                flash(error, "error")
                 return redirect(url_for("crear_empleado"))
+            fechas_normalizadas[field] = valor
+        for fecha_hijo in request.form.getlist("hijo_fecha_nacimiento[]"):
+            if (fecha_hijo or "").strip():
+                _valor_hijo, error_hijo = normalizar_fecha_colombia(fecha_hijo, "Fecha de nacimiento de hijo", permitir_futura=False)
+                if error_hijo:
+                    flash(error_hijo, "error")
+                    return redirect(url_for("crear_empleado"))
         fields_list = [
             "id_cedula", "apellidos_nombre", "tipo_documento", "lugar_expedicion",
             "fecha_expedicion", "departamento", "area", "id_perfil_ocupacional",
@@ -5230,6 +5240,8 @@ def crear_empleado():
         vals = []
         for f in fields_list:
             v = request.form.get(f, "").strip()
+            if f in fechas_normalizadas:
+                v = fechas_normalizadas[f] or ""
             vals.append(v if v else None)
         try:
             execute(f"INSERT INTO empleado ({', '.join(fields_list)}) VALUES ({', '.join(['%s'] * len(fields_list))})", tuple(vals))
@@ -5237,7 +5249,10 @@ def crear_empleado():
             # Compat: si la BD aún no tiene la columna id_user_encargado, reintentar sin ella.
             if "id_user_encargado" in str(e).lower():
                 fields_fallback = [f for f in fields_list if f != "id_user_encargado"]
-                vals_fallback = [request.form.get(f, "").strip() or None for f in fields_fallback]
+                vals_fallback = []
+                for f in fields_fallback:
+                    v = fechas_normalizadas.get(f) if f in fechas_normalizadas else request.form.get(f, "").strip()
+                    vals_fallback.append(v or None)
                 execute(
                     f"INSERT INTO empleado ({', '.join(fields_fallback)}) VALUES ({', '.join(['%s'] * len(fields_fallback))})",
                     tuple(vals_fallback),
@@ -5248,6 +5263,9 @@ def crear_empleado():
             total_hijos = _procesar_hijos_form(cedula, request.form, reemplazar=False)
             if total_hijos > 0:
                 execute("UPDATE empleado SET hijos = 'SI' WHERE id_cedula = %s", (cedula,))
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("crear_empleado"))
         except Exception:
             pass
         try:
@@ -5301,12 +5319,24 @@ def editar_empleado(id):
         return redirect(url_for("personal_activo"))
 
     if request.method == "POST":
-        fi_raw = request.form.get("fecha_ingreso", "").strip()
-        if fi_raw:
-            fi_parsed = parse_fecha(fi_raw)
-            if fi_parsed and fi_parsed > date.today():
-                flash(f"La fecha de ingreso ({fi_raw}) no puede ser una fecha futura.", "error")
+        date_fields_no_future = {
+            "fecha_expedicion": "Fecha de expedicion",
+            "fecha_ingreso": "Fecha de ingreso",
+            "fecha_nacimiento": "Fecha de nacimiento",
+        }
+        fechas_normalizadas = {}
+        for field, label in date_fields_no_future.items():
+            valor, error = normalizar_fecha_colombia(request.form.get(field, ""), label, permitir_futura=False)
+            if error:
+                flash(error, "error")
                 return redirect(url_for("editar_empleado", id=id))
+            fechas_normalizadas[field] = valor
+        for fecha_hijo in request.form.getlist("hijo_fecha_nacimiento[]"):
+            if (fecha_hijo or "").strip():
+                _valor_hijo, error_hijo = normalizar_fecha_colombia(fecha_hijo, "Fecha de nacimiento de hijo", permitir_futura=False)
+                if error_hijo:
+                    flash(error_hijo, "error")
+                    return redirect(url_for("editar_empleado", id=id))
         update_fields = [
             "apellidos_nombre", "tipo_documento", "lugar_expedicion", "fecha_expedicion",
             "departamento", "area", "id_perfil_ocupacional", "fecha_ingreso", "sexo", "rh",
@@ -5319,6 +5349,8 @@ def editar_empleado(id):
         vals = []
         for f in update_fields:
             v = request.form.get(f, "").strip()
+            if f in fechas_normalizadas:
+                v = fechas_normalizadas[f] or ""
             sets.append(f"{f} = %s")
             vals.append(v if v else None)
         vals.append(id)
@@ -5328,7 +5360,11 @@ def editar_empleado(id):
             if "id_user_encargado" in str(e).lower():
                 fb_fields = [f for f in update_fields if f != "id_user_encargado"]
                 fb_sets = [f"{f} = %s" for f in fb_fields]
-                fb_vals = [request.form.get(f, "").strip() or None for f in fb_fields] + [id]
+                fb_vals = []
+                for f in fb_fields:
+                    v = fechas_normalizadas.get(f) if f in fechas_normalizadas else request.form.get(f, "").strip()
+                    fb_vals.append(v or None)
+                fb_vals.append(id)
                 execute(f"UPDATE empleado SET {', '.join(fb_sets)} WHERE id_cedula = %s", tuple(fb_vals))
             else:
                 raise
@@ -5336,6 +5372,9 @@ def editar_empleado(id):
             total_hijos = _procesar_hijos_form(id, request.form, reemplazar=True)
             estado_hijos = "SI" if total_hijos > 0 else (request.form.get("hijos", "").strip() or None)
             execute("UPDATE empleado SET hijos = %s WHERE id_cedula = %s", (estado_hijos, id))
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("editar_empleado", id=id))
         except Exception:
             pass
         try:
@@ -5459,6 +5498,13 @@ def crear_hijo():
         flash(f"No existe un empleado con cédula {cedula}. Verifica el número.", "error")
         return _safe_redirect_to(redirect_to, "hijos_gestion")
 
+    fecha_nacimiento, fecha_error = normalizar_fecha_colombia(
+        request.form.get("fecha_nacimiento", ""), "Fecha de nacimiento del hijo", permitir_futura=False
+    )
+    if fecha_error:
+        flash(fecha_error, "error")
+        return _safe_redirect_to(redirect_to, "detalle_empleado", id=cedula)
+
     last = query("SELECT id_hijo FROM hijo ORDER BY id_hijo DESC LIMIT 1", one=True)
     if last:
         try:
@@ -5475,7 +5521,7 @@ def crear_hijo():
         (new_id,
          request.form.get("identificacion_hijo", "").strip() or None,
          cedula, nombre,
-         request.form.get("fecha_nacimiento", "").strip() or None,
+         fecha_nacimiento,
          request.form.get("sexo", "").strip() or None,
          request.form.get("estado", "ACTIVO").strip()),
     )
@@ -5491,12 +5537,18 @@ def editar_hijo(id):
     cedula = request.form.get("id_cedula", "").strip()
     nombre = request.form.get("apellidos_nombre", "").strip().upper()
     redirect_to = request.form.get("redirect_to", "").strip()
+    fecha_nacimiento, fecha_error = normalizar_fecha_colombia(
+        request.form.get("fecha_nacimiento", ""), "Fecha de nacimiento del hijo", permitir_futura=False
+    )
+    if fecha_error:
+        flash(fecha_error, "error")
+        return _safe_redirect_to(redirect_to, "detalle_empleado", id=cedula)
     execute(
         "UPDATE hijo SET identificacion_hijo=%s, apellidos_nombre=%s, "
         "fecha_nacimiento=%s, sexo=%s, estado=%s WHERE id_hijo=%s",
         (request.form.get("identificacion_hijo", "").strip() or None,
          nombre,
-         request.form.get("fecha_nacimiento", "").strip() or None,
+         fecha_nacimiento,
          request.form.get("sexo", "").strip() or None,
          request.form.get("estado", "ACTIVO").strip(),
          id),
@@ -7246,35 +7298,7 @@ def view_total_hijos():
 
 def _parse_export_date(val):
     """Convierte valor de celda a date para filtrar exportación (varios formatos usados en BD / Excel)."""
-    if val is None:
-        return None
-    if isinstance(val, date) and not isinstance(val, datetime):
-        return val
-    if isinstance(val, datetime):
-        return val.date()
-    s = str(val).strip()
-    if not s:
-        return None
-    # ISO con hora: 2021-07-26 00:00:00 o 2021-07-26T12:00:00
-    if "T" in s and len(s) >= 10:
-        s = s[:10]
-    elif len(s) >= 10 and s[4] == "-" and s[7] == "-" and s[10:11] in (" ", "T"):
-        s = s[:10]
-    fmts = (
-        "%Y-%m-%d",
-        "%d/%m/%Y",
-        "%d-%m-%Y",
-        "%d/%m/%y",
-        "%m/%d/%Y",
-        "%m/%d/%y",
-        "%Y/%m/%d",
-    )
-    for fmt in fmts:
-        try:
-            return datetime.strptime(s, fmt).date()
-        except ValueError:
-            continue
-    return None
+    return parse_fecha(val)
 
 
 EXPORT_CONFIGS = {

@@ -28,7 +28,7 @@ def parsear(s):
         return None
     if isinstance(s, (date, datetime)):
         return s if isinstance(s, date) else s.date()
-    for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d", "%m/%d/%Y"):
+    for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d", "%d-%m-%Y", "%d-%m-%y"):
         try:
             return datetime.strptime(str(s).strip(), fmt).date()
         except ValueError:

@@ -66,11 +66,11 @@
             </div>
             <div class="form-group">
                 <label class="form-label">Fecha Expedición</label>
-                <input type="text" name="fecha_expedicion" class="form-input" value="{{ emp.fecha_expedicion if emp else '' }}" placeholder="DD/MM/AAAA">
+                <input type="text" name="fecha_expedicion" class="form-input js-fecha-co" value="{{ emp.fecha_expedicion if emp else '' }}" placeholder="DD/MM/AAAA" inputmode="numeric" pattern="\d{2}/\d{2}/\d{4}">
             </div>
             <div class="form-group">
                 <label class="form-label">Fecha Nacimiento</label>
-                <input type="text" name="fecha_nacimiento" class="form-input" value="{{ emp.fecha_nacimiento if emp else '' }}" placeholder="DD/MM/AAAA">
+                <input type="text" name="fecha_nacimiento" class="form-input js-fecha-co" value="{{ emp.fecha_nacimiento if emp else '' }}" placeholder="DD/MM/AAAA" inputmode="numeric" pattern="\d{2}/\d{2}/\d{4}">
             </div>
         </div>
         <div class="form-row">
@@ -156,7 +156,7 @@
         <div class="form-row">
             <div class="form-group">
                 <label class="form-label">Fecha de Ingreso</label>
-                <input type="text" name="fecha_ingreso" class="form-input" value="{{ emp.fecha_ingreso if emp else '' }}" placeholder="DD/MM/AAAA">
+                <input type="text" name="fecha_ingreso" class="form-input js-fecha-co" value="{{ emp.fecha_ingreso if emp else '' }}" placeholder="DD/MM/AAAA" inputmode="numeric" pattern="\d{2}/\d{2}/\d{4}">
             </div>
             <div class="form-group">
                 <label class="form-label">EPS</label>
@@ -292,7 +292,7 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">Fecha de nacimiento</label>
-                        <input type="text" name="hijo_fecha_nacimiento[]" class="form-input" value="{{ h.fecha_nacimiento or '' }}" placeholder="DD/MM/AAAA">
+                        <input type="text" name="hijo_fecha_nacimiento[]" class="form-input js-fecha-co" value="{{ h.fecha_nacimiento or '' }}" placeholder="DD/MM/AAAA" inputmode="numeric" pattern="\d{2}/\d{2}/\d{4}">
                     </div>
                 </div>
                 <div class="form-row">
@@ -340,7 +340,7 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">Fecha de nacimiento</label>
-                        <input type="text" name="hijo_fecha_nacimiento[]" class="form-input" placeholder="DD/MM/AAAA">
+                        <input type="text" name="hijo_fecha_nacimiento[]" class="form-input js-fecha-co" placeholder="DD/MM/AAAA" inputmode="numeric" pattern="\d{2}/\d{2}/\d{4}">
                     </div>
                 </div>
                 <div class="form-row">
@@ -379,6 +379,27 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('empForm').addEventListener('submit', function(e) {
+        const fechaRegex = /^\d{2}\/\d{2}\/\d{4}$/;
+        const fechaInputs = Array.from(document.querySelectorAll('.js-fecha-co'));
+        for (const input of fechaInputs) {
+            const valor = input.value.trim();
+            if (!valor) continue;
+            if (!fechaRegex.test(valor)) {
+                e.preventDefault();
+                alert('Las fechas deben estar en formato DD/MM/AAAA. Revise: ' + valor);
+                input.focus();
+                return;
+            }
+            const parts = valor.split('/');
+            const d = parseInt(parts[0], 10), m = parseInt(parts[1], 10), y = parseInt(parts[2], 10);
+            const parsed = new Date(y, m - 1, d);
+            if (parsed.getFullYear() !== y || parsed.getMonth() !== m - 1 || parsed.getDate() !== d) {
+                e.preventDefault();
+                alert('Fecha inválida. Use DD/MM/AAAA: ' + valor);
+                input.focus();
+                return;
+            }
+        }
         const fi = document.querySelector('input[name="fecha_ingreso"]');
         if (fi && fi.value.trim()) {
             const parts = fi.value.trim().split('/');

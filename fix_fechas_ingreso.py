@@ -37,7 +37,7 @@ def parse(s):
     if isinstance(s, date):
         return s
     s = str(s).strip()
-    for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y"):
+    for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d", "%d-%m-%Y", "%d-%m-%y"):
         try:
             return datetime.strptime(s, fmt).date()
         except ValueError:

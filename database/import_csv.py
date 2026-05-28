@@ -9,6 +9,7 @@ Uso:
 import csv
 import os
 import sys
+from datetime import datetime, date, timedelta
 import mysql.connector
 from dotenv import load_dotenv
 
@@ -47,6 +48,30 @@ def clean(val):
     return val if val else None
 
 
+def clean_date_str(val):
+    """Normaliza fechas de CSV a DD/MM/YYYY. No acepta MM/DD/YYYY."""
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val.strftime("%d/%m/%Y")
+    if isinstance(val, date):
+        return val.strftime("%d/%m/%Y")
+    if isinstance(val, (int, float)):
+        try:
+            return (date(1899, 12, 30) + timedelta(days=int(val))).strftime("%d/%m/%Y")
+        except Exception:
+            return None
+    s = str(val).strip()
+    if not s:
+        return None
+    for fmt in ("%d/%m/%Y", "%d/%m/%y", "%d-%m-%Y", "%d-%m-%y", "%Y-%m-%d", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(s, fmt).strftime("%d/%m/%Y")
+        except ValueError:
+            continue
+    return s
+
+
 def import_empleados(cursor):
     rows = read_csv(FILES["dbase"])
     sql = """
@@ -70,11 +95,11 @@ def import_empleados(cursor):
             clean(row.get("ID_Cedula")),
             clean(row.get("Apellidos_Nombre")),
             clean(row.get("Lugar_Expedicion")),
-            clean(row.get("Fecha_Expedicion")),
+            clean_date_str(row.get("Fecha_Expedicion")),
             clean(row.get("Departamento")),
             clean(row.get("Area")),
             clean(row.get("ID_Perfil_Ocupacional")),
-            clean(row.get("Fecha_Ingreso")),
+            clean_date_str(row.get("Fecha_Ingreso")),
             clean(row.get("Sexo")),
             clean(row.get("Rh")),
             clean(row.get("Direccion_Residencia")),
@@ -85,7 +110,7 @@ def import_empleados(cursor):
             clean(row.get("Direccion_Email")),
             clean(row.get("EPS")),
             clean(row.get("Fondo_Pensiones")),
-            clean(row.get("Fecha_Nacimiento")),
+            clean_date_str(row.get("Fecha_Nacimiento")),
             clean(row.get("Hijos")),
             clean(row.get("Estado")),
             clean(row.get("Tipo_Documento")),
@@ -125,8 +150,8 @@ def import_retirados(cursor):
             clean(row.get("Departamento")),
             clean(row.get("Area")),
             clean(row.get("ID_Perfil_Ocupacional")),
-            clean(row.get("Fecha_Ingreso")),
-            clean(row.get("Fecha_Retiro")),
+            clean_date_str(row.get("Fecha_Ingreso")),
+            clean_date_str(row.get("Fecha_Retiro")),
             dias,
             clean(row.get("Tipo_Retiro")),
             clean(row.get("Motivo")),
@@ -152,7 +177,7 @@ def import_hijos(cursor):
             clean(row.get("Identificacion_Hijo")),
             clean(row.get("ID_Cedula")),
             clean(row.get("Apellidos_Nombre")),
-            clean(row.get("Fecha_Nacimiento")),
+            clean_date_str(row.get("Fecha_Nacimiento")),
             clean(row.get("Sexo")),
             clean(row.get("Estado")),
         )
