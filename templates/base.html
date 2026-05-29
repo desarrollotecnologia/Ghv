@@ -82,7 +82,7 @@
                         <form method="post" action="{{ url_for('cambiar_a_modo_empleado') }}" style="margin:0">
                             <button type="submit" class="profile-dropdown-btn" style="width:100%">
                                 <span class="material-symbols-outlined">person</span>
-                                Cambiar a empleado
+                                {{ 'Cambiar a empleado' if not encargado_mode else 'Cambiar a modo empleado' }}
                             </button>
                         </form>
                         {% endif %}

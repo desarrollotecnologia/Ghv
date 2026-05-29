@@ -864,6 +864,7 @@ def cambiar_a_modo_empleado():
         session.pop("employee_mode", None)
         session.pop("employee_vac_mode", None)
         session.pop("encargado_mode", None)
+        session.pop("encargado_mode_opt_out", None)
         registrar_audit(
             "Cambio de cuenta a modo empleado",
             "auth",

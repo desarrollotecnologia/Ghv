@@ -24,7 +24,7 @@ SET
     acciones = 'APROBAR',
     id_cedula = @cedula
 WHERE id_user = @coord_user
-   OR email = 'coordinacion.juridica@colbeef.com';
+   OR LOWER(email) = 'coordinacion.juridica@colbeef.com';
 
 -- Asegurar cuenta EMP para modo empleado.
 INSERT INTO usuario (id_user, email, password_hash, nombre, rol, estado, acciones, id_cedula, debe_cambiar_clave)
@@ -55,7 +55,7 @@ UPDATE empleado
 SET id_user_encargado = (
     SELECT id_user
     FROM usuario
-    WHERE email = 'coordinacion.juridica@colbeef.com'
+    WHERE LOWER(email) = 'coordinacion.juridica@colbeef.com'
       AND COALESCE(estado, 1) = 1
     LIMIT 1
 )
