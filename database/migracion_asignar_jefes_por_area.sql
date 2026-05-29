@@ -80,6 +80,11 @@ UPDATE empleado
 SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='coordinacion.tecnologia@colbeef.com' LIMIT 1)
 WHERE estado='ACTIVO' AND area='TECNOLOGIA';
 
+-- Excepcion puntual: CORREA MANRIQUE LEONARDO reporta a LARA LUNA LEONARDO LUIS.
+UPDATE empleado
+SET id_user_encargado = 'US-0012'
+WHERE id_cedula = '1100891753';
+
 UPDATE empleado
 SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='coordinacion.tesoreria@colbeef.com' LIMIT 1)
 WHERE estado='ACTIVO' AND area='TESORERIA';
