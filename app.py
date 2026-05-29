@@ -3179,19 +3179,22 @@ def incapacidad_solicitar():
             flash("Si la incapacidad supera 3 dias debe indicar si el historial clinico es de EPS o ARL.", "error")
             return redirect(url_for("incapacidad_solicitar"))
 
+        max_upload_mb = 20
+        max_upload_bytes = max_upload_mb * 1024 * 1024
+
         evidencia_file = request.files.get("evidencia")
         if not evidencia_file or not evidencia_file.filename:
-            flash("Debe adjuntar evidencia medica (PDF o imagen).", "error")
+            flash("Debe adjuntar historial clinico (PDF o imagen).", "error")
             return redirect(url_for("incapacidad_solicitar"))
         ext = os.path.splitext(secure_filename(evidencia_file.filename))[1].lower()
         if ext not in (".pdf", ".jpg", ".jpeg", ".png", ".webp"):
-            flash("La evidencia debe ser PDF o imagen (JPG, PNG, WEBP).", "error")
+            flash("El historial clinico debe ser PDF o imagen (JPG, PNG, WEBP).", "error")
             return redirect(url_for("incapacidad_solicitar"))
         evidencia_file.seek(0, 2)
         size = evidencia_file.tell()
         evidencia_file.seek(0)
-        if size > 5 * 1024 * 1024:
-            flash("La evidencia no debe superar 5 MB.", "error")
+        if size > max_upload_bytes:
+            flash(f"El historial clinico no debe superar {max_upload_mb} MB.", "error")
             return redirect(url_for("incapacidad_solicitar"))
 
         historial_file = request.files.get("historial_clinico")
@@ -3228,8 +3231,8 @@ def incapacidad_solicitar():
             file_obj.seek(0, 2)
             size_local = file_obj.tell()
             file_obj.seek(0)
-            if size_local > 5 * 1024 * 1024:
-                raise ValueError("Los adjuntos no deben superar 5 MB.")
+            if size_local > max_upload_bytes:
+                raise ValueError(f"Los adjuntos no deben superar {max_upload_mb} MB.")
             nombre_local = f"{ts}_{id_cedula}_{prefijo}{ext_local}"
             ruta_rel = os.path.join("incapacidades", nombre_local)
             ruta_abs = os.path.join(upload_dir, nombre_local)
@@ -3407,21 +3410,21 @@ def incapacidad_evidencia(id):
     try:
         solicitud = query("SELECT id_cedula, evidencia FROM solicitud_incapacidad WHERE id = %s", (id,), one=True)
         if not solicitud or not (solicitud.get("evidencia") or "").strip():
-            flash("No hay evidencia adjunta para esta solicitud.", "info")
+            flash("No hay historial clinico adjunto para esta solicitud.", "info")
             return redirect(url_for("incapacidad_index"))
         user = get_current_user() or {}
         if (solicitud.get("id_cedula") or "").strip() != (user.get("id_cedula") or "").strip():
             if not _puede_resolver_solicitud(solicitud) and not _can_view_incapacitados(user):
-                flash("No tienes acceso a la evidencia.", "error")
+                flash("No tienes acceso al historial clinico.", "error")
                 return redirect(url_for("home"))
         evidencia_ruta = (solicitud["evidencia"] or "").strip()
         if ".." in evidencia_ruta or evidencia_ruta.startswith("/"):
-            flash("Ruta de evidencia no valida.", "error")
+            flash("Ruta de historial clinico no valida.", "error")
             return redirect(url_for("incapacidad_index"))
         uploads_dir = os.path.join(current_app.instance_path, "uploads")
         full_path = os.path.normpath(os.path.join(uploads_dir, evidencia_ruta))
         if not full_path.startswith(os.path.normpath(uploads_dir)) or not os.path.isfile(full_path):
-            flash("Archivo de evidencia no encontrado.", "error")
+            flash("Archivo de historial clinico no encontrado.", "error")
             return redirect(url_for("incapacidad_index"))
         with open(full_path, "rb") as f:
             data = f.read()
@@ -3468,7 +3471,7 @@ def incapacidad_email_action():
 
 @app.route("/incapacidades/email-action/evidencia")
 def incapacidad_email_evidencia():
-    """Descarga evidencia usando token de correo (sin sesión activa)."""
+    """Descarga historial clinico usando token de correo (sin sesión activa)."""
     token = (request.args.get("token") or "").strip()
     payload, error = _read_incapacidad_email_token(token)
     if error:
@@ -3490,7 +3493,7 @@ def incapacidad_email_evidencia():
         return render_template(
             "incapacidad_email_action.html",
             estado="error",
-            mensaje="No hay evidencia adjunta para esta solicitud.",
+            mensaje="No hay historial clinico adjunto para esta solicitud.",
             solicitud=None,
             evidencia_url="",
             token="",
@@ -3502,7 +3505,7 @@ def incapacidad_email_evidencia():
         return render_template(
             "incapacidad_email_action.html",
             estado="error",
-            mensaje="Ruta de evidencia no valida.",
+            mensaje="Ruta de historial clinico no valida.",
             solicitud=None,
             evidencia_url="",
             token="",
@@ -3515,7 +3518,7 @@ def incapacidad_email_evidencia():
         return render_template(
             "incapacidad_email_action.html",
             estado="error",
-            mensaje="Archivo de evidencia no encontrado.",
+            mensaje="Archivo de historial clinico no encontrado.",
             solicitud=None,
             evidencia_url="",
             token="",
@@ -3848,24 +3851,24 @@ def incapacitado_detalle(id):
 @app.route("/incapacitados/<int:id>/evidencia")
 @login_required
 def incapacitado_evidencia(id):
-    """Vista de evidencia para módulo incapacitados (ADMIN/GH/Gerencia)."""
+    """Vista de historial clinico para módulo incapacitados (ADMIN/GH/Gerencia)."""
     user = get_current_user()
     if not _can_view_incapacitados(user):
-        flash("No tienes acceso a la evidencia.", "error")
+        flash("No tienes acceso al historial clinico.", "error")
         return redirect(url_for("home"))
     try:
         solicitud = query("SELECT id, evidencia FROM solicitud_incapacidad WHERE id = %s", (id,), one=True)
         if not solicitud or not (solicitud.get("evidencia") or "").strip():
-            flash("No hay evidencia adjunta para esta incapacidad.", "info")
+            flash("No hay historial clinico adjunto para esta incapacidad.", "info")
             return redirect(url_for("incapacitado_detalle", id=id))
         evidencia_ruta = (solicitud["evidencia"] or "").strip()
         if ".." in evidencia_ruta or evidencia_ruta.startswith("/"):
-            flash("Ruta de evidencia no válida.", "error")
+            flash("Ruta de historial clinico no valida.", "error")
             return redirect(url_for("incapacitado_detalle", id=id))
         uploads_dir = os.path.join(current_app.instance_path, "uploads")
         full_path = os.path.normpath(os.path.join(uploads_dir, evidencia_ruta))
         if not full_path.startswith(os.path.normpath(uploads_dir)) or not os.path.isfile(full_path):
-            flash("Archivo de evidencia no encontrado.", "error")
+            flash("Archivo de historial clinico no encontrado.", "error")
             return redirect(url_for("incapacitado_detalle", id=id))
         with open(full_path, "rb") as f:
             data = f.read()

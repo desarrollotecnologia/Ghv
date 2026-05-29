@@ -16,12 +16,12 @@
     <div class="detail-field"><label>Dias</label><span>{{ solicitud.dias_incapacidad or '—' }}</span></div>
     <div class="detail-field" style="grid-column:1/-1"><label>Descripcion</label><span>{{ solicitud.descripcion or '—' }}</span></div>
     <div class="detail-field" style="grid-column:1/-1">
-      <label>Evidencia</label>
+      <label>Historial clinico</label>
       <span>
         {% if solicitud.evidencia and evidencia_url %}
-        <a href="{{ evidencia_url }}" class="btn btn-outline btn-sm">Descargar evidencia</a>
+        <a href="{{ evidencia_url }}" class="btn btn-outline btn-sm">Descargar historial clinico</a>
         {% elif solicitud.evidencia %}
-        <a href="{{ url_for('incapacidad_evidencia', id=solicitud.id) }}" class="btn btn-outline btn-sm">Descargar evidencia</a>
+        <a href="{{ url_for('incapacidad_evidencia', id=solicitud.id) }}" class="btn btn-outline btn-sm">Descargar historial clinico</a>
         {% else %}—{% endif %}
       </span>
     </div>
