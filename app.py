@@ -1915,14 +1915,28 @@ def _calc_dias_incapacidad(fecha_desde, fecha_hasta):
 
 
 TIPOS_PERMISO_VALIDOS = (
-    "Cita Medica",
-    "Calamidad domestica",
+    "Cita médica",
+    "Calamidad doméstica",
     "Ejercer derecho al voto",
-    "Jurado de votacion",
+    "Jurado de votación",
     "Diligencias personales",
-    "Examenes Medicos",
-    "Reuniones Escolares",
+    "Exámenes médicos",
+    "Reuniones escolares",
+    "Otros",
 )
+
+TIPOS_PERMISO_LEGACY = {
+    "Cita Medica": "Cita médica",
+    "Calamidad domestica": "Calamidad doméstica",
+    "Jurado de votacion": "Jurado de votación",
+    "Examenes Medicos": "Exámenes médicos",
+    "Reuniones Escolares": "Reuniones escolares",
+}
+
+
+def _normalizar_tipo_permiso(tipo):
+    tipo = (tipo or "Diligencias personales").strip()
+    return TIPOS_PERMISO_LEGACY.get(tipo, tipo)
 
 
 _ICD11_TOKEN_CACHE = {"access_token": None, "expires_at": None}
@@ -2346,7 +2360,7 @@ def permiso_solicitar():
             if request.form.get("id_cedula", "").strip() != id_cedula_empleado:
                 flash("No puede enviar solicitudes a nombre de otro empleado.", "error")
                 return redirect(url_for("permiso_solicitar"))
-        tipo = (request.form.get("tipo") or "Diligencias personales").strip()
+        tipo = _normalizar_tipo_permiso(request.form.get("tipo"))
         if tipo not in TIPOS_PERMISO_VALIDOS:
             tipo = "Diligencias personales"
         fecha_desde = request.form.get("fecha_desde")
@@ -2525,7 +2539,7 @@ def permiso_editar(id):
     is_empleado = rol == "EMPLEADO" or modo_empleado
 
     if request.method == "POST":
-        tipo = (request.form.get("tipo") or "Diligencias personales").strip()
+        tipo = _normalizar_tipo_permiso(request.form.get("tipo"))
         if tipo not in TIPOS_PERMISO_VALIDOS:
             tipo = "Diligencias personales"
 
