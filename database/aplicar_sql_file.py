@@ -89,7 +89,7 @@ def main():
         return
 
     conn = mysql.connector.connect(**DB_CONFIG)
-    cursor = conn.cursor()
+    cursor = conn.cursor(buffered=True)
 
     ejecutadas = 0
     try:
@@ -101,6 +101,9 @@ def main():
                 rows = cursor.fetchall()
                 if rows:
                     print(f"Resultado ({len(rows)} fila/s): {rows[:5]}")
+            while cursor.nextset():
+                if cursor.with_rows:
+                    cursor.fetchall()
             ejecutadas += 1
         conn.commit()
     except Exception:
