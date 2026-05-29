@@ -118,6 +118,11 @@ WHERE estado='ACTIVO' AND area IN (
     'GESTION HUMANA'
 );
 
+-- Excepcion puntual: FERNANDEZ GOMEZ SAID JULIAN reporta a Coordinacion Juridica.
+UPDATE empleado
+SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='coordinacion.juridica@colbeef.com' LIMIT 1)
+WHERE id_cedula = '1098752811';
+
 -- ---------- GRUPO 9: Comercial ----------
 UPDATE empleado
 SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='gerencia.comercial@colbeef.com' LIMIT 1)
