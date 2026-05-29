@@ -2,6 +2,9 @@
 -- RESET GLOBAL DE CLAVES A ESTANDAR
 -- Fecha: 2026-04-29
 -- Clave estandar: Colbeef2026*
+-- IMPORTANTE:
+--   Este script SOLO actualiza usuario.password_hash y usuario.debe_cambiar_clave.
+--   NO toca fechas, empleados, hijos, retirados, permisos ni ningun otro dato.
 -- ============================================================
 USE gestio_humana;
 
@@ -10,7 +13,8 @@ START TRANSACTION;
 -- Hash generado con werkzeug.security.generate_password_hash("Colbeef2026*")
 SET @HASH_ESTANDAR = 'scrypt:32768:8:1$yvOKdBrftwQH01iO$939e350382057a8ecfbe9e265c63a382f2374b82fb487e5db21431addc5e6ee34f65c10c3bbf2c326e60a63f37190467fc47109387f67aa5d798816e5d018d89';
 
--- Opcion recomendada: todos los usuarios activos
+-- Opcion recomendada: todos los usuarios activos.
+-- Columnas afectadas: password_hash, debe_cambiar_clave.
 UPDATE usuario
 SET password_hash = @HASH_ESTANDAR,
     debe_cambiar_clave = 1
@@ -32,4 +36,5 @@ COMMIT;
 
 -- Nota:
 -- Si tu BD no tiene la columna debe_cambiar_clave, ejecuta:
+-- Este fallback tambien toca SOLO la contraseña.
 -- UPDATE usuario SET password_hash = @HASH_ESTANDAR WHERE estado = 1;
