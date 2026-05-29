@@ -33,14 +33,16 @@ WHERE id_user IN (
 -- SET password_hash = @HASH_ESTANDAR,
 --     debe_cambiar_clave = 1;
 
+COMMIT;
+
 -- Verificacion rapida
+-- Va despues del COMMIT para no dejar bloqueos si Workbench falla en una consulta.
+-- No compara password_hash para evitar errores de collation en algunas instalaciones.
 SELECT
-    COUNT(*) AS total_activos_reseteados
+    COUNT(*) AS total_activos_marcados_para_cambiar_clave
 FROM usuario
 WHERE estado = 1
-  AND password_hash = @HASH_ESTANDAR;
-
-COMMIT;
+  AND debe_cambiar_clave = 1;
 
 -- Nota:
 -- Si tu BD no tiene la columna debe_cambiar_clave, ejecuta:
