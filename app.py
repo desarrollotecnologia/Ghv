@@ -7063,7 +7063,7 @@ def usuario_reset_password_estandar(id):
 @login_required
 @module_required("admin_usuarios")
 def usuarios_reset_password_estandar_todos():
-    """Restablece en masa la contraseña estándar para todos los usuarios."""
+    """Restablece en masa la contraseña estándar para todos los usuarios activos."""
     if request.method != "POST":
         flash("Acción inválida. Usa el botón de reinicio desde Usuarios.", "warning")
         return redirect(url_for("usuarios"))
@@ -7076,10 +7076,10 @@ def usuarios_reset_password_estandar_todos():
         return ("lock wait timeout" in msg) or ("deadlock" in msg) or ("1205" in msg) or ("1213" in msg)
 
     try:
-        users = query("SELECT id_user FROM usuario ORDER BY id_user") or []
+        users = query("SELECT id_user FROM usuario WHERE COALESCE(estado, 1) = 1 ORDER BY id_user") or []
         total_usuarios = len(users)
         if total_usuarios <= 0:
-            flash("No hay usuarios para restablecer.", "info")
+            flash("No hay usuarios activos para restablecer.", "info")
             return redirect(url_for("usuarios"))
 
         hash_estandar = generate_password_hash(PASSWORD_ESTANDAR)
@@ -7091,7 +7091,7 @@ def usuarios_reset_password_estandar_todos():
 
         try:
             execute(
-                "UPDATE usuario SET password_hash=%s, debe_cambiar_clave=1",
+                "UPDATE usuario SET password_hash=%s, debe_cambiar_clave=1 WHERE COALESCE(estado, 1) = 1",
                 (hash_estandar,),
             )
             reseteados = total_usuarios
@@ -7101,7 +7101,7 @@ def usuarios_reset_password_estandar_todos():
             if "debe_cambiar_clave" in msg:
                 usa_debe_cambiar = False
                 execute(
-                    "UPDATE usuario SET password_hash=%s",
+                    "UPDATE usuario SET password_hash=%s WHERE COALESCE(estado, 1) = 1",
                     (hash_estandar,),
                 )
                 reseteados = total_usuarios

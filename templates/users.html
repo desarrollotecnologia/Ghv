@@ -8,8 +8,8 @@
 {% endif %}
 {% if can_reset|default(false) %}
 <form method="POST" action="{{ url_for('usuarios_reset_password_estandar_todos') }}" id="resetAllPwdForm" style="display:inline">
-    <button type="submit" class="btn btn-outline btn-sm" title="Restablecer contraseñas de todos los usuarios">
-        <span class="material-symbols-outlined" style="font-size:18px">key</span> Reiniciar todas las contraseñas
+    <button type="submit" class="btn btn-outline btn-sm" title="Restablecer contraseñas de todos los usuarios activos">
+        <span class="material-symbols-outlined" style="font-size:18px">key</span> Reiniciar contraseñas activas
     </button>
 </form>
 {% endif %}
@@ -479,7 +479,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Confirmación de reseteo masivo a contraseña estándar
     var formResetAll = document.getElementById('resetAllPwdForm');
     if (formResetAll) formResetAll.addEventListener('submit', function(ev) {
-        if (!confirm('¿Seguro que deseas reiniciar TODAS las contraseñas a la estándar (Colbeef2026*)? Esta acción afecta a todos los usuarios.')) {
+        if (!confirm('¿Seguro que deseas reiniciar las contraseñas de TODOS los usuarios activos a la estándar (Colbeef2026*)? Deberán cambiarla al iniciar sesión.')) {
             ev.preventDefault();
         }
     });
