@@ -55,7 +55,7 @@
         </div>
 
         <div>
-          <label class="permiso-edit-label">Tipo</label>
+          <label class="permiso-edit-label">Motivo</label>
           <select class="permiso-edit-input" name="tipo" required>
             {% for t in ['Cita Medica','Calamidad domestica','Ejercer derecho al voto','Jurado de votacion','Diligencias personales','Examenes Medicos','Reuniones Escolares'] %}
             <option value="{{ t }}" {{ 'selected' if solicitud.tipo == t else '' }}>{{ t }}</option>
@@ -77,8 +77,8 @@
         </div>
 
         <div class="permiso-edit-full">
-          <label class="permiso-edit-label">Motivo del permiso</label>
-          <textarea class="permiso-edit-input" name="motivo" rows="3" required placeholder="Motivo del permiso">{{ solicitud.motivo or '' }}</textarea>
+          <label class="permiso-edit-label">Descripcion</label>
+          <textarea class="permiso-edit-input" name="motivo" rows="3" required placeholder="Descripcion del permiso">{{ solicitud.motivo or '' }}</textarea>
         </div>
 
         <div class="permiso-edit-full">

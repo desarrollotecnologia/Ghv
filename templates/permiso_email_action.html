@@ -11,7 +11,7 @@
     <div class="detail-grid" style="margin-bottom:16px">
         <div class="detail-field"><label>Empleado</label><span>{{ solicitud.apellidos_nombre or '—' }}</span></div>
         <div class="detail-field"><label>Cédula</label><span>{{ solicitud.id_cedula or '—' }}</span></div>
-        <div class="detail-field"><label>Tipo</label><span>{{ solicitud.tipo or 'Permiso' }}</span></div>
+        <div class="detail-field"><label>Motivo</label><span>{{ solicitud.tipo or 'Permiso' }}</span></div>
         <div class="detail-field"><label>Fechas</label><span>{{ solicitud.fecha_desde|fecha_display }} → {{ solicitud.fecha_hasta|fecha_display }}</span></div>
         <div class="detail-field">
             <label>Horas</label>
@@ -22,7 +22,7 @@
             </span>
         </div>
         <div class="detail-field">
-            <label>Motivo</label>
+            <label>Descripcion</label>
             <span>{{ solicitud.motivo or '—' }}</span>
         </div>
         <div class="detail-field" style="grid-column: 1 / -1;">

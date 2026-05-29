@@ -2362,7 +2362,7 @@ def permiso_solicitar():
             flash("Complete empleado, fecha desde y fecha hasta.", "error")
             return redirect(url_for("permiso_solicitar"))
         if not motivo:
-            flash("El motivo es obligatorio.", "error")
+            flash("La descripcion es obligatoria.", "error")
             return redirect(url_for("permiso_solicitar"))
         if permiso_remunerado is None:
             flash("Indique si el permiso es remunerado o no.", "error")
@@ -2544,7 +2544,7 @@ def permiso_editar(id):
             flash("Complete fecha desde y fecha hasta.", "error")
             return redirect(url_for("permiso_editar", id=id))
         if not motivo:
-            flash("El motivo del permiso es obligatorio.", "error")
+            flash("La descripcion del permiso es obligatoria.", "error")
             return redirect(url_for("permiso_editar", id=id))
         if not motivo_cambio:
             flash("Debes indicar el motivo del cambio para reenviar la solicitud.", "error")
