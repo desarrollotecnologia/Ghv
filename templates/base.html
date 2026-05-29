@@ -337,7 +337,7 @@
         </div>
         {% endif %}
 
-        {% if vm.admin or vm.admin_usuarios %}
+        {% if vm.admin or vm.admin_usuarios or vm.catalogos %}
         <div class="sidebar-section">
             <span class="sidebar-label">Admin</span>
             {% if vm.dashboard %}
@@ -358,7 +358,7 @@
                 <span class="nav-label">Usuarios</span>
             </a>
             {% endif %}
-            {% if vm.admin %}
+            {% if vm.catalogos %}
             <a href="{{ url_for('admin_catalogos') }}" class="nav-item {{ 'active' if active_page == 'Catalogos' }}">
                 <span class="material-symbols-outlined">list_alt</span>
                 <span class="nav-label">Catálogos</span>

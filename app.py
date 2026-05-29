@@ -396,6 +396,30 @@ def admin_only(f):
     return decorated
 
 
+def _can_use_catalogos(user):
+    """Catálogos: ADMIN y el correo autorizado de contratación."""
+    if not user:
+        return False
+    if (user.get("rol") or "").strip() == "ADMIN":
+        return True
+    email = _normalize_email(user.get("email"))
+    gestor_mail = _normalize_email(app.config.get("MAIL_GESTOR_CONTRATACION") or "gestor.contratacion@colbeef.com")
+    return bool(gestor_mail and email == gestor_mail)
+
+
+def catalogos_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        user = get_current_user()
+        if user is None:
+            return redirect(url_for("login"))
+        if not _can_use_catalogos(user):
+            flash("No tienes acceso a Catálogos.", "error")
+            return redirect(url_for("home"))
+        return f(*args, **kwargs)
+    return decorated
+
+
 # Qué módulos del sidebar/home puede ver cada rol.
 # Claves usadas en base.html y home.html con {{ vm.* }}
 _ROLE_MODULES = {
@@ -410,6 +434,7 @@ _ROLE_MODULES = {
         "reportes":     True,   # Total Hijos, Dashboard
         "dashboard":    True,   # Gráficas (siempre visible para ADMIN)
         "admin":        True,   # Home Setting, Catálogos, Usuarios (todo)
+        "catalogos":    True,
         "admin_usuarios": True,
         "permisos":     True,   # Solicitud permiso/licencia
         "incapacitados": True,  # Métricas de incapacidades
@@ -424,6 +449,7 @@ _ROLE_MODULES = {
         "fondos":       True,
         "reportes":     True,
         "admin":        False,   # Sin Home Setting ni Catálogos
+        "catalogos":    False,
         "admin_usuarios": True,  # Solo ver usuarios e inactivar
         "permisos":     True,    # Coordinación aprueba/rechaza permisos
         "incapacitados": True,
@@ -438,6 +464,7 @@ _ROLE_MODULES = {
         "fondos":       True,
         "reportes":     True,
         "admin":        False,
+        "catalogos":    False,
         "admin_usuarios": False,
         "permisos":     True,    # Solo consulta; no aprueba ni rechaza
         "incapacitados": True,
@@ -452,6 +479,7 @@ _ROLE_MODULES = {
         "fondos":       True,
         "reportes":     True,
         "admin":        False,   # Sin Home Setting ni Catálogos
+        "catalogos":    False,
         "admin_usuarios": True,  # Ver, crear, editar roles, inactivar (no asignar ADMIN)
         "permisos":     True,
     },
@@ -466,6 +494,7 @@ _ROLE_MODULES = {
         "reportes":     True,   # solo Total Hijos
         "dashboard":    False,  # sin Dashboard
         "admin":        False,
+        "catalogos":    False,
         "permisos":     True,
     },
     "GESTOR DE NOMINA": {
@@ -479,6 +508,7 @@ _ROLE_MODULES = {
         "reportes":     True,   # solo Dashboard
         "total_hijos":  False,
         "admin":        False,
+        "catalogos":    False,
         "permisos":     True,
     },
     "GESTOR SST": {
@@ -492,6 +522,7 @@ _ROLE_MODULES = {
         "reportes":     True,   # solo Dashboard
         "total_hijos":  False,
         "admin":        False,
+        "catalogos":    False,
         "permisos":     False,  # GESTOR SST no ve Permisos (solo Incidencias SISO si aplica)
     },
     "EMPLEADO": {
@@ -504,6 +535,7 @@ _ROLE_MODULES = {
         "fondos":       False,
         "reportes":     False,
         "admin":        False,
+        "catalogos":    False,
         "permisos":     True,   # solo Solicitud de permiso (portal empleado)
     },
     "SISO": {
@@ -521,7 +553,7 @@ PASSWORD_ESTANDAR = "Colbeef2026*"
 _DEFAULT_MODULES = {k: False for k in [
     "organizacion", "personal", "personal_inactivo", "retiro",
     "familia", "eventos", "eps", "fondos",
-    "reportes", "dashboard", "total_hijos", "admin", "admin_usuarios", "permisos",
+    "reportes", "dashboard", "total_hijos", "admin", "catalogos", "admin_usuarios", "permisos",
     "incidencias", "incidencias_dashboard", "incapacitados", "suite_principal",
     "locker",
 ]}
@@ -679,6 +711,7 @@ def inject_user():
         # Acceso directo a la suite principal (todos los usuarios autenticados)
         vm["suite_principal"] = True
         vm["locker"] = _is_locker_user(user)
+        vm["catalogos"] = _can_use_catalogos(user)
         # Usuario Siso@colbeef.com: siempre ve el módulo Incidencias (aunque su rol sea GESTOR SST u otro)
         if (user.get("email") or "").strip().lower() == "siso@colbeef.com":
             vm["incidencias"] = True
@@ -7166,9 +7199,7 @@ def usuarios_reset_password_estandar_todos():
 
 @app.route("/admin/catalogos")
 @login_required
-@module_required("admin")
-@role_required("ALL")
-@admin_only
+@catalogos_required
 def admin_catalogos():
     """Lista y permite agregar registros a catálogos usados en empleados y retiros."""
     tipo_doc = query("SELECT id_tipo_documento, tipo_documento FROM tipo_documento ORDER BY tipo_documento")
@@ -7183,9 +7214,7 @@ def admin_catalogos():
 
 @app.route("/admin/catalogos/tipo-documento", methods=["POST"])
 @login_required
-@module_required("admin")
-@role_required("ALL")
-@admin_only
+@catalogos_required
 def catalogos_tipo_documento_add():
     sigla = (request.form.get("id_tipo_documento") or "").strip().upper()[:50]
     nombre = (request.form.get("tipo_documento") or "").strip()
@@ -7203,9 +7232,7 @@ def catalogos_tipo_documento_add():
 
 @app.route("/admin/catalogos/nivel-educativo", methods=["POST"])
 @login_required
-@module_required("admin")
-@role_required("ALL")
-@admin_only
+@catalogos_required
 def catalogos_nivel_add():
     sigla = (request.form.get("id_nivel") or "").strip().upper()[:50]
     nombre = (request.form.get("nivel") or "").strip()
@@ -7223,9 +7250,7 @@ def catalogos_nivel_add():
 
 @app.route("/admin/catalogos/profesion", methods=["POST"])
 @login_required
-@module_required("admin")
-@role_required("ALL")
-@admin_only
+@catalogos_required
 def catalogos_profesion_add():
     id_prof = (request.form.get("id_profesion") or "").strip()[:100]
     nombre = (request.form.get("profesion") or "").strip()
@@ -7246,9 +7271,7 @@ def catalogos_profesion_add():
 
 @app.route("/admin/catalogos/motivo-retiro", methods=["POST"])
 @login_required
-@module_required("admin")
-@role_required("ALL")
-@admin_only
+@catalogos_required
 def catalogos_motivo_retiro_add():
     tipo_retiro = (request.form.get("tipo_retiro") or "").strip()
     if not tipo_retiro:
