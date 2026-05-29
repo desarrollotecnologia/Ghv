@@ -5,6 +5,7 @@ START TRANSACTION;
 -- Crea o corrige cuentas de portal para TODO empleado ACTIVO.
 -- Regla:
 --   usuario.id_user = EMP-<cedula>
+--   usuario.email = empleado.direccion_email si existe y no esta tomado por otra cuenta
 --   usuario.rol = EMPLEADO
 --   usuario.estado = 1
 --   usuario.id_cedula = empleado.id_cedula
@@ -15,11 +16,20 @@ START TRANSACTION;
 
 SET @HASH_ESTANDAR = 'scrypt:32768:8:1$yvOKdBrftwQH01iO$939e350382057a8ecfbe9e265c63a382f2374b82fb487e5db21431addc5e6ee34f65c10c3bbf2c326e60a63f37190467fc47109387f67aa5d798816e5d018d89';
 
--- 1) Crear cuentas faltantes. Se usa correo local para evitar choque con cuentas de coordinador/admin.
+-- 1) Crear cuentas faltantes. Usa correo personal de Personal Activo si no esta tomado.
 INSERT INTO usuario (id_user, email, password_hash, nombre, rol, estado, acciones, id_cedula, debe_cambiar_clave)
 SELECT
     CONCAT('EMP-', e.id_cedula) AS id_user,
-    CONCAT(e.id_cedula, '@empleado.colbeef.local') AS email,
+    CASE
+        WHEN TRIM(COALESCE(e.direccion_email, '')) <> ''
+         AND NOT EXISTS (
+             SELECT 1
+             FROM usuario ux
+             WHERE LOWER(ux.email) = LOWER(TRIM(e.direccion_email))
+         )
+        THEN LOWER(TRIM(e.direccion_email))
+        ELSE CONCAT(e.id_cedula, '@empleado.colbeef.local')
+    END AS email,
     @HASH_ESTANDAR AS password_hash,
     e.apellidos_nombre AS nombre,
     'EMPLEADO' AS rol,
@@ -38,6 +48,20 @@ UPDATE usuario u
 JOIN empleado e ON u.id_user = CONCAT('EMP-', e.id_cedula)
 SET
     u.nombre = e.apellidos_nombre,
+    u.email = CASE
+        WHEN TRIM(COALESCE(e.direccion_email, '')) <> ''
+         AND NOT EXISTS (
+             SELECT 1
+             FROM (
+                 SELECT id_user, email
+                 FROM usuario
+             ) ux
+             WHERE LOWER(ux.email) = LOWER(TRIM(e.direccion_email))
+               AND ux.id_user <> u.id_user
+         )
+        THEN LOWER(TRIM(e.direccion_email))
+        ELSE u.email
+    END,
     u.rol = 'EMPLEADO',
     u.estado = 1,
     u.acciones = 'VISTA',

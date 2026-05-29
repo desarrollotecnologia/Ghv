@@ -125,8 +125,8 @@ def main():
             print(f"  Usuario creado: {id_user} -> {email}")
             continue
 
-        sets = ["nombre = %s", "rol = 'EMPLEADO'", "estado = 1", "acciones = 'VISTA'"]
-        vals = [nombre]
+        sets = ["nombre = %s", "email = %s", "rol = 'EMPLEADO'", "estado = 1", "acciones = 'VISTA'"]
+        vals = [nombre, email]
         if tiene_id_cedula:
             sets.append("id_cedula = %s")
             vals.append(cedula)
