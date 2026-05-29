@@ -97,6 +97,12 @@ UPDATE empleado
 SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='coordinacion.compras@colbeef.com' LIMIT 1)
 WHERE estado='ACTIVO' AND area='COMPRAS';
 
+-- Excepcion puntual: REYES NOREÑA BAIRON SHTIK, coordinador de Compras,
+-- reporta a Gerencia Financiera para sus propias solicitudes.
+UPDATE empleado
+SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='gerencia.financiera@colbeef.com' LIMIT 1)
+WHERE id_cedula = '1098698851';
+
 UPDATE empleado
 SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='coordinacion.administrativo@colbeef.com' LIMIT 1)
 WHERE estado='ACTIVO' AND area IN ('ADMINISTRACION', 'JARDINERIA');
