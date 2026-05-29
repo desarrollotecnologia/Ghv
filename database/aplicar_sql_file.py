@@ -27,6 +27,16 @@ DB_CONFIG = {
 
 
 def split_sql(sql_text):
+    # Quitar comentarios de linea antes de partir sentencias. Si un comentario
+    # queda pegado al UPDATE/INSERT, el ejecutor lo puede omitir por error.
+    cleaned_lines = []
+    for line in sql_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("--"):
+            continue
+        cleaned_lines.append(line)
+    sql_text = "\n".join(cleaned_lines)
+
     statements = []
     current = []
     in_single = False
@@ -54,7 +64,7 @@ def split_sql(sql_text):
     tail = "".join(current).strip()
     if tail:
         statements.append(tail)
-    return [s for s in statements if s and not s.startswith("--")]
+    return [s for s in statements if s]
 
 
 def main():
