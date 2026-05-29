@@ -97,6 +97,10 @@ def main():
             if stmt.upper().startswith("USE "):
                 continue
             cursor.execute(stmt)
+            if cursor.with_rows:
+                rows = cursor.fetchall()
+                if rows:
+                    print(f"Resultado ({len(rows)} fila/s): {rows[:5]}")
             ejecutadas += 1
         conn.commit()
     except Exception:
