@@ -92,10 +92,12 @@ def main():
     cursor = conn.cursor(buffered=True)
 
     ejecutadas = 0
+    current_stmt = ""
     try:
-        for stmt in statements:
+        for index, stmt in enumerate(statements, start=1):
             if stmt.upper().startswith("USE "):
                 continue
+            current_stmt = stmt
             cursor.execute(stmt)
             if cursor.with_rows:
                 rows = cursor.fetchall()
@@ -106,8 +108,11 @@ def main():
                     cursor.fetchall()
             ejecutadas += 1
         conn.commit()
-    except Exception:
+    except Exception as exc:
         conn.rollback()
+        print(f"ERROR ejecutando sentencia SQL #{index}:")
+        print(current_stmt[:1000])
+        print(f"Detalle: {exc}")
         raise
     finally:
         cursor.close()
