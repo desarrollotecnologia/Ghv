@@ -13,39 +13,55 @@ START TRANSACTION;
 SET @cedula := '1098752811';
 SET @coord_user := 'US-0017';
 SET @emp_user := CONCAT('EMP-', @cedula);
+SET @coord_email := 'coordinacion.juridica@colbeef.com';
 SET @hash_estandar := 'scrypt:32768:8:1$yvOKdBrftwQH01iO$939e350382057a8ecfbe9e265c63a382f2374b82fb487e5db21431addc5e6ee34f65c10c3bbf2c326e60a63f37190467fc47109387f67aa5d798816e5d018d89';
+SET @empleado_nombre := (SELECT apellidos_nombre FROM empleado WHERE id_cedula = @cedula LIMIT 1);
+SET @correo_personal := (
+    SELECT LOWER(TRIM(COALESCE(direccion_email, '')))
+    FROM empleado
+    WHERE id_cedula = @cedula
+    LIMIT 1
+);
+SET @emp_email := IF(
+    @correo_personal <> ''
+    AND NOT EXISTS (
+        SELECT 1
+        FROM usuario
+        WHERE LOWER(email) = @correo_personal
+          AND id_user <> @emp_user
+        LIMIT 1
+    ),
+    @correo_personal,
+    CONCAT(@cedula, '@empleado.colbeef.local')
+);
 
 -- Vincular cuenta coordinadora con la cedula de FERNANDEZ.
 UPDATE usuario
 SET
-    nombre = (SELECT apellidos_nombre FROM empleado WHERE id_cedula = @cedula LIMIT 1),
+    nombre = @empleado_nombre,
     rol = 'JEFE INMEDIATO',
     estado = 1,
     acciones = 'APROBAR',
     id_cedula = @cedula
 WHERE id_user = @coord_user
-   OR LOWER(email) = 'coordinacion.juridica@colbeef.com';
+   OR LOWER(email) = @coord_email;
 
 -- Asegurar cuenta EMP para modo empleado.
 INSERT INTO usuario (id_user, email, password_hash, nombre, rol, estado, acciones, id_cedula, debe_cambiar_clave)
-SELECT
+VALUES (
     @emp_user,
-    CASE
-        WHEN TRIM(COALESCE(direccion_email, '')) <> ''
-        THEN LOWER(TRIM(direccion_email))
-        ELSE CONCAT(@cedula, '@empleado.colbeef.local')
-    END,
+    @emp_email,
     @hash_estandar,
-    apellidos_nombre,
+    @empleado_nombre,
     'EMPLEADO',
     1,
     'VISTA',
-    id_cedula,
+    @cedula,
     1
-FROM empleado
-WHERE id_cedula = @cedula
+)
 ON DUPLICATE KEY UPDATE
     nombre = VALUES(nombre),
+    email = VALUES(email),
     rol = 'EMPLEADO',
     estado = 1,
     acciones = 'VISTA',
@@ -55,28 +71,10 @@ UPDATE empleado
 SET id_user_encargado = (
     SELECT id_user
     FROM usuario
-    WHERE LOWER(email) = 'coordinacion.juridica@colbeef.com'
+    WHERE LOWER(email) = @coord_email
       AND COALESCE(estado, 1) = 1
     LIMIT 1
 )
 WHERE id_cedula = @cedula;
-
--- Verificacion
-SELECT
-    e.id_cedula,
-    e.apellidos_nombre AS empleado,
-    e.area,
-    e.id_user_encargado,
-    u.nombre AS jefe_nombre,
-    u.email AS jefe_email,
-    u.rol AS jefe_rol
-FROM empleado e
-LEFT JOIN usuario u ON u.id_user = e.id_user_encargado
-WHERE e.id_cedula = @cedula;
-
-SELECT id_user, nombre, email, rol, estado, id_cedula
-FROM usuario
-WHERE id_user IN (@coord_user, @emp_user)
-ORDER BY id_user;
 
 COMMIT;
