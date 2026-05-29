@@ -15,10 +15,18 @@ SET @HASH_ESTANDAR = 'scrypt:32768:8:1$yvOKdBrftwQH01iO$939e350382057a8ecfbe9e26
 
 -- Opcion recomendada: todos los usuarios activos.
 -- Columnas afectadas: password_hash, debe_cambiar_clave.
+-- Se filtra por id_user para que funcione con Safe Updates de MySQL Workbench.
 UPDATE usuario
 SET password_hash = @HASH_ESTANDAR,
     debe_cambiar_clave = 1
-WHERE estado = 1;
+WHERE id_user IN (
+    SELECT id_user
+    FROM (
+        SELECT id_user
+        FROM usuario
+        WHERE estado = 1
+    ) AS usuarios_activos
+);
 
 -- Si prefieres incluir tambien inactivos, usa este bloque en lugar del UPDATE anterior:
 -- UPDATE usuario
@@ -37,4 +45,13 @@ COMMIT;
 -- Nota:
 -- Si tu BD no tiene la columna debe_cambiar_clave, ejecuta:
 -- Este fallback tambien toca SOLO la contraseña.
--- UPDATE usuario SET password_hash = @HASH_ESTANDAR WHERE estado = 1;
+-- UPDATE usuario
+-- SET password_hash = @HASH_ESTANDAR
+-- WHERE id_user IN (
+--     SELECT id_user
+--     FROM (
+--         SELECT id_user
+--         FROM usuario
+--         WHERE estado = 1
+--     ) AS usuarios_activos
+-- );
