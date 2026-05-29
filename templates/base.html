@@ -82,7 +82,7 @@
                         <form method="post" action="{{ url_for('cambiar_a_modo_empleado') }}" style="margin:0">
                             <button type="submit" class="profile-dropdown-btn" style="width:100%">
                                 <span class="material-symbols-outlined">person</span>
-                                {{ 'Cambiar a empleado' if not encargado_mode else 'Cambiar a modo empleado' }}
+                                Ir a mi portal de empleado
                             </button>
                         </form>
                         {% endif %}
@@ -90,7 +90,7 @@
                         <form method="post" action="{{ url_for('desactivar_modo_empleado_vacaciones') }}" style="margin:0">
                             <button type="submit" class="profile-dropdown-btn" style="width:100%">
                                 <span class="material-symbols-outlined">undo</span>
-                                Salir de modo empleado
+                                Volver a vista principal
                             </button>
                         </form>
                         {% endif %}
@@ -106,7 +106,7 @@
                         <form method="post" action="{{ url_for('activar_modo_encargado') }}" style="margin:0">
                             <button type="submit" class="profile-dropdown-btn" style="width:100%">
                                 <span class="material-symbols-outlined">groups</span>
-                                Modo jefe encargado
+                                Ver mi equipo
                             </button>
                         </form>
                         {% endif %}
@@ -114,7 +114,7 @@
                         <form method="post" action="{{ url_for('desactivar_modo_encargado') }}" style="margin:0">
                             <button type="submit" class="profile-dropdown-btn" style="width:100%">
                                 <span class="material-symbols-outlined">undo</span>
-                                Salir de modo jefe
+                                Salir de vista de mi equipo
                             </button>
                         </form>
                         {% endif %}
