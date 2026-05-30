@@ -38,6 +38,12 @@ UPDATE empleado
 SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='coordinacion.subproductos@colbeef.com' LIMIT 1)
 WHERE estado='ACTIVO' AND area='SUBPRODUCTOS COMESTIBLES';
 
+-- Excepcion puntual: RINCON BOTELLO YERSON JAVIER, Lider Beneficio,
+-- reporta a Jefe Produccion para sus propias solicitudes.
+UPDATE empleado
+SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='coordinacion.linea@colbeef.com' LIMIT 1)
+WHERE id_cedula = '1127947335';
+
 -- ---------- GRUPO 2: Corrales ----------
 UPDATE empleado
 SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='coordinacion.corrales@colbeef.com' LIMIT 1)
