@@ -56,8 +56,8 @@ INSERT INTO cfg_aprobadores (clave, email) VALUES
     ('jefe_calidad',                'gerencia.calidad@colbeef.com'),
     ('lider_sst',                   'siso@colbeef.com'),
     ('coordinacion_logistica',      'coordinacion.logistico@colbeef.com'),
-    ('lider_logistica_desposte',    'coordinacion.desposte@colbeef.com'),
-    ('lider_desposte_porc',         'coordinacion.desposte@colbeef.com'),
+    ('lider_logistica_desposte',    'desposte@colbeef.com'),
+    ('lider_desposte_porc',         'desposte@colbeef.com'),
     ('supervisor_lad',              'coordinacion.calidad@colbeef.com'),
 
     -- Comercial y Negocios Ganaderos
@@ -303,7 +303,7 @@ INSERT INTO cfg_escalamiento (email_solicitante, email_aprobador) VALUES
     ('coordinacion.subproductos@colbeef.com',  'coordinacion.linea@colbeef.com'),
     ('coordinacion.corrales@colbeef.com',      'coordinacion.linea@colbeef.com'),
     ('coordinacion.logistico@colbeef.com',     'coordinacion.linea@colbeef.com'),
-    ('coordinacion.desposte@colbeef.com',      'coordinacion.linea@colbeef.com'),
+    ('desposte@colbeef.com',                   'coordinacion.linea@colbeef.com'),
     ('coordinacion.calidad@colbeef.com',       'gerencia.calidad@colbeef.com'),
     ('siso@colbeef.com',                       'gerencia.produccion@colbeef.com'),
 

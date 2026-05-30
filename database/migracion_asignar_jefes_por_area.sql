@@ -45,7 +45,7 @@ WHERE estado='ACTIVO' AND area='RECEPCION Y PESAJE';
 
 -- ---------- GRUPO 3: Desposte ----------
 UPDATE empleado
-SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='coordinacion.desposte@colbeef.com' LIMIT 1)
+SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='desposte@colbeef.com' LIMIT 1)
 WHERE estado='ACTIVO' AND area IN (
     'LINEA DESPOSTE',
     'LAVANDERIA DESPOSTE',

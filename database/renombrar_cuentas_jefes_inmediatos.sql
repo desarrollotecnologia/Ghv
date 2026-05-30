@@ -5,7 +5,7 @@ START TRANSACTION;
 -- Normaliza nombres visibles de cuentas aprobadoras.
 -- No cambia correos, claves, roles ni vinculaciones con empleados.
 
-UPDATE usuario SET nombre = 'JEFE CORRALES'       WHERE id_user = 'US-0011' AND rol = 'JEFE INMEDIATO';
+UPDATE usuario SET nombre = 'LIDER CORRALES'      WHERE id_user = 'US-0011' AND rol = 'JEFE INMEDIATO';
 UPDATE usuario SET nombre = 'JEFE TICS'          WHERE id_user = 'US-0012' AND rol = 'JEFE INMEDIATO';
 UPDATE usuario SET nombre = 'JEFE PROYECTOS'     WHERE id_user = 'US-0013' AND rol = 'JEFE INMEDIATO';
 UPDATE usuario SET nombre = 'JEFE TESORERIA Y CARTERA' WHERE id_user = 'US-0014' AND rol = 'JEFE INMEDIATO';
