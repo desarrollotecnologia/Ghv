@@ -51,6 +51,12 @@ WHERE estado='ACTIVO' AND area IN (
     'MTTO DESPOSTE'
 );
 
+-- Excepcion puntual: VARGAS DURAN ROBINSON, jefe de Desposte,
+-- reporta a Gerencia Produccion para sus propias solicitudes.
+UPDATE empleado
+SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='gerencia.produccion@colbeef.com' LIMIT 1)
+WHERE id_cedula = '91477701';
+
 -- ---------- GRUPO 4: Produccion General (gerencia produccion) ----------
 UPDATE empleado
 SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='gerencia.produccion@colbeef.com' LIMIT 1)

@@ -16,7 +16,7 @@ SET @empleado_nombre := (SELECT apellidos_nombre FROM empleado WHERE id_cedula =
 -- Vincular cuenta coordinadora de Compras con la cedula de Bairon.
 UPDATE usuario
 SET
-    nombre = @empleado_nombre,
+    nombre = 'JEFE COMPRAS',
     rol = 'JEFE INMEDIATO',
     estado = 1,
     acciones = 'APROBAR',

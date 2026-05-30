@@ -17,7 +17,7 @@ SET @emp_email := '1098752811@empleado.colbeef.local';
 -- Vincular cuenta coordinadora con la cedula de FERNANDEZ.
 UPDATE usuario
 SET
-    nombre = @empleado_nombre,
+    nombre = 'JEFE JURIDICA',
     rol = 'JEFE INMEDIATO',
     estado = 1,
     acciones = 'APROBAR',
