@@ -28,6 +28,12 @@ UPDATE empleado
 SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='coordinacion.linea@colbeef.com' LIMIT 1)
 WHERE estado='ACTIVO' AND area='LINEA DE SACRIFICIO';
 
+-- Excepcion puntual: ROMERO PEDRAZA SERGIO OMAR, Jefe Produccion,
+-- reporta a Gerencia Calidad para sus propias solicitudes.
+UPDATE empleado
+SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='gerencia.calidad@colbeef.com' LIMIT 1)
+WHERE id_cedula = '1098738467';
+
 UPDATE empleado
 SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='coordinacion.subproductos@colbeef.com' LIMIT 1)
 WHERE estado='ACTIVO' AND area='SUBPRODUCTOS COMESTIBLES';
@@ -51,10 +57,10 @@ WHERE estado='ACTIVO' AND area IN (
     'MTTO DESPOSTE'
 );
 
--- Excepcion puntual: VARGAS DURAN ROBINSON, jefe de Desposte,
--- reporta a Gerencia Produccion para sus propias solicitudes.
+-- Excepcion puntual: VARGAS DURAN ROBINSON, lider de Desposte,
+-- reporta a Jefe Produccion para sus propias solicitudes.
 UPDATE empleado
-SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='gerencia.produccion@colbeef.com' LIMIT 1)
+SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='coordinacion.linea@colbeef.com' LIMIT 1)
 WHERE id_cedula = '91477701';
 
 -- ---------- GRUPO 4: Produccion General (gerencia produccion) ----------
@@ -80,6 +86,14 @@ WHERE estado='ACTIVO' AND area IN (
     'INVIMA',
     'DIRECCION DPTO CALIDAD'
 );
+
+-- Si el Jefe Calidad tiene empleado vinculado, reporta a Gerencia Calidad
+-- para sus propias solicitudes.
+UPDATE empleado e
+JOIN usuario u ON u.id_cedula = e.id_cedula
+SET e.id_user_encargado = (SELECT id_user FROM usuario WHERE email='gerencia.calidad@colbeef.com' LIMIT 1)
+WHERE u.id_user = 'US-0028'
+  AND COALESCE(u.id_cedula, '') <> '';
 
 -- ---------- GRUPO 6: Administrativo / Financiero ----------
 UPDATE empleado
@@ -128,6 +142,19 @@ WHERE estado='ACTIVO' AND area='DIRECCION ADMON Y FINANCIERA';
 UPDATE empleado
 SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='coordinacion.logistico@colbeef.com' LIMIT 1)
 WHERE estado='ACTIVO' AND area IN ('LOGISTICA', 'LOGISTICA DESPOSTE');
+
+-- Excepcion puntual: BARAJAS MAYORGA WILMER DARIO, lider de Logistica,
+-- reporta a Jefe Produccion para sus propias solicitudes.
+UPDATE empleado
+SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='coordinacion.linea@colbeef.com' LIMIT 1)
+WHERE id_cedula = '1095807041';
+
+-- Lideres operativos reportan al Jefe Produccion para sus propias solicitudes.
+UPDATE empleado e
+JOIN usuario u ON u.id_cedula = e.id_cedula
+SET e.id_user_encargado = (SELECT id_user FROM usuario WHERE email='coordinacion.linea@colbeef.com' LIMIT 1)
+WHERE u.id_user IN ('US-0011', 'US-0026', 'US-0001', 'US-0027')
+  AND COALESCE(u.id_cedula, '') <> '';
 
 -- ---------- GRUPO 8: Juridica / Gestion Humana ----------
 UPDATE empleado

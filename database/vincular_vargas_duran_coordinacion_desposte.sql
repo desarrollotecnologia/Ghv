@@ -58,14 +58,9 @@ WHERE estado = 'ACTIVO'
       'MTTO DESPOSTE'
   );
 
--- Robinson, como empleado, reporta a Gerencia Produccion para sus propias solicitudes.
+-- Robinson, como empleado, reporta a Jefe Produccion para sus propias solicitudes.
 UPDATE empleado
-SET id_user_encargado = (
-    SELECT id_user
-    FROM usuario
-    WHERE email = 'gerencia.produccion@colbeef.com'
-    LIMIT 1
-)
+SET id_user_encargado = 'US-0025'
 WHERE id_cedula = '91477701';
 
 COMMIT;

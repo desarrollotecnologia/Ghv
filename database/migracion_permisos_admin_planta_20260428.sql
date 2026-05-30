@@ -299,12 +299,12 @@ INSERT INTO cfg_escalamiento (email_solicitante, email_aprobador) VALUES
     ('coordinacion.administrativo@colbeef.com', 'gerencia.financiera@colbeef.com'),
 
     -- Planta: jefes/lideres -> director planta
-    ('coordinacion.linea@colbeef.com',         'gerencia.produccion@colbeef.com'),
-    ('coordinacion.subproductos@colbeef.com',  'gerencia.produccion@colbeef.com'),
-    ('coordinacion.corrales@colbeef.com',      'gerencia.produccion@colbeef.com'),
-    ('coordinacion.logistico@colbeef.com',     'gerencia.produccion@colbeef.com'),
-    ('coordinacion.desposte@colbeef.com',      'gerencia.produccion@colbeef.com'),
-    ('coordinacion.calidad@colbeef.com',       'gerencia.produccion@colbeef.com'),
+    ('coordinacion.linea@colbeef.com',         'gerencia.calidad@colbeef.com'),
+    ('coordinacion.subproductos@colbeef.com',  'coordinacion.linea@colbeef.com'),
+    ('coordinacion.corrales@colbeef.com',      'coordinacion.linea@colbeef.com'),
+    ('coordinacion.logistico@colbeef.com',     'coordinacion.linea@colbeef.com'),
+    ('coordinacion.desposte@colbeef.com',      'coordinacion.linea@colbeef.com'),
+    ('coordinacion.calidad@colbeef.com',       'gerencia.calidad@colbeef.com'),
     ('siso@colbeef.com',                       'gerencia.produccion@colbeef.com'),
 
     -- Comercial / Ganaderos: jefaturas -> director correspondiente

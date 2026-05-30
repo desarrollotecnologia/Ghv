@@ -5,7 +5,7 @@
 USE gestio_humana;
 
 INSERT INTO usuario (id_user, email, nombre, rol, estado, acciones) VALUES
-    ('US-0001', 'coordinacion.logistico@colbeef.com', 'CJIMENEZ', 'ADMIN', TRUE, 'TODOS LOS CAMBIOS'),
+    ('US-0001', 'coordinacion.logistico@colbeef.com', 'LIDER LOGISTICA', 'JEFE INMEDIATO', TRUE, 'APROBAR'),
     ('US-0002', 'cjimenez1408@gmail.com', 'Y2K', 'ADMIN', TRUE, 'TODOS LOS CAMBIOS'),
     ('US-0010', 'tecnologia@colbeef.com', 'JOHAN PINTO', 'ADMIN', TRUE, 'TODOS LOS CAMBIOS'),
     ('US-0005', 'bienestarsocial@colbeef.com', 'BIENESTAR SOCIAL', 'BIENESTAR SOCIAL', TRUE, 'AGREGAR Y MODIFICAR'),
