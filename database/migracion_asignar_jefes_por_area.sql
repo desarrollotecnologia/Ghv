@@ -162,6 +162,12 @@ WHERE estado='ACTIVO' AND area IN (
     'PLANEACION'
 );
 
+-- Excepcion puntual: RODRIGUEZ RUIZ ALEXANDER, jefe de Proyectos,
+-- reporta a Gerencia Financiera para sus propias solicitudes.
+UPDATE empleado
+SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='gerencia.financiera@colbeef.com' LIMIT 1)
+WHERE id_cedula = '1098665901';
+
 -- ============================================================
 -- VERIFICACION: cuantos empleados activos quedaron asignados
 -- por cada jefe + cuantos quedaron SIN jefe

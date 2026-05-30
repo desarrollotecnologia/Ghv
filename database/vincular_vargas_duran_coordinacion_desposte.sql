@@ -3,19 +3,19 @@ USE gestio_humana;
 START TRANSACTION;
 
 -- Caso puntual:
--- VARGAS DURAN ROBINSON queda vinculado como jefe de Desposte.
+-- VARGAS DURAN ROBINSON queda vinculado como lider de Desposte.
 --
 -- Cuentas esperadas:
---   US-0027      => JEFE DESPOSTE / JEFE INMEDIATO
+--   US-0027      => LIDER DESPOSTE / JEFE INMEDIATO
 --   EMP-91477701 => EMPLEADO
 
 SET @hash_estandar := 'scrypt:32768:8:1$yvOKdBrftwQH01iO$939e350382057a8ecfbe9e265c63a382f2374b82fb487e5db21431addc5e6ee34f65c10c3bbf2c326e60a63f37190467fc47109387f67aa5d798816e5d018d89';
 SET @empleado_nombre := (SELECT apellidos_nombre FROM empleado WHERE id_cedula = '91477701' LIMIT 1);
 
--- Vincular cuenta jefe de Desposte con la cedula de Robinson.
+-- Vincular cuenta lider de Desposte con la cedula de Robinson.
 UPDATE usuario
 SET
-    nombre = 'JEFE DESPOSTE',
+    nombre = 'LIDER DESPOSTE',
     rol = 'JEFE INMEDIATO',
     estado = 1,
     acciones = 'APROBAR',
@@ -43,7 +43,7 @@ ON DUPLICATE KEY UPDATE
     acciones = 'VISTA',
     id_cedula = VALUES(id_cedula);
 
--- Desposte queda bajo el nuevo jefe.
+-- Desposte queda bajo el nuevo lider.
 UPDATE empleado
 SET id_user_encargado = 'US-0027'
 WHERE estado = 'ACTIVO'
