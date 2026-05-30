@@ -9,7 +9,8 @@ SET @CEDULA = '1098661407';
 
 -- 1) Cuenta COORD. GH → cédula del empleado
 UPDATE usuario
-SET id_cedula = @CEDULA
+SET id_cedula = @CEDULA,
+    nombre = 'JEFE GESTION HUMANA'
 WHERE id_user = 'US-0004';
 
 -- 2) Cuenta portal EMPLEADO (misma cédula) — rol EMPLEADO obligatorio para "Cambiar a empleado"
@@ -37,7 +38,8 @@ UPDATE usuario
 SET rol = 'ADMIN',
     acciones = 'TODOS LOS CAMBIOS',
     id_cedula = @CEDULA,
-    estado = 1
+    estado = 1,
+    nombre = 'JEFE GESTION HUMANA'
 WHERE id_user = 'US-0004';
 
 -- 3) Jefe inmediato de Cindy (modo empleado: permisos/vacaciones → Gerencia Financiera)

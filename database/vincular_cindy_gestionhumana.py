@@ -52,7 +52,8 @@ def main():
     print("Antes COORD:", coord)
 
     cur.execute(
-        "UPDATE usuario SET id_cedula=%s, rol='ADMIN', acciones='TODOS LOS CAMBIOS', estado=1 WHERE id_user=%s",
+        "UPDATE usuario SET id_cedula=%s, rol='ADMIN', acciones='TODOS LOS CAMBIOS', "
+        "estado=1, nombre='JEFE GESTION HUMANA' WHERE id_user=%s",
         (CEDULA, ID_COORD),
     )
     print(f"OK: {ID_COORD} ADMIN + cédula {CEDULA}")

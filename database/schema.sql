@@ -399,7 +399,7 @@ INSERT INTO usuario (id_user, email, nombre, rol, estado, acciones) VALUES
     ('US-0002', 'cjimenez1408@gmail.com', 'Y2K', 'ADMIN', TRUE, 'TODOS LOS CAMBIOS'),
     ('US-0010', 'tecnologia@colbeef.com', 'DANIEL ALMEIDA', 'ADMIN', TRUE, 'TODOS LOS CAMBIOS'),
     ('US-0005', 'bienestarsocial@colbeef.com', 'BIENESTAR SOCIAL', 'BIENESTAR SOCIAL', TRUE, 'AGREGAR Y MODIFICAR'),
-    ('US-0004', 'coordinacion.gestionhumana@colbeef.com', 'COORDINACIÓN GH', 'COORD. GH', TRUE, 'TODOS LOS CAMBIOS'),
+    ('US-0004', 'coordinacion.gestionhumana@colbeef.com', 'JEFE GESTION HUMANA', 'COORD. GH', TRUE, 'TODOS LOS CAMBIOS'),
     ('US-0003', 'gestor.contratacion@colbeef.com', 'GESTOR DE CONTRATACION', 'GESTOR DE CONTRATACION', TRUE, 'AGREGAR Y MODIFICAR'),
     ('US-0006', 'gestionhumana@colbeef.com', 'GERTOR DE NOMINA', 'GESTOR DE CONTRATACION', TRUE, 'AGREGAR Y MODIFICAR'),
     ('US-0007', 'Aux.siso@colbeef.com', 'AUXILIAR SST', 'GESTOR SST', TRUE, 'VISTA'),
