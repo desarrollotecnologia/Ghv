@@ -653,7 +653,7 @@ def _tabla_detalle_incapacidad(solicitud, empleado_nombre=None, incluir_empleado
     filas.append(("<th>Dias incapacidad</th>", f"<td>{html_escape(str(dias if dias is not None else '—'))}</td>"))
     cie = " ".join(x for x in [solicitud.get("cie11_codigo"), solicitud.get("cie11_titulo")] if x)
     if cie:
-        filas.append(("<th>CIE-11</th>", f"<td>{html_escape(cie)}</td>"))
+        filas.append(("<th>CIE-10</th>", f"<td>{html_escape(cie)}</td>"))
     if solicitud.get("origen_atencion"):
         filas.append(("<th>Origen atencion</th>", f"<td>{html_escape(str(solicitud.get('origen_atencion')))}</td>"))
     if solicitud.get("accidente_transito"):

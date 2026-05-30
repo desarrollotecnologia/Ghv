@@ -120,7 +120,7 @@
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>CIE-11</th>
+                            <th>CIE-10</th>
                             <th>Diagnóstico</th>
                             <th>Casos</th>
                             <th>Días</th>
@@ -139,7 +139,7 @@
                 </table>
             </div>
             {% else %}
-            <p class="text-muted">No hay diagnósticos CIE-11 para los filtros seleccionados.</p>
+            <p class="text-muted">No hay diagnósticos CIE-10 para los filtros seleccionados.</p>
             {% endif %}
         </div>
     </div>
@@ -215,7 +215,7 @@
                         <td>
                             {% if r.cie11_codigo or r.cie11_titulo %}
                             <div style="font-size:12px;color:#166534;margin-bottom:4px;">
-                                <strong>{{ r.cie11_codigo or 'CIE-11' }}</strong> {{ r.cie11_titulo or '' }}
+                                <strong>{{ r.cie11_codigo or 'CIE-10' }}</strong> {{ r.cie11_titulo or '' }}
                             </div>
                             {% endif %}
                             {{ r.motivo or '—' }}

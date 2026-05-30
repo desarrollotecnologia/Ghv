@@ -12,6 +12,7 @@ import subprocess
 import mysql.connector
 import io
 import json
+import unicodedata
 import urllib.parse
 import urllib.request
 import urllib.error
@@ -2095,6 +2096,73 @@ def _icd11_search(query_text):
     return items, None
 
 
+_CIE10_CACHE = {"path": None, "items": None}
+
+
+def _norm_search_text(value):
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    return re.sub(r"\s+", " ", text).strip().upper()
+
+
+def _cie10_catalog_path():
+    configured = (current_app.config.get("CIE10_JSON_PATH") or "").strip()
+    if configured:
+        return configured
+    return os.path.join(current_app.root_path, "database", "cie10-obj.json")
+
+
+def _cie10_items():
+    path = _cie10_catalog_path()
+    if _CIE10_CACHE.get("items") is not None and _CIE10_CACHE.get("path") == path:
+        return _CIE10_CACHE["items"], None
+    if not os.path.exists(path):
+        return None, f"No se encontro el catalogo CIE-10 en {path}. Configure CIE10_JSON_PATH."
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception as exc:
+        return None, f"No se pudo leer el catalogo CIE-10: {exc}"
+    if isinstance(data, dict):
+        rows = [{"code": str(code).strip(), "title": str(title).strip(), "uri": ""} for code, title in data.items()]
+    elif isinstance(data, list):
+        rows = [
+            {"code": str(item.get("c") or item.get("code") or "").strip(), "title": str(item.get("d") or item.get("title") or "").strip(), "uri": ""}
+            for item in data if isinstance(item, dict)
+        ]
+    else:
+        return None, "El catalogo CIE-10 debe ser un objeto o arreglo JSON."
+    items = []
+    for row in rows:
+        if row["code"] and row["title"]:
+            row["_search"] = _norm_search_text(f"{row['code']} {row['title']}")
+            items.append(row)
+    _CIE10_CACHE["path"] = path
+    _CIE10_CACHE["items"] = items
+    return items, None
+
+
+def _cie10_search(query_text):
+    items, error = _cie10_items()
+    if error:
+        return None, error
+    q = _norm_search_text(query_text)
+    compact_q = q.replace(".", "").replace("-", "")
+    results = []
+    for item in items:
+        code = _norm_search_text(item["code"]).replace(".", "").replace("-", "")
+        if code.startswith(compact_q):
+            results.append(item)
+            if len(results) >= 15:
+                return results, None
+    for item in items:
+        if q in item["_search"] and item not in results:
+            results.append(item)
+            if len(results) >= 15:
+                break
+    return results, None
+
+
 def _notificar_historial_incapacidad(app, solicitud, empleado_nombre, empleado_email):
     """Correo al empleado cuando la incapacidad supera 3 dias."""
     if not empleado_email:
@@ -2108,7 +2176,7 @@ def _notificar_historial_incapacidad(app, solicitud, empleado_nombre, empleado_e
       <tr><th>Fecha desde</th><td>{solicitud.get('fecha_desde')}</td></tr>
       <tr><th>Fecha hasta</th><td>{solicitud.get('fecha_hasta')}</td></tr>
       <tr><th>Dias</th><td>{solicitud.get('dias_incapacidad')}</td></tr>
-      <tr><th>CIE-11</th><td>{cie or 'Pendiente'}</td></tr>
+      <tr><th>CIE-10</th><td>{cie or 'Pendiente'}</td></tr>
     </table>
     <p>Si fue accidente de transito, recuerda anexar el <strong>SOAT</strong> cuando el vehiculo sea propio.</p>
     """
@@ -3154,16 +3222,22 @@ def vacaciones_mis_solicitudes():
     )
 
 
-@app.route("/api/cie11/search")
+@app.route("/api/cie10/search")
 @login_required
-def api_cie11_search():
+def api_cie10_search():
     q = (request.args.get("q") or "").strip()
     if len(q) < 2:
         return jsonify(ok=True, results=[])
-    results, error = _icd11_search(q)
+    results, error = _cie10_search(q)
     if error:
-        return jsonify(ok=False, error=error, results=[]), 502
+        return jsonify(ok=False, error=error, results=[]), 500
     return jsonify(ok=True, results=results)
+
+
+@app.route("/api/cie11/search")
+@login_required
+def api_cie11_search():
+    return api_cie10_search()
 
 
 @app.route("/incapacidades/solicitar", methods=["GET", "POST"])
@@ -3195,9 +3269,9 @@ def incapacidad_solicitar():
 
         fecha_desde = (request.form.get("fecha_desde") or "").strip()
         fecha_hasta = (request.form.get("fecha_hasta") or "").strip()
-        cie11_codigo = (request.form.get("cie11_codigo") or "").strip()
-        cie11_titulo = (request.form.get("cie11_titulo") or "").strip()
-        cie11_uri = (request.form.get("cie11_uri") or "").strip()
+        cie11_codigo = (request.form.get("cie10_codigo") or request.form.get("cie11_codigo") or "").strip()
+        cie11_titulo = (request.form.get("cie10_titulo") or request.form.get("cie11_titulo") or "").strip()
+        cie11_uri = (request.form.get("cie10_uri") or request.form.get("cie11_uri") or "").strip()
         descripcion = (request.form.get("descripcion") or "").strip()
         origen_atencion = (request.form.get("origen_atencion") or "").strip().upper()
         accidente_transito = 1 if (request.form.get("accidente_transito") or "").strip() == "1" else 0
@@ -3207,7 +3281,7 @@ def incapacidad_solicitar():
             flash("Complete empleado, fecha desde y fecha hasta.", "error")
             return redirect(url_for("incapacidad_solicitar"))
         if not cie11_codigo or not cie11_titulo:
-            flash("Debe seleccionar un diagnostico CIE-11.", "error")
+            flash("Debe seleccionar un diagnostico CIE-10.", "error")
             return redirect(url_for("incapacidad_solicitar"))
         if not descripcion:
             descripcion = f"{cie11_codigo} - {cie11_titulo}"
@@ -3800,7 +3874,7 @@ def incapacitados_dashboard():
             st["personas"].add(ced)
 
         cie_key = (r.get("cie11_codigo") or "").strip() or "SIN CODIGO"
-        cie_title = (r.get("cie11_titulo") or "").strip() or (r.get("motivo") or "Sin diagnostico CIE-11")
+        cie_title = (r.get("cie11_titulo") or "").strip() or (r.get("motivo") or "Sin diagnostico CIE-10")
         ds = disease_stats.setdefault(cie_key, {"codigo": cie_key, "titulo": cie_title, "casos": 0, "dias": 0, "personas": set()})
         ds["casos"] += 1
         ds["dias"] += dias

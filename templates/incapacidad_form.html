@@ -55,7 +55,7 @@
 
 <div class="gh-formato-wrap">
   <p class="gh-formato-hint">
-    Formato exclusivo para <strong>reporte de incapacidad</strong>. Seleccione el diagnostico CIE-11 y adjunte el historial clinico obligatorio.
+    Formato exclusivo para <strong>reporte de incapacidad</strong>. Seleccione el diagnostico CIE-10 y adjunte el historial clinico obligatorio.
     El jefe inmediato recibe correo con boton de <strong>aprobar</strong> o <strong>rechazar</strong> y el archivo adjunto.
   </p>
 
@@ -141,15 +141,15 @@
 
         <div class="gh-formato-fila una">
           <div class="form-group cie-search-box">
-            <label class="gh-formato-label">Diagnostico CIE-11 <span class="required">*</span></label>
-            <input type="text" id="cie11_buscar" class="gh-formato-input" autocomplete="off" placeholder="Busque por codigo o diagnostico, ej: migraña, lumbalgia, A00">
-            <input type="hidden" name="cie11_codigo" id="cie11_codigo" required>
-            <input type="hidden" name="cie11_titulo" id="cie11_titulo" required>
-            <input type="hidden" name="cie11_uri" id="cie11_uri">
-            <div class="cie-results" id="cie11_results"></div>
-            <div class="cie-selected" id="cie11_selected"></div>
+            <label class="gh-formato-label">Diagnostico CIE-10 <span class="required">*</span></label>
+            <input type="text" id="cie10_buscar" class="gh-formato-input" autocomplete="off" placeholder="Busque por codigo o diagnostico, ej: tos, lumbalgia, R05">
+            <input type="hidden" name="cie10_codigo" id="cie10_codigo" required>
+            <input type="hidden" name="cie10_titulo" id="cie10_titulo" required>
+            <input type="hidden" name="cie10_uri" id="cie10_uri">
+            <div class="cie-results" id="cie10_results"></div>
+            <div class="cie-selected" id="cie10_selected"></div>
             <p class="gh-formato-label" style="margin-top:6px;font-weight:400;font-size:12px">
-              La busqueda consulta la API oficial CIE-11 (WHO ICD API).
+              La busqueda usa el catalogo local CIE-10.
             </p>
           </div>
         </div>
@@ -286,12 +286,12 @@
   toggleHistorial();
   toggleSoat();
 
-  var cieInput = document.getElementById('cie11_buscar');
-  var cieResults = document.getElementById('cie11_results');
-  var cieSelected = document.getElementById('cie11_selected');
-  var cieCode = document.getElementById('cie11_codigo');
-  var cieTitle = document.getElementById('cie11_titulo');
-  var cieUri = document.getElementById('cie11_uri');
+  var cieInput = document.getElementById('cie10_buscar');
+  var cieResults = document.getElementById('cie10_results');
+  var cieSelected = document.getElementById('cie10_selected');
+  var cieCode = document.getElementById('cie10_codigo');
+  var cieTitle = document.getElementById('cie10_titulo');
+  var cieUri = document.getElementById('cie10_uri');
   var cieTimer = null;
 
   function clearCieSelected() {
@@ -333,19 +333,19 @@
         return;
       }
       cieTimer = setTimeout(function() {
-        cieResults.innerHTML = '<div class="cie-result">Buscando en CIE-11...</div>';
+        cieResults.innerHTML = '<div class="cie-result">Buscando en CIE-10...</div>';
         cieResults.style.display = 'block';
-        fetch('{{ url_for("api_cie11_search") }}?q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' } })
+        fetch('{{ url_for("api_cie10_search") }}?q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' } })
           .then(function(r) { return r.json(); })
           .then(function(data) {
             if (!data.ok) {
-              cieResults.innerHTML = '<div class="cie-result">' + (data.error || 'No se pudo consultar CIE-11') + '</div>';
+              cieResults.innerHTML = '<div class="cie-result">' + (data.error || 'No se pudo consultar CIE-10') + '</div>';
               return;
             }
             renderCieResults(data.results || []);
           })
           .catch(function() {
-            cieResults.innerHTML = '<div class="cie-result">Error consultando CIE-11</div>';
+            cieResults.innerHTML = '<div class="cie-result">Error consultando CIE-10</div>';
           });
       }, 350);
     });

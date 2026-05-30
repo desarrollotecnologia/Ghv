@@ -26,7 +26,7 @@
         <div class="detail-field"><label>Hora final</label><span>{{ solicitud.hora_fin or '—' }}</span></div>
         <div class="detail-field"><label>Fecha solicitud</label><span>{{ solicitud.fecha_solicitud|fecha_display }}</span></div>
         <div class="detail-field"><label>Fecha resolución</label><span>{{ solicitud.fecha_resolucion|fecha_display if solicitud.fecha_resolucion else '—' }}</span></div>
-        <div class="detail-field"><label>CIE-11</label><span>{{ solicitud.cie11_codigo or '—' }}</span></div>
+        <div class="detail-field"><label>CIE-10</label><span>{{ solicitud.cie11_codigo or '—' }}</span></div>
         <div class="detail-field" style="grid-column:1/-1"><label>Diagnóstico</label><span>{{ solicitud.cie11_titulo or '—' }}</span></div>
         <div class="detail-field" style="grid-column:1/-1"><label>Descripción</label><span>{{ solicitud.descripcion or '—' }}</span></div>
         <div class="detail-field"><label>Origen atención</label><span>{{ solicitud.origen_atencion or '—' }}</span></div>
