@@ -13,7 +13,7 @@ UPDATE usuario SET nombre = 'JEFE PRODUCCION'    WHERE id_user = 'US-0015' AND r
 UPDATE usuario SET nombre = 'JEFE JURIDICA'      WHERE id_user = 'US-0016' AND rol = 'JEFE INMEDIATO';
 UPDATE usuario SET nombre = 'JEFE JURIDICA'      WHERE id_user = 'US-0017' AND rol = 'JEFE INMEDIATO';
 UPDATE usuario SET nombre = 'JEFE GENERAL'       WHERE id_user = 'US-0018' AND rol = 'JEFE INMEDIATO';
-UPDATE usuario SET nombre = 'JEFE FINANCIERA'    WHERE id_user = 'US-0019' AND rol = 'JEFE INMEDIATO';
+UPDATE usuario SET nombre = 'DIRECTOR ADMINISTRATIVO FINANCIERO' WHERE id_user = 'US-0019' AND rol = 'JEFE INMEDIATO';
 UPDATE usuario SET nombre = 'JEFE CALIDAD'       WHERE id_user = 'US-0020' AND rol = 'JEFE INMEDIATO';
 UPDATE usuario SET nombre = 'JEFE COMERCIAL'     WHERE id_user = 'US-0021' AND rol = 'JEFE INMEDIATO';
 UPDATE usuario SET nombre = 'JEFE COMPRAS'       WHERE id_user = 'US-0022' AND rol = 'JEFE INMEDIATO';
