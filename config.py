@@ -43,5 +43,5 @@ class Config:
     # Cierre automático de sesión por inactividad (minutos).
     SESSION_TIMEOUT_MINUTES = int(os.getenv("SESSION_TIMEOUT_MINUTES", "30"))
 
-    # Catalogo CIE-10 local. Recomendado: apuntar a cie10-obj.json.
-    CIE10_JSON_PATH = (os.getenv("CIE10_JSON_PATH") or r"C:\Users\USUARIO\Documents\cie10\cie10-obj.json").strip()
+    # Catalogo CIE-10 local. Si queda vacio, app.py busca en rutas comunes del proyecto/servidor.
+    CIE10_JSON_PATH = (os.getenv("CIE10_JSON_PATH") or "").strip()

@@ -2105,11 +2105,26 @@ def _norm_search_text(value):
     return re.sub(r"\s+", " ", text).strip().upper()
 
 
-def _cie10_catalog_path():
+def _cie10_catalog_candidates():
     configured = (current_app.config.get("CIE10_JSON_PATH") or "").strip()
     if configured:
-        return configured
-    return os.path.join(current_app.root_path, "database", "cie10-obj.json")
+        return [configured]
+    project_root = current_app.root_path
+    documents_dir = os.path.dirname(project_root)
+    return [
+        os.path.join(project_root, "database", "cie10-obj.json"),
+        os.path.join(project_root, "cie10-obj.json"),
+        os.path.join(project_root, "cie10", "cie10-obj.json"),
+        os.path.join(documents_dir, "cie10", "cie10-obj.json"),
+    ]
+
+
+def _cie10_catalog_path():
+    candidates = _cie10_catalog_candidates()
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return candidates[0]
 
 
 def _cie10_items():
@@ -2117,7 +2132,8 @@ def _cie10_items():
     if _CIE10_CACHE.get("items") is not None and _CIE10_CACHE.get("path") == path:
         return _CIE10_CACHE["items"], None
     if not os.path.exists(path):
-        return None, f"No se encontro el catalogo CIE-10 en {path}. Configure CIE10_JSON_PATH."
+        tried = "; ".join(_cie10_catalog_candidates())
+        return None, f"No se encontro el catalogo CIE-10. Rutas revisadas: {tried}. Configure CIE10_JSON_PATH."
     try:
         with open(path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
