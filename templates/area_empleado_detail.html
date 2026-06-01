@@ -24,7 +24,7 @@
         <div class="detail-field"><label>Dirección de Residencia</label><span>{{ emp.direccion_residencia or '—' }}</span></div>
         <div class="detail-field"><label>Barrio de Residencia</label><span>{{ emp.barrio_residencia or '—' }}</span></div>
         <div class="detail-field"><label>Ciudad de Residencia</label><span>{{ emp.ciudad_residencia or '—' }}</span></div>
-        <div class="detail-field"><label>Celular</label><span>{{ emp.celular or '—' }}</span></div>
+        <div class="detail-field"><label>Celular</label><span>{{ emp.celular|telefono or '—' }}</span></div>
         <div class="detail-field"><label>Correo Electrónico</label><span>{{ emp.direccion_email or '—' }}</span></div>
         <div class="detail-field"><label>EPS</label><span>{{ emp.eps or '—' }}</span></div>
         <div class="detail-field"><label>Fondo de Pensiones</label><span>{{ emp.fondo_pensiones or '—' }}</span></div>

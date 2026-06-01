@@ -311,7 +311,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let html = '';
         detailFieldDefs.forEach(f => {
-            const val = person[f.key] ?? '';
+            let val = person[f.key] ?? '';
+            if (f.key === 'celular' || f.key === 'telefono_contacto') {
+                val = normalizeDisplayValue(val);
+            }
             html += `<div class="cal-detail-field">
                 <label>${f.label}</label>
                 <span>${val || '—'}</span>
@@ -334,7 +337,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function normalizeDisplayValue(val) {
         if (val == null || val === '') return '';
         const s = String(val).trim();
-        if (s.endsWith('.0') && /^\d+\.0$/.test(s)) return s.slice(0, -2);
+        if (/^\d+\.0+$/.test(s)) return s.split('.')[0];
         return s;
     }
 

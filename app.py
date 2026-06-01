@@ -1420,22 +1420,35 @@ def _normalize_celular(val):
     """Evita mostrar celular como 3145831927.0; devuelve string sin decimal."""
     if val is None:
         return ""
-    # Decimal (MySQL) o float
-    if hasattr(val, "__float__"):
+    if isinstance(val, bool):
+        return str(val)
+    if isinstance(val, int):
+        return str(val)
+    if isinstance(val, float):
+        return str(int(val)) if val == int(val) else str(val)
+    if not isinstance(val, str) and hasattr(val, "__int__"):
         try:
-            f = float(val)
-            return str(int(f)) if f == int(f) else str(val)
-        except (ValueError, TypeError):
+            return str(int(val))
+        except (ValueError, TypeError, OverflowError):
             pass
     s = str(val).strip()
-    if not s:
+    if not s or s.lower() in ("none", "nan"):
         return ""
-    if s.endswith(".0"):
+    if re.fullmatch(r"\d+\.0+", s):
+        return s.split(".", 1)[0]
+    if re.fullmatch(r"\d+\.\d+", s):
         try:
-            return str(int(float(s)))
+            f = float(s)
+            return str(int(f)) if f == int(f) else s
         except ValueError:
             pass
     return s
+
+
+@app.template_filter("telefono")
+def telefono_filter(val):
+    normalized = _normalize_celular(val)
+    return normalized if normalized else ""
 
 
 def _looks_like_id(val):
@@ -1629,6 +1642,9 @@ def resolve_empleado_catalogos(records):
                 if not nombre and pid.upper() in perfil_name_set:
                     nombre = pid
             it["perfil_ocupacional_nombre"] = nombre
+        for phone_key in ("celular", "telefono", "telefono_contacto"):
+            if phone_key in it:
+                it[phone_key] = _normalize_celular(it.get(phone_key))
     return records
 
 
@@ -4899,6 +4915,7 @@ def api_empleado_get(id_cedula):
     emp = query("SELECT * FROM empleado WHERE id_cedula = %s", (id_cedula,), one=True)
     if not emp:
         return jsonify({"error": "No encontrado"}), 404
+    resolve_empleado_catalogos(emp)
     return jsonify(emp)
 
 
@@ -4923,6 +4940,8 @@ def api_empleado_update(id_cedula):
                 value, error = normalizar_fecha_colombia(value, "Fecha de nacimiento", permitir_futura=False)
                 if error:
                     return jsonify({"error": error}), 400
+            if key in ("celular", "telefono_contacto"):
+                value = _normalize_celular(value)
             sets.append(f"{key} = %s")
             vals.append(value)
     if not sets:
