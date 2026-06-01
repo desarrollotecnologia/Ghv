@@ -3290,11 +3290,14 @@ def incapacidad_solicitar():
         cie11_uri = (request.form.get("cie10_uri") or request.form.get("cie11_uri") or "").strip()
         descripcion = (request.form.get("descripcion") or "").strip()
         origen_atencion = (request.form.get("origen_atencion") or "").strip().upper()
-        accidente_transito = 1 if (request.form.get("accidente_transito") or "").strip() == "1" else 0
-        vehiculo_propio = 1 if (request.form.get("vehiculo_propio") or "").strip() == "1" else 0
+        accidente_transito = 1 if origen_atencion == "ACCIDENTE_TRANSITO" else 0
+        vehiculo_propio = 0
         area = (request.form.get("area") or "").strip() or None
         if not id_cedula or not fecha_desde or not fecha_hasta:
             flash("Complete empleado, fecha desde y fecha hasta.", "error")
+            return redirect(url_for("incapacidad_solicitar"))
+        if origen_atencion not in ("ARL", "ACCIDENTE_TRANSITO", "EPS"):
+            flash("Seleccione el tipo de incapacidad: ARL, accidente de transito o EPS.", "error")
             return redirect(url_for("incapacidad_solicitar"))
         if not cie11_codigo or not cie11_titulo:
             flash("Debe seleccionar un diagnostico CIE-10.", "error")
@@ -3312,10 +3315,7 @@ def incapacidad_solicitar():
             return redirect(url_for("incapacidad_solicitar"))
 
         dias = _calc_dias_incapacidad(d_desde, d_hasta)
-        requiere_historial = 1 if dias > 3 else 0
-        if requiere_historial and origen_atencion not in ("EPS", "ARL"):
-            flash("Si la incapacidad supera 3 dias debe indicar si el historial clinico es de EPS o ARL.", "error")
-            return redirect(url_for("incapacidad_solicitar"))
+        requiere_historial = 0
 
         max_upload_mb = 20
         max_upload_bytes = max_upload_mb * 1024 * 1024
@@ -3335,13 +3335,9 @@ def incapacidad_solicitar():
             flash(f"El historial clinico no debe superar {max_upload_mb} MB.", "error")
             return redirect(url_for("incapacidad_solicitar"))
 
-        historial_file = request.files.get("historial_clinico")
-        if requiere_historial and (not historial_file or not historial_file.filename):
-            flash("Debe adjuntar historial clinico cuando la incapacidad supera 3 dias.", "error")
-            return redirect(url_for("incapacidad_solicitar"))
-        soat_file = request.files.get("soat")
-        if accidente_transito and vehiculo_propio and (not soat_file or not soat_file.filename):
-            flash("Debe adjuntar SOAT si fue accidente de transito y el vehiculo es propio.", "error")
+        furips_file = request.files.get("furips")
+        if origen_atencion == "ACCIDENTE_TRANSITO" and (not furips_file or not furips_file.filename):
+            flash("Debe adjuntar FURIPS para accidente de transito.", "error")
             return redirect(url_for("incapacidad_solicitar"))
 
         emp = query(
@@ -3379,25 +3375,25 @@ def incapacidad_solicitar():
 
         try:
             evidencia_ruta, evidencia_full_path = _guardar_adjunto(evidencia_file, "evidencia")
-            historial_ruta, _historial_full_path = _guardar_adjunto(historial_file, "historial")
-            soat_ruta, _soat_full_path = _guardar_adjunto(soat_file, "soat")
+            furips_ruta, furips_full_path = _guardar_adjunto(furips_file, "furips")
         except ValueError as exc:
             flash(str(exc), "error")
             return redirect(url_for("incapacidad_solicitar"))
 
         try:
             execute(
-                "INSERT INTO solicitud_incapacidad (id_cedula, area, fecha_desde, fecha_hasta, dias_incapacidad, evidencia, descripcion, solicitante_email, cie11_codigo, cie11_titulo, cie11_uri, origen_atencion, requiere_historial, historial_clinico, accidente_transito, vehiculo_propio, soat) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (id_cedula, area, fecha_desde, fecha_hasta, dias, evidencia_ruta, descripcion, user.get("email"), cie11_codigo, cie11_titulo, cie11_uri, origen_atencion or None, requiere_historial, historial_ruta, accidente_transito, vehiculo_propio, soat_ruta),
+                "INSERT INTO solicitud_incapacidad (id_cedula, area, fecha_desde, fecha_hasta, dias_incapacidad, evidencia, descripcion, solicitante_email, cie11_codigo, cie11_titulo, cie11_uri, origen_atencion, requiere_historial, historial_clinico, accidente_transito, vehiculo_propio, soat, furips) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (id_cedula, area, fecha_desde, fecha_hasta, dias, evidencia_ruta, descripcion, user.get("email"), cie11_codigo, cie11_titulo, cie11_uri, origen_atencion, requiere_historial, None, accidente_transito, vehiculo_propio, None, furips_ruta),
             )
         except Exception as e:
             if "Unknown column" in str(e):
                 execute(
-                    "INSERT INTO solicitud_incapacidad (id_cedula, area, fecha_desde, fecha_hasta, dias_incapacidad, evidencia, descripcion, solicitante_email) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-                    (id_cedula, area, fecha_desde, fecha_hasta, dias, evidencia_ruta, descripcion, user.get("email")),
+                    "INSERT INTO solicitud_incapacidad (id_cedula, area, fecha_desde, fecha_hasta, dias_incapacidad, evidencia, descripcion, solicitante_email, cie11_codigo, cie11_titulo, cie11_uri, origen_atencion, requiere_historial, historial_clinico, accidente_transito, vehiculo_propio, soat) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (id_cedula, area, fecha_desde, fecha_hasta, dias, evidencia_ruta, descripcion, user.get("email"), cie11_codigo, cie11_titulo, cie11_uri, origen_atencion, requiere_historial, None, accidente_transito, vehiculo_propio, None),
                 )
+                furips_full_path = None
             else:
                 raise
         row = query("SELECT * FROM solicitud_incapacidad WHERE id_cedula = %s ORDER BY id DESC LIMIT 1", (id_cedula,), one=True)
@@ -3417,6 +3413,7 @@ def incapacidad_solicitar():
                 correos_ok = notificar_encargado_nueva_solicitud(
                     app, row, emp["apellidos_nombre"], encargado["email"], encargado.get("nombre"),
                     tipo="incapacidad", evidencia_path=evidencia_full_path,
+                    additional_attachment_paths=[p for p in [furips_full_path] if p],
                     approve_url=approve_url, reject_url=reject_url,
                 )
             except Exception:
@@ -3427,11 +3424,6 @@ def incapacidad_solicitar():
         else:
             detalle = f" Motivo: {motivo_correo}" if motivo_correo else ""
             flash("Solicitud de incapacidad registrada. No se pudo notificar al jefe inmediato." + detalle, "info")
-        if dias > 3 and row:
-            try:
-                _notificar_historial_incapacidad(app, row, emp["apellidos_nombre"], emp.get("direccion_email"))
-            except Exception:
-                pass
         return redirect(url_for("incapacidad_mis_solicitudes" if is_empleado else "incapacidad_index"))
 
     now_fecha = datetime.now().strftime("%d-%m-%Y")
@@ -4031,7 +4023,7 @@ def incapacitado_adjunto(id, campo):
     if not _can_view_incapacitados(user):
         flash("No tienes acceso a este adjunto.", "error")
         return redirect(url_for("home"))
-    if campo not in ("historial_clinico", "soat"):
+    if campo not in ("historial_clinico", "soat", "furips"):
         flash("Adjunto no valido.", "error")
         return redirect(url_for("incapacitado_detalle", id=id))
     try:

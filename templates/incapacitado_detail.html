@@ -29,9 +29,12 @@
         <div class="detail-field"><label>CIE-10</label><span>{{ solicitud.cie11_codigo or '—' }}</span></div>
         <div class="detail-field" style="grid-column:1/-1"><label>Diagnóstico</label><span>{{ solicitud.cie11_titulo or '—' }}</span></div>
         <div class="detail-field" style="grid-column:1/-1"><label>Descripción</label><span>{{ solicitud.descripcion or '—' }}</span></div>
-        <div class="detail-field"><label>Origen atención</label><span>{{ solicitud.origen_atencion or '—' }}</span></div>
-        <div class="detail-field"><label>Accidente de tránsito</label><span>{{ 'Sí' if solicitud.accidente_transito else 'No' }}</span></div>
-        <div class="detail-field"><label>Vehículo propio</label><span>{{ 'Sí' if solicitud.vehiculo_propio else 'No' }}</span></div>
+        <div class="detail-field"><label>Tipo de incapacidad</label><span>
+            {% if solicitud.origen_atencion == 'ARL' %}ARL (accidente de trabajo)
+            {% elif solicitud.origen_atencion == 'ACCIDENTE_TRANSITO' %}Accidente de tránsito
+            {% elif solicitud.origen_atencion == 'EPS' %}EPS
+            {% else %}{{ solicitud.origen_atencion or '—' }}{% endif %}
+        </span></div>
         <div class="detail-field" style="grid-column:1/-1"><label>Comentario del aprobador</label><span>{{ solicitud.observaciones or '—' }}</span></div>
         <div class="detail-field"><label>Resuelto por</label><span>{{ solicitud.resuelto_por_display or '—' }}</span></div>
         <div class="detail-field"><label>Email empleado</label><span>{{ solicitud.direccion_email or '—' }}</span></div>
@@ -47,7 +50,13 @@
         {% if solicitud.historial_clinico %}
         <a href="{{ url_for('incapacitado_adjunto', id=solicitud.id, campo='historial_clinico') }}" class="btn btn-outline" target="_blank" rel="noopener">
             <span class="material-symbols-outlined" style="font-size:18px">clinical_notes</span>
-            Descargar historial clínico
+            Descargar historial adicional
+        </a>
+        {% endif %}
+        {% if solicitud.furips %}
+        <a href="{{ url_for('incapacitado_adjunto', id=solicitud.id, campo='furips') }}" class="btn btn-outline" target="_blank" rel="noopener">
+            <span class="material-symbols-outlined" style="font-size:18px">description</span>
+            Descargar FURIPS
         </a>
         {% endif %}
         {% if solicitud.soat %}

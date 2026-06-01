@@ -38,6 +38,7 @@
 .cie-code { font-weight:700; color:#166534; margin-right:6px; }
 .cie-selected { display:none; margin-top:8px; padding:10px 12px; border-radius:8px; background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; font-size:13px; }
 .incap-extra { display:none; }
+.incap-docs { display:none; }
 @media (max-width: 768px) {
   .gh-formato-header { flex-direction: column; gap: 10px; padding: 14px; }
   .gh-formato-logo img { height: 38px; }
@@ -55,8 +56,9 @@
 
 <div class="gh-formato-wrap">
   <p class="gh-formato-hint">
-    Formato exclusivo para <strong>reporte de incapacidad</strong>. Seleccione el diagnostico CIE-10 y adjunte el historial clinico obligatorio.
-    El jefe inmediato recibe correo con boton de <strong>aprobar</strong> o <strong>rechazar</strong> y el archivo adjunto.
+    Formato exclusivo para <strong>reporte de incapacidad</strong>. Seleccione el tipo (ARL, accidente de tránsito o EPS),
+    el diagnóstico CIE-10 y adjunte los soportes que correspondan.
+    El jefe inmediato recibe correo con botón de <strong>aprobar</strong> o <strong>rechazar</strong>.
   </p>
 
   <form method="POST" action="{{ url_for('incapacidad_solicitar') }}" id="formIncapacidad" enctype="multipart/form-data">
@@ -114,6 +116,21 @@
           </div>
         </div>
 
+        <div class="gh-formato-fila una">
+          <div class="form-group">
+            <label class="gh-formato-label">Tipo de incapacidad <span class="required">*</span></label>
+            <select name="origen_atencion" id="origen_atencion" class="gh-formato-input" required>
+              <option value="">— Seleccionar —</option>
+              <option value="ARL">ARL – Accidente de trabajo</option>
+              <option value="ACCIDENTE_TRANSITO">Accidente de tránsito</option>
+              <option value="EPS">EPS</option>
+            </select>
+            <p class="gh-formato-label" id="tipoHint" style="margin-top:6px;font-weight:400;font-size:12px">
+              Seleccione el origen para ver los documentos requeridos.
+            </p>
+          </div>
+        </div>
+
         <div class="gh-formato-fila dos">
           <div class="form-group">
             <label class="gh-formato-label">Fecha desde <span class="required">*</span></label>
@@ -132,60 +149,33 @@
           </div>
         </div>
 
-        <div class="gh-formato-fila una">
+        <div class="gh-formato-fila una incap-docs" id="rowHistorial">
           <div class="form-group">
-            <label class="gh-formato-label">Historial clinico <span class="required">*</span> <span style="font-size:12px;color:#6b7280">(PDF, JPG, PNG, WEBP - max. 20 MB)</span></label>
-            <input type="file" name="evidencia" class="gh-formato-input" accept=".pdf,.jpg,.jpeg,.png,.webp" required>
+            <label class="gh-formato-label">Historial clínico <span class="required">*</span> <span style="font-size:12px;color:#6b7280">(PDF, JPG, PNG, WEBP – máx. 20 MB)</span></label>
+            <input type="file" name="evidencia" id="evidencia" class="gh-formato-input" accept=".pdf,.jpg,.jpeg,.png,.webp">
           </div>
         </div>
 
-        <div class="gh-formato-fila una">
+        <div class="gh-formato-fila una incap-docs" id="rowDiagnostico">
           <div class="form-group cie-search-box">
-            <label class="gh-formato-label">Diagnostico CIE-10 <span class="required">*</span></label>
-            <input type="text" id="cie10_buscar" class="gh-formato-input" autocomplete="off" placeholder="Busque por codigo o diagnostico, ej: tos, lumbalgia, R05">
-            <input type="hidden" name="cie10_codigo" id="cie10_codigo" required>
-            <input type="hidden" name="cie10_titulo" id="cie10_titulo" required>
+            <label class="gh-formato-label">Diagnóstico CIE-10 <span class="required">*</span></label>
+            <input type="text" id="cie10_buscar" class="gh-formato-input" autocomplete="off" placeholder="Busque por código o diagnóstico, ej: tos, lumbalgia, R05">
+            <input type="hidden" name="cie10_codigo" id="cie10_codigo">
+            <input type="hidden" name="cie10_titulo" id="cie10_titulo">
             <input type="hidden" name="cie10_uri" id="cie10_uri">
             <div class="cie-results" id="cie10_results"></div>
             <div class="cie-selected" id="cie10_selected"></div>
             <p class="gh-formato-label" style="margin-top:6px;font-weight:400;font-size:12px">
-              La busqueda usa el catalogo local CIE-10.
+              La búsqueda usa el catálogo local CIE-10.
             </p>
           </div>
         </div>
 
-        <div class="gh-formato-fila una incap-extra" id="rowHistorial">
+        <div class="gh-formato-fila una incap-extra" id="rowFurips">
           <div class="form-group">
-            <label class="gh-formato-label">Historial clinico por incapacidad mayor a 3 dias <span class="required">*</span></label>
-            <select name="origen_atencion" id="origen_atencion" class="gh-formato-input" style="margin-bottom:8px">
-              <option value="">— Seleccionar origen —</option>
-              <option value="EPS">EPS</option>
-              <option value="ARL">ARL</option>
-            </select>
-            <input type="file" name="historial_clinico" id="historial_clinico" class="gh-formato-input" accept=".pdf,.jpg,.jpeg,.png,.webp">
-            <p class="gh-formato-label" style="margin-top:6px;font-weight:400;font-size:12px">Tambien se enviara un correo al empleado recordando cargar/entregar este soporte.</p>
-          </div>
-        </div>
-
-        <div class="gh-formato-fila una">
-          <div class="form-group">
-            <label class="gh-formato-label">¿Fue accidente de transito?</label>
-            <select name="accidente_transito" id="accidente_transito" class="gh-formato-input" style="max-width:220px">
-              <option value="0">No</option>
-              <option value="1">Si</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="gh-formato-fila una incap-extra" id="rowSoat">
-          <div class="form-group">
-            <label class="gh-formato-label">Vehiculo propio / SOAT</label>
-            <select name="vehiculo_propio" id="vehiculo_propio" class="gh-formato-input" style="max-width:260px;margin-bottom:8px">
-              <option value="0">No, el vehiculo no es propio</option>
-              <option value="1">Si, carro o moto propio</option>
-            </select>
-            <input type="file" name="soat" id="soat" class="gh-formato-input" accept=".pdf,.jpg,.jpeg,.png,.webp">
-            <p class="gh-formato-label" style="margin-top:6px;font-weight:400;font-size:12px">Si el vehiculo es propio, el SOAT es obligatorio.</p>
+            <label class="gh-formato-label">FURIPS <span class="required">*</span> <span style="font-size:12px;color:#6b7280">(PDF, JPG, PNG, WEBP – máx. 20 MB)</span></label>
+            <input type="file" name="furips" id="furips" class="gh-formato-input" accept=".pdf,.jpg,.jpeg,.png,.webp">
+            <p class="gh-formato-label" style="margin-top:6px;font-weight:400;font-size:12px">Obligatorio para accidente de tránsito.</p>
           </div>
         </div>
 
@@ -242,13 +232,22 @@
   var d1 = document.getElementById('fecha_desde');
   var d2 = document.getElementById('fecha_hasta');
   var out = document.getElementById('dias_incapacidad_view');
-  var rowHistorial = document.getElementById('rowHistorial');
   var origenAtencion = document.getElementById('origen_atencion');
-  var historialInput = document.getElementById('historial_clinico');
-  var accidenteTransito = document.getElementById('accidente_transito');
-  var vehiculoPropio = document.getElementById('vehiculo_propio');
-  var rowSoat = document.getElementById('rowSoat');
-  var soatInput = document.getElementById('soat');
+  var tipoHint = document.getElementById('tipoHint');
+  var rowHistorial = document.getElementById('rowHistorial');
+  var rowDiagnostico = document.getElementById('rowDiagnostico');
+  var evidenciaInput = document.getElementById('evidencia');
+  var rowFurips = document.getElementById('rowFurips');
+  var furipsInput = document.getElementById('furips');
+  var cieCode = document.getElementById('cie10_codigo');
+  var cieTitle = document.getElementById('cie10_titulo');
+
+  var tipoHints = {
+    ARL: 'ARL (accidente de trabajo): adjunte historial clínico y seleccione el diagnóstico CIE-10.',
+    ACCIDENTE_TRANSITO: 'Accidente de tránsito: adjunte historial clínico, diagnóstico CIE-10 y FURIPS.',
+    EPS: 'EPS: adjunte historial clínico y seleccione el diagnóstico CIE-10.'
+  };
+
   function calcDias() {
     if (!d1 || !d2 || !out || !d1.value || !d2.value) { if (out) out.value = '0'; return; }
     var a = new Date(d1.value + 'T00:00:00');
@@ -256,41 +255,47 @@
     var ms = b - a;
     var dias = Math.floor(ms / 86400000) + 1;
     out.value = dias > 0 ? String(dias) : '0';
-    toggleHistorial();
   }
   if (d1) d1.addEventListener('change', calcDias);
   if (d2) d2.addEventListener('change', calcDias);
 
-  function toggleHistorial() {
-    var dias = parseInt((out && out.value) || '0', 10) || 0;
-    var requiere = dias > 3;
-    if (rowHistorial) rowHistorial.style.display = requiere ? 'grid' : 'none';
-    if (origenAtencion) origenAtencion.required = requiere;
-    if (historialInput) {
-      historialInput.required = requiere;
-      if (!requiere) historialInput.value = '';
-    }
-  }
+  function toggleTipoDocs() {
+    var tipo = origenAtencion ? origenAtencion.value : '';
+    var showDocs = !!tipo;
+    if (rowHistorial) rowHistorial.style.display = showDocs ? 'grid' : 'none';
+    if (rowDiagnostico) rowDiagnostico.style.display = showDocs ? 'grid' : 'none';
+    if (evidenciaInput) evidenciaInput.required = showDocs;
+    if (tipoHint) tipoHint.textContent = tipoHints[tipo] || 'Seleccione el origen para ver los documentos requeridos.';
 
-  function toggleSoat() {
-    var accidente = accidenteTransito && accidenteTransito.value === '1';
-    var propio = vehiculoPropio && vehiculoPropio.value === '1';
-    if (rowSoat) rowSoat.style.display = accidente ? 'grid' : 'none';
-    if (soatInput) {
-      soatInput.required = !!(accidente && propio);
-      if (!accidente || !propio) soatInput.value = '';
+    var esTransito = tipo === 'ACCIDENTE_TRANSITO';
+    if (rowFurips) rowFurips.style.display = esTransito ? 'grid' : 'none';
+    if (furipsInput) {
+      furipsInput.required = esTransito;
+      if (!esTransito) furipsInput.value = '';
     }
   }
-  if (accidenteTransito) accidenteTransito.addEventListener('change', toggleSoat);
-  if (vehiculoPropio) vehiculoPropio.addEventListener('change', toggleSoat);
-  toggleHistorial();
-  toggleSoat();
+  if (origenAtencion) origenAtencion.addEventListener('change', toggleTipoDocs);
+  toggleTipoDocs();
+
+  var formIncap = document.getElementById('formIncapacidad');
+  if (formIncap) {
+    formIncap.addEventListener('submit', function(ev) {
+      if (!origenAtencion || !origenAtencion.value) {
+        ev.preventDefault();
+        alert('Seleccione el tipo de incapacidad.');
+        return;
+      }
+      if (!cieCode || !cieCode.value || !cieTitle || !cieTitle.value) {
+        ev.preventDefault();
+        alert('Seleccione un diagnóstico CIE-10.');
+        return;
+      }
+    });
+  }
 
   var cieInput = document.getElementById('cie10_buscar');
   var cieResults = document.getElementById('cie10_results');
   var cieSelected = document.getElementById('cie10_selected');
-  var cieCode = document.getElementById('cie10_codigo');
-  var cieTitle = document.getElementById('cie10_titulo');
   var cieUri = document.getElementById('cie10_uri');
   var cieTimer = null;
 

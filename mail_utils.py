@@ -654,10 +654,14 @@ def _tabla_detalle_incapacidad(solicitud, empleado_nombre=None, incluir_empleado
     cie = " ".join(x for x in [solicitud.get("cie11_codigo"), solicitud.get("cie11_titulo")] if x)
     if cie:
         filas.append(("<th>CIE-10</th>", f"<td>{html_escape(cie)}</td>"))
-    if solicitud.get("origen_atencion"):
-        filas.append(("<th>Origen atencion</th>", f"<td>{html_escape(str(solicitud.get('origen_atencion')))}</td>"))
-    if solicitud.get("accidente_transito"):
-        filas.append(("<th>Accidente transito</th>", "<td>Si</td>"))
+    origen = (solicitud.get("origen_atencion") or "").strip().upper()
+    origen_labels = {
+        "ARL": "ARL (accidente de trabajo)",
+        "ACCIDENTE_TRANSITO": "Accidente de transito",
+        "EPS": "EPS",
+    }
+    if origen:
+        filas.append(("<th>Tipo incapacidad</th>", f"<td>{html_escape(origen_labels.get(origen, origen))}</td>"))
     filas.append(("<th>Descripcion</th>", f"<td>{html_escape(str(solicitud.get('descripcion') or '—'))}</td>"))
     rows_html = "".join(f"<tr>{th}{td}</tr>" for th, td in filas)
     return f'<table class="mail-table"><tbody>{rows_html}</tbody></table>'
@@ -837,7 +841,8 @@ def notificar_gh_resolucion_por_jefe(app, solicitud, empleado_nombre, tipo, apro
 
 def notificar_encargado_nueva_solicitud(
     app, solicitud, empleado_nombre, encargado_email, encargado_nombre,
-    tipo="permiso", evidencia_path=None, approve_url=None, reject_url=None
+    tipo="permiso", evidencia_path=None, additional_attachment_paths=None,
+    approve_url=None, reject_url=None
 ):
     """Envía al encargado asignado al empleado un correo pidiéndole que resuelva la
     solicitud (aprobar/rechazar) en el sistema.
@@ -867,7 +872,10 @@ def notificar_encargado_nueva_solicitud(
 
     attachments = []
     if evidencia_path and os.path.isfile(evidencia_path):
-        attachments = [(os.path.basename(evidencia_path), evidencia_path)]
+        attachments.append((os.path.basename(evidencia_path), evidencia_path))
+    for extra_path in additional_attachment_paths or []:
+        if extra_path and os.path.isfile(extra_path):
+            attachments.append((os.path.basename(extra_path), extra_path))
 
     acciones_html = ""
     if approve_url and reject_url:
