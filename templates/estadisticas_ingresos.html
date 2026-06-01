@@ -9,7 +9,8 @@
 {% if (resumen.total_ingresos|default(0)|int) == 0 %}
 <div class="alert alert-info" style="margin-bottom:16px">
     <span class="material-symbols-outlined alert-icon">info</span>
-    Aún no hay ingresos registrados para este reporte. Para generarlos, cierre sesión e inicie sesión nuevamente.
+    Aún no hay ingresos registrados. Tras reiniciar la app, cierre sesión e ingrese de nuevo;
+    cada login quedará registrado automáticamente en este reporte.
 </div>
 {% endif %}
 

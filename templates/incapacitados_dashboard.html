@@ -10,8 +10,12 @@
         <p style="color:#6b7280;margin:0;">
             Seguimiento de personas incapacitadas: quienes fueron, areas impactadas y total de dias.
         </p>
-        <p style="margin:8px 0 0 0;">
+        <p style="margin:8px 0 0 0;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
             <span class="badge badge-info">Mes actual: {{ mes_actual_label }}</span>
+            <a href="{{ url_for('incapacitados_export', buscar=buscar or '', area=area or '') }}" class="btn btn-outline btn-sm">
+                <span class="material-symbols-outlined" style="font-size:18px">download</span>
+                Descargar Excel (solo aprobados)
+            </a>
         </p>
     </div>
 

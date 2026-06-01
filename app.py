@@ -37,6 +37,24 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 app = Flask(__name__)
 app.config.from_object(Config)
 app.permanent_session_lifetime = timedelta(minutes=app.config.get("SESSION_TIMEOUT_MINUTES", 30))
+_audit_log_ready = False
+
+
+@app.before_request
+def _bootstrap_audit_log_once():
+    """Crea audit_log si falta, para que estadísticas de ingreso funcionen sin migración manual."""
+    global _audit_log_ready
+    if _audit_log_ready:
+        return None
+    _audit_log_ready = True
+    try:
+        _ensure_audit_log_table()
+    except Exception as exc:
+        try:
+            app.logger.warning("No se pudo inicializar audit_log: %s", exc)
+        except Exception:
+            pass
+    return None
 
 
 @app.before_request
@@ -618,13 +636,16 @@ def _is_gerencia_user(user):
     """Acceso exclusivo de gerencia para estadísticas sensibles."""
     if not user:
         return False
+    rol = _normalize_rol(user.get("rol"))
+    if rol in ("ADMIN", "COORD. GH"):
+        return True
     email = _normalize_email(user.get("email"))
     mail_gerencia = _normalize_email(app.config.get("MAIL_GERENCIA") or "gerencia@colbeef.com")
     if mail_gerencia and email == mail_gerencia:
         return True
     if email in {"gerencia@colbeef", "gerencia@colbeef.com"}:
         return True
-    return "GERENCIA" in _normalize_rol(user.get("rol"))
+    return "GERENCIA" in rol
 
 
 def _get_effective_modules(rol):
@@ -809,6 +830,7 @@ def login():
                 "Inicio de sesión",
                 "auth",
                 f"id_user={user.get('id_user', '')} ip={request.remote_addr or ''}",
+                id_user=user.get("id_user"),
             )
             # Obligar a cambiar la clave de una vez: si tiene flag en BD o si entró con la estándar
             if user.get("debe_cambiar_clave") or (password.strip() == PASSWORD_ESTANDAR):
@@ -1963,6 +1985,105 @@ def _calc_dias_incapacidad(fecha_desde, fecha_hasta):
         return dias if dias > 0 else 1
     except Exception:
         return 0
+
+
+def _incapacitados_mes_rango(ref=None):
+    """Primer día del mes y primer día del mes siguiente (filtro del módulo incapacitados)."""
+    hoy = ref or date.today()
+    mes_inicio = hoy.replace(day=1)
+    if mes_inicio.month == 12:
+        mes_siguiente = mes_inicio.replace(year=mes_inicio.year + 1, month=1, day=1)
+    else:
+        mes_siguiente = mes_inicio.replace(month=mes_inicio.month + 1, day=1)
+    return mes_inicio, mes_siguiente
+
+
+def _label_tipo_incapacidad(row):
+    origen = (row.get("origen_atencion") or "").strip().upper()
+    if origen == "ARL":
+        return "ARL (accidente de trabajo)"
+    if origen == "ACCIDENTE_TRANSITO":
+        return "Accidente de tránsito"
+    if origen == "EPS":
+        return "EPS"
+    if row.get("accidente_transito"):
+        return "Accidente de tránsito"
+    return origen or "—"
+
+
+def _format_diagnostico_incapacidad(row):
+    code = (row.get("cie11_codigo") or "").strip()
+    title = (row.get("cie11_titulo") or "").strip()
+    if code and title:
+        return f"{code} - {title}"
+    if title:
+        return title
+    if code:
+        return code
+    return (row.get("motivo") or row.get("descripcion") or "—").strip() or "—"
+
+
+def _fetch_incapacitados_rows(estado, buscar="", area="", mes_inicio=None, mes_siguiente=None):
+    """Consulta incapacidades del módulo dedicado (mes actual por defecto)."""
+    if mes_inicio is None or mes_siguiente is None:
+        mes_inicio, mes_siguiente = _incapacitados_mes_rango()
+
+    estado = (estado or "APROBADO").strip().upper()
+    if estado not in ("TODOS", "PENDIENTE", "APROBADO", "RECHAZADO"):
+        estado = "APROBADO"
+    buscar = (buscar or "").strip()
+    area = (area or "").strip()
+
+    where = [
+        "i.fecha_desde >= %s",
+        "i.fecha_desde < %s",
+    ]
+    params = [mes_inicio, mes_siguiente]
+    if estado != "TODOS":
+        where.append("i.estado = %s")
+        params.append(estado)
+    if area:
+        where.append("COALESCE(i.area, e.area) = %s")
+        params.append(area)
+    if buscar:
+        where.append("(e.apellidos_nombre LIKE %s OR i.id_cedula LIKE %s)")
+        like = f"%{buscar.replace('%', '\\%')}%"
+        params.extend([like, like])
+
+    sql_base = (
+        "SELECT i.id, i.id_cedula, e.apellidos_nombre, COALESCE(i.area, e.area) AS area, "
+        "'Incapacidad medica' AS tipo, i.estado, i.fecha_desde, i.fecha_hasta, "
+        "i.descripcion AS motivo, '' AS motivo_cambio_empleado, i.observaciones, i.fecha_solicitud, i.dias_incapacidad, "
+        "i.cie11_codigo, i.cie11_titulo, i.origen_atencion, i.accidente_transito "
+        "FROM solicitud_incapacidad i "
+        "JOIN empleado e ON e.id_cedula COLLATE utf8mb4_unicode_ci = i.id_cedula COLLATE utf8mb4_unicode_ci "
+        f"WHERE {' AND '.join(where)} "
+        "ORDER BY i.fecha_desde DESC, i.fecha_solicitud DESC, i.id DESC"
+    )
+    try:
+        rows = query(sql_base, tuple(params))
+    except Exception as e:
+        if "Unknown column" in str(e):
+            sql_base = (
+                "SELECT i.id, i.id_cedula, e.apellidos_nombre, COALESCE(i.area, e.area) AS area, "
+                "'Incapacidad medica' AS tipo, i.estado, i.fecha_desde, i.fecha_hasta, "
+                "i.descripcion AS motivo, '' AS motivo_cambio_empleado, i.observaciones, i.fecha_solicitud, i.dias_incapacidad, "
+                "NULL AS cie11_codigo, NULL AS cie11_titulo, NULL AS origen_atencion, 0 AS accidente_transito "
+                "FROM solicitud_incapacidad i "
+                "JOIN empleado e ON e.id_cedula COLLATE utf8mb4_unicode_ci = i.id_cedula COLLATE utf8mb4_unicode_ci "
+                f"WHERE {' AND '.join(where)} "
+                "ORDER BY i.fecha_desde DESC, i.fecha_solicitud DESC, i.id DESC"
+            )
+            rows = query(sql_base, tuple(params))
+        else:
+            raise
+
+    for r in rows:
+        dias = int(r.get("dias_incapacidad") or 0)
+        if dias < 1:
+            dias = _calc_dias_incapacidad(r.get("fecha_desde"), r.get("fecha_hasta"))
+        r["dias_incapacidad"] = dias
+    return rows
 
 
 TIPOS_PERMISO_VALIDOS = (
@@ -3813,61 +3934,14 @@ def incapacitados_dashboard():
         flash("No tienes acceso al módulo de incapacitados.", "error")
         return redirect(url_for("home"))
 
-    hoy = date.today()
-    mes_inicio = hoy.replace(day=1)
-    if mes_inicio.month == 12:
-        mes_siguiente = mes_inicio.replace(year=mes_inicio.year + 1, month=1, day=1)
-    else:
-        mes_siguiente = mes_inicio.replace(month=mes_inicio.month + 1, day=1)
-
+    mes_inicio, mes_siguiente = _incapacitados_mes_rango()
     estado = (request.args.get("estado") or "APROBADO").strip().upper()
     if estado not in ("TODOS", "PENDIENTE", "APROBADO", "RECHAZADO"):
         estado = "APROBADO"
     buscar = (request.args.get("buscar") or "").strip()
     area = (request.args.get("area") or "").strip()
 
-    where = [
-        "i.fecha_desde >= %s",
-        "i.fecha_desde < %s",
-    ]
-    params = [mes_inicio, mes_siguiente]
-    if estado != "TODOS":
-        where.append("i.estado = %s")
-        params.append(estado)
-    if area:
-        where.append("COALESCE(i.area, e.area) = %s")
-        params.append(area)
-    if buscar:
-        where.append("(e.apellidos_nombre LIKE %s OR i.id_cedula LIKE %s)")
-        like = f"%{buscar.replace('%', '\\%')}%"
-        params.extend([like, like])
-    sql_base = (
-        "SELECT i.id, i.id_cedula, e.apellidos_nombre, COALESCE(i.area, e.area) AS area, "
-        "'Incapacidad medica' AS tipo, i.estado, i.fecha_desde, i.fecha_hasta, "
-        "i.descripcion AS motivo, '' AS motivo_cambio_empleado, i.observaciones, i.fecha_solicitud, i.dias_incapacidad, "
-        "i.cie11_codigo, i.cie11_titulo, i.origen_atencion, i.accidente_transito "
-        "FROM solicitud_incapacidad i "
-        "JOIN empleado e ON e.id_cedula COLLATE utf8mb4_unicode_ci = i.id_cedula COLLATE utf8mb4_unicode_ci "
-        f"WHERE {' AND '.join(where)} "
-        "ORDER BY i.fecha_desde DESC, i.fecha_solicitud DESC, i.id DESC"
-    )
-    try:
-        rows = query(sql_base, tuple(params))
-    except Exception as e:
-        if "Unknown column" in str(e):
-            sql_base = (
-                "SELECT i.id, i.id_cedula, e.apellidos_nombre, COALESCE(i.area, e.area) AS area, "
-                "'Incapacidad medica' AS tipo, i.estado, i.fecha_desde, i.fecha_hasta, "
-                "i.descripcion AS motivo, '' AS motivo_cambio_empleado, i.observaciones, i.fecha_solicitud, i.dias_incapacidad, "
-                "NULL AS cie11_codigo, NULL AS cie11_titulo, NULL AS origen_atencion, 0 AS accidente_transito "
-                "FROM solicitud_incapacidad i "
-                "JOIN empleado e ON e.id_cedula COLLATE utf8mb4_unicode_ci = i.id_cedula COLLATE utf8mb4_unicode_ci "
-                f"WHERE {' AND '.join(where)} "
-                "ORDER BY i.fecha_desde DESC, i.fecha_solicitud DESC, i.id DESC"
-            )
-            rows = query(sql_base, tuple(params))
-        else:
-            raise
+    rows = _fetch_incapacitados_rows(estado, buscar, area, mes_inicio, mes_siguiente)
 
     total_dias = 0
     personas_set = set()
@@ -3878,9 +3952,6 @@ def incapacitados_dashboard():
 
     for r in rows:
         dias = int(r.get("dias_incapacidad") or 0)
-        if dias < 1:
-            dias = _calc_dias_incapacidad(r.get("fecha_desde"), r.get("fecha_hasta"))
-        r["dias_incapacidad"] = dias
         total_dias += dias
 
         ced = (r.get("id_cedula") or "").strip()
@@ -3952,6 +4023,45 @@ def incapacitados_dashboard():
         enfermedad_prevalente=disease_stats_list[0] if disease_stats_list else None,
         areas_list=sorted(list(areas_set)),
     )
+
+
+INCAPACITADOS_EXPORT_COLUMNS = [
+    ("id_cedula", "Cédula"),
+    ("apellidos_nombre", "Nombre"),
+    ("fecha_desde", "Fecha inicio"),
+    ("fecha_hasta", "Fecha fin"),
+    ("tipo_incapacidad", "Tipo incapacidad"),
+    ("diagnostico", "Diagnóstico"),
+]
+
+
+@app.route("/incapacitados/export")
+@login_required
+def incapacitados_export():
+    """Excel de incapacidades aprobadas (mes actual, mismos filtros de área/búsqueda)."""
+    user = get_current_user()
+    if not _can_view_incapacitados(user):
+        flash("No tienes acceso para exportar incapacitados.", "error")
+        return redirect(url_for("home"))
+
+    mes_inicio, mes_siguiente = _incapacitados_mes_rango()
+    buscar = (request.args.get("buscar") or "").strip()
+    area = (request.args.get("area") or "").strip()
+    rows = _fetch_incapacitados_rows("APROBADO", buscar, area, mes_inicio, mes_siguiente)
+
+    export_rows = []
+    for r in rows:
+        export_rows.append({
+            "id_cedula": r.get("id_cedula") or "",
+            "apellidos_nombre": r.get("apellidos_nombre") or "",
+            "fecha_desde": r.get("fecha_desde"),
+            "fecha_hasta": r.get("fecha_hasta"),
+            "tipo_incapacidad": _label_tipo_incapacidad(r),
+            "diagnostico": _format_diagnostico_incapacidad(r),
+        })
+
+    mes_tag = mes_inicio.strftime("%Y-%m")
+    return export_excel_response_generic(export_rows, INCAPACITADOS_EXPORT_COLUMNS, f"Incapacitados_aprobados_{mes_tag}")
 
 
 @app.route("/incapacitados/<int:id>")
@@ -7586,17 +7696,38 @@ def generic_export(page_key):
 
 # ── TELEMETRÍA / AUDITORÍA (reportes empresariales) ─────────────
 
-def registrar_audit(accion, modulo=None, detalle=None):
+def _ensure_audit_log_table():
+    execute(
+        "CREATE TABLE IF NOT EXISTS audit_log ("
+        "id INT AUTO_INCREMENT PRIMARY KEY, "
+        "fecha_hora DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+        "id_user VARCHAR(50) NULL, "
+        "accion VARCHAR(100) NOT NULL, "
+        "modulo VARCHAR(80) NULL, "
+        "detalle VARCHAR(500) NULL, "
+        "INDEX idx_fecha (fecha_hora), "
+        "INDEX idx_modulo (modulo), "
+        "INDEX idx_user (id_user)"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+    )
+
+
+def registrar_audit(accion, modulo=None, detalle=None, id_user=None):
     """Registra una acción en audit_log para telemetría y reportes."""
     try:
-        user = get_current_user()
-        id_user = (user.get("id_user") if user else None) or ""
+        _ensure_audit_log_table()
+        if not id_user:
+            user = get_current_user()
+            id_user = (user.get("id_user") if user else None) or ""
         execute(
             "INSERT INTO audit_log (id_user, accion, modulo, detalle) VALUES (%s, %s, %s, %s)",
-            (id_user[:50] if id_user else None, accion[:100], (modulo or "")[:80], (detalle or "")[:500]),
+            (str(id_user)[:50] if id_user else None, accion[:100], (modulo or "")[:80], (detalle or "")[:500]),
         )
-    except Exception:
-        pass  # Si no existe la tabla o falla, no romper el flujo
+    except Exception as exc:
+        try:
+            current_app.logger.warning("audit_log no registrado (%s): %s", accion, exc)
+        except Exception:
+            pass
 
 
 # ── DASHBOARD ─────────────────────────────────────────────────
@@ -7943,8 +8074,14 @@ def gerencia_cargar_maestro_xlsx():
         else:
             detalle = err or out or "Sin detalle del proceso."
             lineas = [ln for ln in detalle.splitlines() if ln.strip()]
-            resumen = lineas[-1] if lineas else detalle
+            resumen = " | ".join(lineas[-3:]) if lineas else detalle
+            if len(resumen) > 500:
+                resumen = resumen[:497] + "..."
             flash(f"No se pudo actualizar la base de datos. Detalle: {resumen}", "error")
+            try:
+                current_app.logger.error("Carga Excel maestro falló (code=%s): %s", proc.returncode, detalle[-4000:])
+            except Exception:
+                pass
     except subprocess.TimeoutExpired:
         flash("La carga tardó demasiado y fue cancelada (timeout).", "error")
     except Exception as e:
