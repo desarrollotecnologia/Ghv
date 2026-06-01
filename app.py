@@ -501,6 +501,7 @@ _ROLE_MODULES = {
         "catalogos":    False,
         "admin_usuarios": True,  # Ver, crear, editar roles, inactivar (no asignar ADMIN)
         "permisos":     True,
+        "incapacitados": True,
     },
     "BIENESTAR SOCIAL": {
         "organizacion": False,
@@ -529,6 +530,7 @@ _ROLE_MODULES = {
         "admin":        False,
         "catalogos":    False,
         "permisos":     True,
+        "incapacitados": True,
     },
     "GESTOR SST": {
         "organizacion": False,
@@ -738,8 +740,8 @@ def inject_user():
         if (user.get("email") or "").strip().lower() == "siso@colbeef.com":
             vm["incidencias"] = True
             vm["incidencias_dashboard"] = True
-        # Gerencia también puede consultar incapacidades, aunque su rol no esté en catálogo.
-        if _is_gerencia_user(user):
+        # Nómina, contratación y gerencia pueden consultar incapacitados.
+        if _can_view_incapacitados(user):
             vm["incapacitados"] = True
         # GESTOR SST no ve Permisos (ni por código ni por BD)
         if _rol_match(rol) == "GESTOR SST":
@@ -1966,12 +1968,22 @@ def _es_admin_o_coord(user=None):
 
 
 def _can_view_incapacitados(user=None):
-    """Acceso al módulo de incapacidades: ADMIN, GH y Gerencia."""
+    """Acceso al módulo de incapacidades: GH, nómina, contratación y gerencia."""
     user = user or get_current_user()
     if not user:
         return False
     rol = _rol_match(user.get("rol") or "")
-    return rol in ("ADMIN", "COORD. GH", "GH INFORMADA") or _is_gerencia_user(user)
+    if rol in (
+        "ADMIN", "COORD. GH", "GH INFORMADA",
+        "GESTOR DE CONTRATACION", "GESTOR DE NOMINA",
+    ):
+        return True
+    email = _normalize_email(user.get("email"))
+    mail_informada = _normalize_email(app.config.get("MAIL_GH_INFORMADA") or "gestionhumana@colbeef.com")
+    gestor_mail = _normalize_email(app.config.get("MAIL_GESTOR_CONTRATACION") or "gestor.contratacion@colbeef.com")
+    if email in {mail_informada, gestor_mail, "gestionhumana@colbeef.com", "gestor.contratacion@colbeef.com"}:
+        return True
+    return _is_gerencia_user(user)
 
 
 def _calc_dias_incapacidad(fecha_desde, fecha_hasta):
