@@ -137,7 +137,7 @@ WHERE u.id_user IN ('US-0022', 'US-0004', 'US-0024', 'US-0014', 'US-0012')
   AND COALESCE(u.id_cedula, '') <> '';
 
 UPDATE empleado
-SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='coordinacion.administrativo@colbeef.com' LIMIT 1)
+SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='gerencia.financiera@colbeef.com' LIMIT 1)
 WHERE estado='ACTIVO' AND area IN ('ADMINISTRACION', 'JARDINERIA');
 
 UPDATE empleado

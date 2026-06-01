@@ -17,7 +17,6 @@ UPDATE usuario SET nombre = 'DIRECTOR ADMINISTRATIVO FINANCIERO' WHERE id_user =
 UPDATE usuario SET nombre = 'JEFE CALIDAD'       WHERE id_user = 'US-0020' AND rol = 'JEFE INMEDIATO';
 UPDATE usuario SET nombre = 'JEFE COMERCIAL'     WHERE id_user = 'US-0021' AND rol = 'JEFE INMEDIATO';
 UPDATE usuario SET nombre = 'JEFE COMPRAS'       WHERE id_user = 'US-0022' AND rol = 'JEFE INMEDIATO';
-UPDATE usuario SET nombre = 'JEFE ADMINISTRATIVO' WHERE id_user = 'US-0023' AND rol = 'JEFE INMEDIATO';
 UPDATE usuario SET nombre = 'JEFE CONTABILIDAD'  WHERE id_user = 'US-0024' AND rol = 'JEFE INMEDIATO';
 UPDATE usuario SET nombre = 'JEFE PRODUCCION'    WHERE id_user = 'US-0025' AND rol = 'JEFE INMEDIATO';
 UPDATE usuario SET nombre = 'LIDER BENEFICIO'    WHERE id_user = 'US-0026' AND rol = 'JEFE INMEDIATO';

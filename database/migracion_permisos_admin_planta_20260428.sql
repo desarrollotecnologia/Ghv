@@ -48,7 +48,7 @@ INSERT INTO cfg_aprobadores (clave, email) VALUES
     ('jefe_tesoreria_cartera',      'coordinacion.tesoreria@colbeef.com'),
     ('jefe_tics',                   'coordinacion.tecnologia@colbeef.com'),
     ('jefe_planeacion_financiera',  'gerencia.financiera@colbeef.com'),
-    ('supervisor_vigilancia_admin', 'coordinacion.administrativo@colbeef.com'),
+    ('supervisor_vigilancia_admin', 'gerencia.financiera@colbeef.com'),
 
     -- Planta
     ('director_planta',             'gerencia.produccion@colbeef.com'),
@@ -296,7 +296,6 @@ INSERT INTO cfg_escalamiento (email_solicitante, email_aprobador) VALUES
     ('coordinacion.contabilidad@colbeef.com',   'gerencia.financiera@colbeef.com'),
     ('coordinacion.tesoreria@colbeef.com',      'gerencia.financiera@colbeef.com'),
     ('coordinacion.tecnologia@colbeef.com',     'gerencia.financiera@colbeef.com'),
-    ('coordinacion.administrativo@colbeef.com', 'gerencia.financiera@colbeef.com'),
 
     -- Planta: jefes/lideres -> director planta
     ('coordinacion.linea@colbeef.com',         'gerencia.calidad@colbeef.com'),
