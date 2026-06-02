@@ -45,9 +45,9 @@ def _bootstrap_audit_log_once():
     global _audit_log_ready
     if _audit_log_ready:
         return None
-    _audit_log_ready = True
     try:
-        _ensure_audit_log_table()
+        if _ensure_audit_log_table():
+            _audit_log_ready = True
     except Exception as exc:
         try:
             app.logger.warning("No se pudo inicializar audit_log: %s", exc)
@@ -7721,6 +7721,20 @@ def _ensure_audit_log_table():
         "INDEX idx_user (id_user)"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
     )
+    try:
+        query("SELECT 1 FROM audit_log LIMIT 1", one=True)
+        return True
+    except Exception:
+        return False
+
+
+def _login_audit_filter_sql(alias=""):
+    """Filtro SQL para eventos de inicio de sesión en audit_log."""
+    prefix = f"{alias}." if alias else ""
+    return (
+        f"{prefix}modulo = 'auth' AND "
+        f"({prefix}accion LIKE 'Inicio de sesi%%' OR {prefix}accion = 'Login')"
+    )
 
 
 def registrar_audit(accion, modulo=None, detalle=None, id_user=None):
@@ -7871,6 +7885,11 @@ def _get_login_stats(limit_top=10, limit_recent=50):
     }
     top_usuarios = []
     ingresos_recientes = []
+    audit_log_ok = _ensure_audit_log_table()
+    if not audit_log_ok:
+        return resumen, top_usuarios, ingresos_recientes, False
+
+    login_filter = _login_audit_filter_sql()
 
     try:
         r = query(
@@ -7880,7 +7899,7 @@ def _get_login_stats(limit_top=10, limit_recent=50):
             "SUM(CASE WHEN DATE(fecha_hora)=CURDATE() THEN 1 ELSE 0 END) AS ingresos_hoy, "
             "SUM(CASE WHEN fecha_hora >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS ingresos_7_dias "
             "FROM audit_log "
-            "WHERE modulo = 'auth' AND accion LIKE 'Inicio de sesi%'",
+            f"WHERE {login_filter}",
             one=True,
         ) or {}
         resumen = {
@@ -7889,18 +7908,25 @@ def _get_login_stats(limit_top=10, limit_recent=50):
             "ingresos_hoy": int(r.get("ingresos_hoy") or 0),
             "ingresos_7_dias": int(r.get("ingresos_7_dias") or 0),
         }
-    except Exception:
-        pass
+    except Exception as exc:
+        try:
+            current_app.logger.warning("login stats resumen: %s", exc)
+        except Exception:
+            pass
 
+    login_filter_a = _login_audit_filter_sql("a")
     try:
         rows_top = query(
-            "SELECT a.id_user, COALESCE(u.nombre, a.id_user) AS nombre, "
-            "COUNT(*) AS ingresos, MAX(a.fecha_hora) AS ultimo_ingreso "
-            "FROM audit_log a "
-            "LEFT JOIN usuario u ON u.id_user = a.id_user "
-            "WHERE a.modulo = 'auth' AND a.accion LIKE 'Inicio de sesi%' "
-            "GROUP BY a.id_user, nombre "
-            "ORDER BY ingresos DESC, ultimo_ingreso DESC "
+            "SELECT stats.id_user, COALESCE(u.nombre, stats.id_user) AS nombre, "
+            "stats.ingresos, stats.ultimo_ingreso "
+            "FROM ("
+            "  SELECT id_user, COUNT(*) AS ingresos, MAX(fecha_hora) AS ultimo_ingreso "
+            "  FROM audit_log "
+            f"  WHERE {login_filter} "
+            "  GROUP BY id_user"
+            ") stats "
+            "LEFT JOIN usuario u ON u.id_user = stats.id_user "
+            "ORDER BY stats.ingresos DESC, stats.ultimo_ingreso DESC "
             "LIMIT %s",
             (limit_top,),
         ) or []
@@ -7912,7 +7938,11 @@ def _get_login_stats(limit_top=10, limit_recent=50):
                 else (str(ultimo)[:16] if ultimo else "—")
             )
         top_usuarios = rows_top
-    except Exception:
+    except Exception as exc:
+        try:
+            current_app.logger.warning("login stats top_usuarios: %s", exc)
+        except Exception:
+            pass
         top_usuarios = []
 
     try:
@@ -7921,7 +7951,7 @@ def _get_login_stats(limit_top=10, limit_recent=50):
             "COALESCE(u.rol, '') AS rol, COALESCE(u.email, '') AS email, COALESCE(a.detalle, '') AS detalle "
             "FROM audit_log a "
             "LEFT JOIN usuario u ON u.id_user = a.id_user "
-            "WHERE a.modulo = 'auth' AND a.accion LIKE 'Inicio de sesi%' "
+            f"WHERE {login_filter_a} "
             "ORDER BY a.fecha_hora DESC "
             "LIMIT %s",
             (limit_recent,),
@@ -7934,10 +7964,14 @@ def _get_login_stats(limit_top=10, limit_recent=50):
                 else (str(fh)[:16] if fh else "—")
             )
         ingresos_recientes = rows_recent
-    except Exception:
+    except Exception as exc:
+        try:
+            current_app.logger.warning("login stats ingresos_recientes: %s", exc)
+        except Exception:
+            pass
         ingresos_recientes = []
 
-    return resumen, top_usuarios, ingresos_recientes
+    return resumen, top_usuarios, ingresos_recientes, True
 
 
 @app.route("/view-total-personal")
@@ -8027,13 +8061,14 @@ def estadisticas_ingresos():
     if not _is_gerencia_user(get_current_user()):
         flash("Este reporte está disponible solo para Gerencia.", "error")
         return redirect(url_for("view_total_personal"))
-    resumen, top_usuarios, ingresos_recientes = _get_login_stats(limit_top=12, limit_recent=80)
+    resumen, top_usuarios, ingresos_recientes, audit_log_ok = _get_login_stats(limit_top=12, limit_recent=80)
     return render_template(
         "estadisticas_ingresos.html",
         active_page="Dashboard",
         resumen=resumen,
         top_usuarios=top_usuarios,
         ingresos_recientes=ingresos_recientes,
+        audit_log_ok=audit_log_ok,
     )
 
 @app.route("/dashboard/<chart_key>")

@@ -6,11 +6,18 @@
     <a href="{{ url_for('view_total_personal') }}">Dashboard</a> &rsaquo;
     <span>Estadísticas de ingresos</span>
 </div>
-{% if (resumen.total_ingresos|default(0)|int) == 0 %}
+{% if not audit_log_ok|default(true) %}
+<div class="alert alert-warning" style="margin-bottom:16px">
+    <span class="material-symbols-outlined alert-icon">warning</span>
+    No se pudo acceder a la tabla de auditoría (<code>audit_log</code>).
+    Ejecuta en MySQL: <code>python database/aplicar_sql_file.py database/migration_audit_log.sql</code>
+    y reinicia la app.
+</div>
+{% elif (resumen.total_ingresos|default(0)|int) == 0 %}
 <div class="alert alert-info" style="margin-bottom:16px">
     <span class="material-symbols-outlined alert-icon">info</span>
-    Aún no hay ingresos registrados. Tras reiniciar la app, cierre sesión e ingrese de nuevo;
-    cada login quedará registrado automáticamente en este reporte.
+    Aún no hay ingresos registrados. Cierra sesión, vuelve a entrar y cada login quedará
+    registrado automáticamente en este reporte.
 </div>
 {% endif %}
 
