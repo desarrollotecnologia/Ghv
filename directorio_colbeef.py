@@ -31,6 +31,14 @@ EMAIL_CANONICAL = {
     "jefe.compras@colbeef.com": "coordinacion.compras@colbeef.com",
 }
 
+# Cédulas confirmadas Colbeef → cuenta jefe (usuario.id_cedula + EMP-{cedula})
+JEFE_CEDULA_VINCULOS: dict[str, str] = {
+    "coordinacion.ambiental@colbeef.com": "1102384611",   # REY RODRIGUEZ KEVIN ANDRES
+    "coordinacion.lyd@colbeef.com": "1095835855",         # ISIDRO ARCILA PAULA ANDREA
+    "director.surtidores@colbeef.com": "1977852",         # RINCON SARMIENTO CARLOS ANDRES
+    "gerencia.operaciones@colbeef.com": "1098725715",     # QUESADA ZORRILLA WILHELM ARLEY
+}
+
 # Nombres de área en empleado.area equivalentes al catálogo / Excel.
 AREA_ALIASES: dict[str, list[str]] = {
     "NEGOCIOS GANADEROS": ["NEGOCIOS GANADEROS", "FOMENTO GANADERO", "NEG. GANADEROS"],
@@ -171,6 +179,48 @@ def _next_user_id(fetch_one) -> str:
     return f"US-{n + 1:04d}"
 
 
+def _vincular_cedula_jefe(fetch_one, execute_fn, uid: str, cedula: str) -> bool:
+    """Vincula usuario jefe con ficha empleado y crea cuenta EMP-{cedula}."""
+    if not uid or not cedula:
+        return False
+    emp = fetch_one(
+        "SELECT id_cedula, apellidos_nombre FROM empleado WHERE id_cedula = %s LIMIT 1",
+        (cedula,),
+    )
+    if not emp:
+        return False
+    execute_fn("UPDATE usuario SET id_cedula = %s WHERE id_user = %s", (cedula, uid))
+    emp_id = f"EMP-{cedula}"
+    execute_fn(
+        "INSERT INTO usuario (id_user, email, password_hash, nombre, rol, estado, acciones, "
+        "id_cedula, debe_cambiar_clave) VALUES (%s, %s, %s, %s, 'EMPLEADO', 1, 'VISTA', %s, 1) "
+        "ON DUPLICATE KEY UPDATE nombre = VALUES(nombre), id_cedula = VALUES(id_cedula), "
+        "rol = 'EMPLEADO', estado = 1, acciones = 'VISTA'",
+        (
+            emp_id,
+            f"{cedula}@empleado.colbeef.local",
+            PASSWORD_HASH_COLBEEF2026,
+            emp["apellidos_nombre"],
+            cedula,
+        ),
+    )
+    return True
+
+
+def _resolve_cedula_jefe(fetch_one, email: str) -> str | None:
+    email = (email or "").strip().lower()
+    cedula = JEFE_CEDULA_VINCULOS.get(email)
+    if cedula:
+        return cedula
+    emp = fetch_one(
+        "SELECT id_cedula FROM empleado WHERE LOWER(TRIM(COALESCE(direccion_email, ''))) = %s LIMIT 1",
+        (email,),
+    )
+    if emp and emp.get("id_cedula"):
+        return str(emp["id_cedula"]).strip()
+    return None
+
+
 def _ensure_jefe_rol(execute_fn):
     execute_fn("INSERT IGNORE INTO rol (nombre) VALUES ('JEFE INMEDIATO')")
     execute_fn("INSERT IGNORE INTO rol_permiso (rol_nombre, nivel) VALUES ('JEFE INMEDIATO', 'WRITE')")
@@ -246,6 +296,9 @@ def apply_directorio(
                     "INSERT INTO rol_modulo (rol_nombre, modulo_key, visible) VALUES ('JEFE INMEDIATO', 'permisos', 1) "
                     "ON DUPLICATE KEY UPDATE visible = 1"
                 )
+                cedula = _resolve_cedula_jefe(fetch_one, email)
+                if cedula:
+                    _vincular_cedula_jefe(fetch_one, execute_fn, uid, cedula)
             users_updated.append(email)
             continue
 
@@ -263,15 +316,9 @@ def apply_directorio(
         email_to_id[email] = uid
         users_created.append(email)
 
-        emp = fetch_one(
-            "SELECT id_cedula FROM empleado WHERE LOWER(TRIM(COALESCE(direccion_email, ''))) = %s LIMIT 1",
-            (email,),
-        )
-        if emp and emp.get("id_cedula"):
-            execute_fn(
-                "UPDATE usuario SET id_cedula = %s WHERE id_user = %s",
-                (emp["id_cedula"], uid),
-            )
+        cedula = _resolve_cedula_jefe(fetch_one, email)
+        if cedula:
+            _vincular_cedula_jefe(fetch_one, execute_fn, uid, cedula)
 
     for row in rows:
         email = row["email"]
