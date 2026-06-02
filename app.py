@@ -1609,6 +1609,21 @@ def resolve_empleado_catalogos(records):
         perfil_map = {}
         perfil_name_set = set()
 
+    # Jefes/coordinadores vinculados por cédula: cargo en usuario.nombre si falta perfil.
+    usuario_cargo_map = {}
+    try:
+        user_rows = query(
+            "SELECT id_cedula, nombre FROM usuario "
+            "WHERE id_cedula IS NOT NULL AND TRIM(id_cedula) <> '' "
+            "ORDER BY CASE WHEN UPPER(COALESCE(rol, '')) = 'EMPLEADO' THEN 1 ELSE 0 END, id_user"
+        )
+        for r in (user_rows or []):
+            cid = str(r.get("id_cedula") or "").strip()
+            if cid and cid not in usuario_cargo_map:
+                usuario_cargo_map[cid] = (r.get("nombre") or "").strip()
+    except Exception:
+        usuario_cargo_map = {}
+
     # Fallback: ids que no estén precargados (catálogo recién creado, etc.)
     missing_tipo = set()
     missing_nivel = set()
@@ -1683,6 +1698,14 @@ def resolve_empleado_catalogos(records):
                 # 3) Si lo guardaron como nombre directamente
                 if not nombre and pid.upper() in perfil_name_set:
                     nombre = pid
+            if not nombre:
+                cid = str(it.get("id_cedula") or "").strip()
+                if cid:
+                    nombre = usuario_cargo_map.get(cid, "")
+            if not nombre:
+                prof = str(it.get("profesion") or "").strip()
+                if prof and not _looks_like_id(prof):
+                    nombre = prof
             it["perfil_ocupacional_nombre"] = nombre
         for phone_key in ("celular", "telefono", "telefono_contacto"):
             if phone_key in it:
@@ -7860,21 +7883,24 @@ EXPORT_CONFIGS = {
 
 def _export_rows_personal_empleado(estado, depto=None, area=None):
     """SELECT completo de empleado por estado y filtros opcionales departamento/área."""
-    # Columnas calculadas en Python (no existen en la tabla empleado).
-    # Se excluyen del SELECT y se resuelven con resolve_empleado_catalogos().
+    # perfil_ocupacional_nombre viene del JOIN; resolve_empleado_catalogos completa fallbacks.
     _virtual_cols = {"perfil_ocupacional_nombre"}
-    cols_sql = ", ".join(k for k, _ in _PERSONAL_EXPORT_COLS if k not in _virtual_cols)
-    sql = f"SELECT {cols_sql} FROM empleado WHERE estado = %s"
+    cols_sql = ", ".join(f"e.{k}" for k, _ in _PERSONAL_EXPORT_COLS if k not in _virtual_cols)
+    sql = (
+        f"SELECT {cols_sql}, p.perfil_ocupacional AS perfil_ocupacional_nombre "
+        "FROM empleado e "
+        "LEFT JOIN perfil_ocupacional p ON TRIM(p.id_perfil) = TRIM(e.id_perfil_ocupacional) "
+        "WHERE e.estado = %s"
+    )
     params = [estado]
     if depto:
-        sql += " AND departamento = %s"
+        sql += " AND e.departamento = %s"
         params.append(depto)
     if area:
-        sql += " AND area = %s"
+        sql += " AND e.area = %s"
         params.append(area)
-    sql += " ORDER BY apellidos_nombre"
+    sql += " ORDER BY e.apellidos_nombre"
     rows = query(sql, tuple(params)) or []
-    # Resolver perfil_ocupacional_nombre y otros catálogos (tipo_documento, nivel, profesion)
     resolve_empleado_catalogos(rows)
     return rows
 
