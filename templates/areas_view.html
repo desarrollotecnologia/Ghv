@@ -5,6 +5,21 @@
     <a href="{{ url_for('home') }}">Home</a> &rsaquo; <span>View Áreas</span>
 </div>
 
+{% if unmapped_total|default(0)|int > 0 %}
+<div class="alert alert-warning" style="margin-bottom:16px">
+    <span class="material-symbols-outlined alert-icon">warning</span>
+    Hay <strong>{{ unmapped_total }}</strong> empleado(s) activo(s) en áreas que no coinciden con el catálogo.
+    Revise y unifique el nombre del área en Personal Activo o edite el catálogo.
+    {% for row in unmapped_areas[:5] %}
+    <span style="display:inline-block;margin-top:6px;margin-right:10px;font-size:12px">{{ row.area }} ({{ row.cnt }})</span>
+    {% endfor %}
+</div>
+{% endif %}
+
+<p style="margin:0 0 16px 0;font-size:12px;color:var(--text-secondary)">
+    Ejecutados en vivo desde personal activo · Actualizado {{ ultima_actualizacion|default('—') }}
+</p>
+
 <!-- Summary cards -->
 <div class="area-summary">
     <div class="area-summary-card">

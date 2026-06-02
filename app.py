@@ -6186,29 +6186,67 @@ def retiro_personal():
 
 # ── VIEW ÁREAS (módulo completo) ──────────────────────────────
 
-@app.route("/areas")
-@login_required
-@module_required("organizacion")
-def areas():
-    area_rows = query(
-        "SELECT a.id, a.nombre AS area, a.presupuestados, d.id AS depto_id, d.nombre AS departamento "
-        "FROM area a JOIN departamento d ON a.departamento_id = d.id "
-        "ORDER BY d.nombre, a.nombre"
-    )
-    emp_counts = query(
-        "SELECT area, COUNT(*) AS cnt FROM empleado WHERE estado = 'ACTIVO' GROUP BY area"
-    )
-    count_map = {r["area"]: int(r["cnt"]) for r in emp_counts}
+def _area_name_sql(expr):
+    """Normaliza nombre de área para comparar catálogo vs empleado."""
+    return f"UPPER(TRIM(COALESCE({expr}, '')))"
 
+
+def _fetch_areas_live_stats():
+    """Presupuestados y ejecutados en vivo por área del catálogo."""
+    rows = query(
+        "SELECT a.id, a.nombre AS area, a.presupuestados, "
+        "d.id AS depto_id, d.nombre AS departamento, "
+        "COALESCE(ec.cnt, 0) AS ejecutados, "
+        "COALESCE(pp.pres_perfiles, 0) AS pres_perfiles "
+        "FROM area a "
+        "JOIN departamento d ON a.departamento_id = d.id "
+        "LEFT JOIN ("
+        "  SELECT " + _area_name_sql("e.area") + " AS area_key, COUNT(*) AS cnt "
+        "  FROM empleado e "
+        "  WHERE " + _area_name_sql("e.estado") + " = 'ACTIVO' "
+        "  GROUP BY area_key"
+        ") ec ON ec.area_key = " + _area_name_sql("a.nombre") + " "
+        "LEFT JOIN ("
+        "  SELECT area_id, SUM(COALESCE(presupuestados, 0)) AS pres_perfiles "
+        "  FROM perfil_ocupacional GROUP BY area_id"
+        ") pp ON pp.area_id = a.id "
+        "ORDER BY d.nombre, a.nombre"
+    ) or []
+    return rows
+
+
+def _resolve_area_presupuestados(stored_pres, pres_perfiles):
+    """Usa el valor del área o, si falta, la suma de perfiles ocupacionales."""
+    if stored_pres is not None and str(stored_pres).strip() != "":
+        return int(stored_pres)
+    return int(pres_perfiles or 0)
+
+
+def _fetch_unmapped_active_areas():
+    """Empleados activos cuya área no coincide con el catálogo."""
+    return query(
+        "SELECT e.area, COUNT(*) AS cnt "
+        "FROM empleado e "
+        "WHERE " + _area_name_sql("e.estado") + " = 'ACTIVO' "
+        "AND COALESCE(TRIM(e.area), '') <> '' "
+        "AND NOT EXISTS ("
+        "  SELECT 1 FROM area a WHERE " + _area_name_sql("a.nombre") + " = " + _area_name_sql("e.area")
+        ") "
+        "GROUP BY e.area ORDER BY cnt DESC, e.area"
+    ) or []
+
+
+def _build_areas_grouped(area_rows):
     from collections import OrderedDict
+
     grouped = OrderedDict()
     total_pres = total_ejec = 0
     for a in area_rows:
         depto = a["departamento"]
         if depto not in grouped:
             grouped[depto] = {"areas": [], "pres": 0, "ejec": 0, "depto_id": a.get("depto_id", 0)}
-        pres = int(a["presupuestados"]) if a["presupuestados"] else 0
-        ejec = count_map.get(a["area"], 0)
+        pres = _resolve_area_presupuestados(a.get("presupuestados"), a.get("pres_perfiles"))
+        ejec = int(a.get("ejecutados") or 0)
         pend = pres - ejec
         grouped[depto]["areas"].append({
             "id": a["id"],
@@ -6221,10 +6259,30 @@ def areas():
         grouped[depto]["ejec"] += ejec
         total_pres += pres
         total_ejec += ejec
+    return grouped, total_pres, total_ejec
 
-    return render_template("areas_view.html", active_page="Area",
-                           grouped=grouped, total=len(area_rows),
-                           total_pres=total_pres, total_ejec=total_ejec)
+
+@app.route("/areas")
+@login_required
+@module_required("organizacion")
+def areas():
+    area_rows = _fetch_areas_live_stats()
+    grouped, total_pres, total_ejec = _build_areas_grouped(area_rows)
+    unmapped_areas = _fetch_unmapped_active_areas()
+    unmapped_total = sum(int(r.get("cnt") or 0) for r in unmapped_areas)
+    ultima_actualizacion = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+    return render_template(
+        "areas_view.html",
+        active_page="Area",
+        grouped=grouped,
+        total=len(area_rows),
+        total_pres=total_pres,
+        total_ejec=total_ejec,
+        unmapped_areas=unmapped_areas,
+        unmapped_total=unmapped_total,
+        ultima_actualizacion=ultima_actualizacion,
+    )
 
 
 @app.route("/areas/<int:area_id>")
@@ -6239,7 +6297,12 @@ def area_detail(area_id):
         flash("Área no encontrada", "error")
         return redirect(url_for("areas"))
 
-    pres = int(area["presupuestados"]) if area["presupuestados"] else 0
+    pres_rows = query(
+        "SELECT COALESCE(SUM(COALESCE(presupuestados, 0)), 0) AS pres "
+        "FROM perfil_ocupacional WHERE area_id = %s",
+        (area_id,), one=True,
+    ) or {}
+    pres = _resolve_area_presupuestados(area.get("presupuestados"), pres_rows.get("pres"))
 
     perfiles = query(
         "SELECT p.id_perfil, p.perfil_ocupacional, d.nombre AS departamento, a.nombre AS area "
@@ -6251,12 +6314,17 @@ def area_detail(area_id):
     )
     empleados = query(
         "SELECT id_cedula, apellidos_nombre, lugar_expedicion "
-        "FROM empleado WHERE area = %s AND estado = 'ACTIVO' ORDER BY apellidos_nombre",
+        "FROM empleado "
+        "WHERE " + _area_name_sql("area") + " = " + _area_name_sql("%s") + " "
+        "AND " + _area_name_sql("estado") + " = 'ACTIVO' "
+        "ORDER BY apellidos_nombre",
         (area["area"],),
     )
     retirados = query(
         "SELECT id_cedula, id_retiro, apellidos_nombre "
-        "FROM retirado WHERE area = %s ORDER BY apellidos_nombre",
+        "FROM retirado "
+        "WHERE " + _area_name_sql("area") + " = " + _area_name_sql("%s") + " "
+        "ORDER BY apellidos_nombre",
         (area["area"],),
     )
 
@@ -6288,13 +6356,18 @@ def perfil_detail(area_id, perfil_id):
 
     empleados = query(
         "SELECT id_cedula, apellidos_nombre, lugar_expedicion "
-        "FROM empleado WHERE area = %s AND id_perfil_ocupacional = %s AND estado = 'ACTIVO' "
+        "FROM empleado "
+        "WHERE " + _area_name_sql("area") + " = " + _area_name_sql("%s") + " "
+        "AND id_perfil_ocupacional = %s "
+        "AND " + _area_name_sql("estado") + " = 'ACTIVO' "
         "ORDER BY apellidos_nombre",
         (perfil["area"], str(perfil_id)),
     )
     retirados = query(
         "SELECT id_cedula, id_retiro, apellidos_nombre "
-        "FROM retirado WHERE area = %s AND id_perfil_ocupacional = %s "
+        "FROM retirado "
+        "WHERE " + _area_name_sql("area") + " = " + _area_name_sql("%s") + " "
+        "AND id_perfil_ocupacional = %s "
         "ORDER BY apellidos_nombre",
         (perfil["area"], str(perfil_id)),
     )
@@ -6931,10 +7004,23 @@ def area_editar(id):
     nombre = (request.form.get("nombre") or "").strip().upper()
     departamento_id = request.form.get("departamento_id", "").strip()
     presupuestados = request.form.get("presupuestados", "").strip()
+    prev = query("SELECT nombre FROM area WHERE id = %s", (id,), one=True) or {}
+    prev_nombre = (prev.get("nombre") or "").strip()
     execute(
         "UPDATE area SET nombre=%s, departamento_id=%s, presupuestados=%s WHERE id=%s",
         (nombre, int(departamento_id), int(presupuestados) if presupuestados else None, id),
     )
+    if prev_nombre and nombre and prev_nombre.upper() != nombre.upper():
+        execute(
+            "UPDATE empleado SET area = %s "
+            "WHERE " + _area_name_sql("area") + " = " + _area_name_sql("%s"),
+            (nombre, prev_nombre),
+        )
+        execute(
+            "UPDATE retirado SET area = %s "
+            "WHERE " + _area_name_sql("area") + " = " + _area_name_sql("%s"),
+            (nombre, prev_nombre),
+        )
     flash("Área actualizada", "success")
     return redirect(url_for("areas"))
 
