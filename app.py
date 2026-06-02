@@ -6186,6 +6186,57 @@ def retiro_personal():
 
 # ── VIEW ÁREAS (módulo completo) ──────────────────────────────
 
+# Nombres viejos en empleado.area → nombre actual en catálogo (area.nombre)
+_AREA_CATALOG_ALIASES = {
+    "TECNOLOGIA": ["TICS", "TIC", "TIC'S", "TIC´S", "TIC S"],
+    "DIRECCION DPTO CALIDAD": ["GERENCIA CALIDAD"],
+    "TESORERIA": ["PLANILLAJE Y FACTURACION", "PLANILLAJE", "CARTERA"],
+    "CONTROL INTERNO": ["DIRECCION CONTROLLER", "CONTROLLER"],
+    "DIRECCION DPTO COMERCIAL": ["DIRECCION SURTIDORES", "SURTIDORES"],
+    "PLANEACION": ["PLANEACION FINANCIERA"],
+    "ADMINISTRACION": ["SERVICIOS GENERALES", "VIGILANCIA"],
+}
+
+
+def _normalize_area_key(name):
+    """Clave comparable para áreas (sin tildes ni signos)."""
+    s = str(name or "").upper().strip()
+    for old, new in [("Á", "A"), ("É", "E"), ("Í", "I"), ("Ó", "O"), ("Ú", "U"), ("Ñ", "N")]:
+        s = s.replace(old, new)
+    s = re.sub(r"[^A-Z0-9\s]", "", s)
+    return " ".join(s.split())
+
+
+def _build_area_alias_lookup():
+    lookup = {}
+    for catalog, aliases in _AREA_CATALOG_ALIASES.items():
+        catalog_name = catalog.upper().strip()
+        lookup[_normalize_area_key(catalog_name)] = catalog_name
+        for alias in aliases:
+            lookup[_normalize_area_key(alias)] = catalog_name
+    return lookup
+
+
+def _sync_legacy_area_names():
+    """Unifica empleado/retirado.area con el catálogo (nombres reemplazados)."""
+    lookup = _build_area_alias_lookup()
+    changed = 0
+    for table in ("empleado", "retirado"):
+        rows = query(
+            f"SELECT DISTINCT area FROM {table} WHERE COALESCE(TRIM(area), '') <> ''"
+        ) or []
+        for row in rows:
+            raw = (row.get("area") or "").strip()
+            if not raw:
+                continue
+            target = lookup.get(_normalize_area_key(raw))
+            if not target or _normalize_area_key(raw) == _normalize_area_key(target):
+                continue
+            execute(f"UPDATE {table} SET area = %s WHERE area = %s", (target, raw))
+            changed += 1
+    return changed
+
+
 def _area_name_sql(expr):
     """Normaliza nombre de área para comparar catálogo vs empleado."""
     return f"UPPER(TRIM(COALESCE({expr}, '')))"
@@ -6193,29 +6244,39 @@ def _area_name_sql(expr):
 
 def _fetch_areas_live_stats():
     """Presupuestados y ejecutados en vivo por área del catálogo."""
-    area_key = _area_name_sql("e.area")
-    estado_key = _area_name_sql("e.estado")
-    area_match = _area_name_sql("a.nombre")
-    sql = (
+    alias_lookup = _build_area_alias_lookup()
+    catalog_rows = query(
         "SELECT a.id, a.nombre AS area, a.presupuestados, "
         "d.id AS depto_id, d.nombre AS departamento, "
-        "COALESCE(ec.cnt, 0) AS ejecutados, "
         "COALESCE(pp.pres_perfiles, 0) AS pres_perfiles "
         "FROM area a "
         "JOIN departamento d ON a.departamento_id = d.id "
-        "LEFT JOIN ("
-        f"  SELECT {area_key} AS area_key, COUNT(*) AS cnt "
-        "  FROM empleado e "
-        f"  WHERE {estado_key} = 'ACTIVO' "
-        "  GROUP BY area_key"
-        f") ec ON ec.area_key = {area_match} "
         "LEFT JOIN ("
         "  SELECT area_id, SUM(COALESCE(presupuestados, 0)) AS pres_perfiles "
         "  FROM perfil_ocupacional GROUP BY area_id"
         ") pp ON pp.area_id = a.id "
         "ORDER BY d.nombre, a.nombre"
-    )
-    rows = query(sql) or []
+    ) or []
+    emp_counts = query(
+        "SELECT area, COUNT(*) AS cnt FROM empleado "
+        f"WHERE {_area_name_sql('estado')} = 'ACTIVO' "
+        "GROUP BY area"
+    ) or []
+    count_by_catalog = {}
+    for row in emp_counts:
+        raw = (row.get("area") or "").strip()
+        if not raw:
+            continue
+        norm = _normalize_area_key(raw)
+        catalog = alias_lookup.get(norm) or raw.upper().strip()
+        count_by_catalog[catalog] = count_by_catalog.get(catalog, 0) + int(row.get("cnt") or 0)
+
+    rows = []
+    for a in catalog_rows:
+        area_name = (a.get("area") or "").upper().strip()
+        a = dict(a)
+        a["ejecutados"] = count_by_catalog.get(area_name, 0)
+        rows.append(a)
     return rows
 
 
@@ -6228,20 +6289,25 @@ def _resolve_area_presupuestados(stored_pres, pres_perfiles):
 
 def _fetch_unmapped_active_areas():
     """Empleados activos cuya área no coincide con el catálogo."""
-    estado_key = _area_name_sql("e.estado")
-    area_a = _area_name_sql("a.nombre")
-    area_e = _area_name_sql("e.area")
-    sql = (
-        "SELECT e.area, COUNT(*) AS cnt "
-        "FROM empleado e "
-        f"WHERE {estado_key} = 'ACTIVO' "
-        "AND COALESCE(TRIM(e.area), '') <> '' "
-        "AND NOT EXISTS ("
-        f"  SELECT 1 FROM area a WHERE {area_a} = {area_e}"
-        ") "
-        "GROUP BY e.area ORDER BY cnt DESC, e.area"
-    )
-    return query(sql) or []
+    alias_lookup = _build_area_alias_lookup()
+    catalog_keys = {
+        _normalize_area_key(r.get("area") or "")
+        for r in (query("SELECT nombre AS area FROM area") or [])
+    }
+    rows = query(
+        "SELECT area, COUNT(*) AS cnt FROM empleado "
+        f"WHERE {_area_name_sql('estado')} = 'ACTIVO' "
+        "AND COALESCE(TRIM(area), '') <> '' "
+        "GROUP BY area ORDER BY cnt DESC, area"
+    ) or []
+    unmapped = []
+    for row in rows:
+        raw = (row.get("area") or "").strip()
+        norm = _normalize_area_key(raw)
+        if norm in catalog_keys or norm in alias_lookup:
+            continue
+        unmapped.append(row)
+    return unmapped
 
 
 def _build_areas_grouped(area_rows):
@@ -6274,6 +6340,9 @@ def _build_areas_grouped(area_rows):
 @login_required
 @module_required("organizacion")
 def areas():
+    synced = _sync_legacy_area_names()
+    if synced:
+        flash(f"Se actualizaron {synced} registro(s) de área al catálogo vigente.", "info")
     area_rows = _fetch_areas_live_stats()
     grouped, total_pres, total_ejec = _build_areas_grouped(area_rows)
     unmapped_areas = _fetch_unmapped_active_areas()
