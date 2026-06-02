@@ -6481,13 +6481,19 @@ def directorio_jefes():
     for r in rows:
         email = r.get("email") or ""
         u = query(
-            "SELECT id_user, nombre, email, rol, id_cedula FROM usuario "
-            "WHERE LOWER(TRIM(email)) = LOWER(TRIM(%s)) LIMIT 1",
+            "SELECT u.id_user, u.nombre, u.email, u.rol, u.id_cedula, "
+            "e.apellidos_nombre AS empleado_vinculado, e.area AS emp_area, e.estado AS emp_estado "
+            "FROM usuario u "
+            "LEFT JOIN empleado e ON e.id_cedula = u.id_cedula "
+            "WHERE LOWER(TRIM(u.email)) = LOWER(TRIM(%s)) "
+            "ORDER BY CASE WHEN UPPER(COALESCE(u.rol, '')) = 'EMPLEADO' THEN 1 ELSE 0 END "
+            "LIMIT 1",
             (email,),
             one=True,
         )
         variants = set(area_variants(r["area"]))
         n_emp = sum(c for k, c in area_counts.items() if k in variants)
+        cedula = ((u or {}).get("id_cedula") or "").strip()
         enriched.append(
             {
                 **r,
@@ -6495,9 +6501,15 @@ def directorio_jefes():
                 "correo": email,
                 "usuario_ok": bool(u),
                 "usuario_rol": (u or {}).get("rol") or "",
+                "cedula_vinculada": cedula,
+                "empleado_vinculado": (u or {}).get("empleado_vinculado") or "",
+                "emp_area": (u or {}).get("emp_area") or "",
                 "empleados_vinculados": n_emp,
             }
         )
+    n_cedula = sum(1 for x in enriched if x.get("cedula_vinculada"))
+    n_sin_cedula = sum(1 for x in enriched if x.get("usuario_ok") and not x.get("cedula_vinculada"))
+    n_sin_usuario = sum(1 for x in enriched if not x.get("usuario_ok"))
     user = get_current_user()
     perm = get_role_permission(user["rol"] or "") if user else "READ"
     return render_template(
@@ -6506,6 +6518,9 @@ def directorio_jefes():
         rows=enriched,
         can_apply=perm == "ALL",
         xlsx_path=os.path.basename(DEFAULT_XLSX),
+        n_cedula=n_cedula,
+        n_sin_cedula=n_sin_cedula,
+        n_sin_usuario=n_sin_usuario,
     )
 
 

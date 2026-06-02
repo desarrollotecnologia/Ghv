@@ -5,16 +5,39 @@
     <a href="{{ url_for('home') }}">Home</a> &rsaquo; <span>Directorio de Jefes</span>
 </div>
 
-<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:20px">
+<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:16px">
     <p style="margin:0;flex:1;color:var(--text-secondary);font-size:13px">
         Mapeo oficial área → jefe encargado (fuente: <strong>{{ xlsx_path }}</strong>).
-        Se sincroniza automáticamente al abrir <a href="{{ url_for('areas') }}">Áreas</a>
-        (Admin / COORD. GH): crea jefes faltantes y asigna encargados al personal activo.
+        Se sincroniza al abrir <a href="{{ url_for('areas') }}">Áreas</a>.
     </p>
     <a href="{{ url_for('directorio_jefes_export') }}" class="btn btn-secondary" style="text-decoration:none">
         <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle">download</span>
         Exportar Excel
     </a>
+</div>
+
+<div class="area-summary" style="margin-bottom:20px">
+    <div class="area-summary-card">
+        <span class="material-symbols-outlined" style="color:#2e7d32">badge</span>
+        <div>
+            <div class="area-summary-value">{{ n_cedula|default(0) }}</div>
+            <div class="area-summary-label">Con cédula vinculada</div>
+        </div>
+    </div>
+    <div class="area-summary-card">
+        <span class="material-symbols-outlined" style="color:#ef6c00">person_off</span>
+        <div>
+            <div class="area-summary-value">{{ n_sin_cedula|default(0) }}</div>
+            <div class="area-summary-label">Usuario sin cédula</div>
+        </div>
+    </div>
+    <div class="area-summary-card">
+        <span class="material-symbols-outlined" style="color:#c62828">mail</span>
+        <div>
+            <div class="area-summary-value">{{ n_sin_usuario|default(0) }}</div>
+            <div class="area-summary-label">Sin cuenta usuario</div>
+        </div>
+    </div>
 </div>
 
 <div class="table-wrap">
@@ -25,8 +48,10 @@
                 <th>Área</th>
                 <th>Jefe Inmediato</th>
                 <th>Correo</th>
-                <th style="text-align:center">Usuario</th>
-                <th style="text-align:right">Empleados</th>
+                <th>Cédula vinculada</th>
+                <th>Empleado en ficha</th>
+                <th style="text-align:center">Cuenta</th>
+                <th style="text-align:right">Equipo</th>
             </tr>
         </thead>
         <tbody>
@@ -36,6 +61,16 @@
                 <td><strong>{{ row.area }}</strong></td>
                 <td>{{ row.jefe_inmediato }}</td>
                 <td style="font-size:12px">{{ row.correo }}</td>
+                <td>
+                    {% if row.cedula_vinculada %}
+                    <span style="font-weight:600">{{ row.cedula_vinculada }}</span>
+                    {% elif row.usuario_ok %}
+                    <span style="color:#ef6c00">Sin vincular</span>
+                    {% else %}
+                    <span style="color:var(--text-secondary)">—</span>
+                    {% endif %}
+                </td>
+                <td style="font-size:12px">{{ row.empleado_vinculado or '—' }}</td>
                 <td style="text-align:center">
                     {% if row.usuario_ok %}
                     <span class="badge badge-green" title="{{ row.usuario_rol }}">OK</span>
