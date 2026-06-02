@@ -1610,13 +1610,14 @@ def resolve_empleado_catalogos(records):
         perfil_map = {}
         perfil_name_set = set()
 
-    # Jefes/coordinadores vinculados por cédula: cargo en usuario.nombre si falta perfil.
+    # Jefes/coordinadores vinculados por cédula (solo cuentas que no son EMPLEADO).
     usuario_cargo_map = {}
     try:
         user_rows = query(
             "SELECT id_cedula, nombre FROM usuario "
             "WHERE id_cedula IS NOT NULL AND TRIM(id_cedula) <> '' "
-            "ORDER BY CASE WHEN UPPER(COALESCE(rol, '')) = 'EMPLEADO' THEN 1 ELSE 0 END, id_user"
+            "AND UPPER(COALESCE(rol, '')) <> 'EMPLEADO' "
+            "ORDER BY id_user"
         )
         for r in (user_rows or []):
             cid = str(r.get("id_cedula") or "").strip()
@@ -1629,6 +1630,7 @@ def resolve_empleado_catalogos(records):
     missing_tipo = set()
     missing_nivel = set()
     missing_prof = set()
+    missing_perfil = set()
     for it in items:
         if not isinstance(it, dict):
             continue
@@ -1641,6 +1643,9 @@ def resolve_empleado_catalogos(records):
         p = str(it.get("profesion") or "").strip()
         if p and p not in prof_map and _looks_like_id(p):
             missing_prof.add(p)
+        pid = str(it.get("id_perfil_ocupacional") or "").strip()
+        if pid and pid not in perfil_map and _looks_like_id(pid):
+            missing_perfil.add(pid)
 
     if missing_tipo:
         rows = query(
@@ -1666,6 +1671,18 @@ def resolve_empleado_catalogos(records):
         )
         for r in rows:
             prof_map[str(r["id_profesion"]).strip()] = r["profesion"]
+    if missing_perfil:
+        rows = query(
+            "SELECT id_perfil, perfil_ocupacional FROM perfil_ocupacional "
+            "WHERE id_perfil IN (" + ",".join(["%s"] * len(missing_perfil)) + ")",
+            tuple(missing_perfil),
+        )
+        for r in rows:
+            pid = str(r["id_perfil"]).strip()
+            pname = r.get("perfil_ocupacional") or ""
+            perfil_map[pid] = pname
+            perfil_map[pid.lower()] = pname
+            perfil_map[pid.upper()] = pname
 
     for it in items:
         if not isinstance(it, dict):
@@ -1680,7 +1697,13 @@ def resolve_empleado_catalogos(records):
         if p and p in prof_map:
             it["profesion"] = prof_map[p]
         # Nombre del perfil ocupacional (para mostrar en el detalle como "Ocupación / Cargo")
-        if "perfil_ocupacional_nombre" not in it or not it.get("perfil_ocupacional_nombre"):
+        emp_nombre_key = _normalize_key(it.get("apellidos_nombre"))
+        actual = str(it.get("perfil_ocupacional_nombre") or "").strip()
+        needs_cargo = (
+            not actual
+            or (emp_nombre_key and _normalize_key(actual) == emp_nombre_key)
+        )
+        if needs_cargo:
             raw = it.get("id_perfil_ocupacional")
             pid = str(raw or "").strip() if raw is not None else ""
             nombre = ""
@@ -1700,13 +1723,15 @@ def resolve_empleado_catalogos(records):
                 if not nombre and pid.upper() in perfil_name_set:
                     nombre = pid
             if not nombre:
-                cid = str(it.get("id_cedula") or "").strip()
-                if cid:
-                    nombre = usuario_cargo_map.get(cid, "")
-            if not nombre:
                 prof = str(it.get("profesion") or "").strip()
                 if prof and not _looks_like_id(prof):
                     nombre = prof
+            if not nombre:
+                cid = str(it.get("id_cedula") or "").strip()
+                emp_nombre = str(it.get("apellidos_nombre") or "").strip()
+                cargo_usuario = usuario_cargo_map.get(cid, "") if cid else ""
+                if cargo_usuario and _normalize_key(cargo_usuario) != _normalize_key(emp_nombre):
+                    nombre = cargo_usuario
             it["perfil_ocupacional_nombre"] = nombre
         for phone_key in ("celular", "telefono", "telefono_contacto"):
             if phone_key in it:
