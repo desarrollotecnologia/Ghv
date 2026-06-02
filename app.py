@@ -6188,13 +6188,22 @@ def retiro_personal():
 
 # Nombres viejos en empleado.area → nombre actual en catálogo (area.nombre)
 _AREA_CATALOG_ALIASES = {
-    "TECNOLOGIA": ["TICS", "TIC", "TIC'S", "TIC´S", "TIC S"],
-    "DIRECCION DPTO CALIDAD": ["GERENCIA CALIDAD"],
+    "TECNOLOGIA": ["TICS", "TIC", "TIC'S", "TIC´S", "TIC S", "DATA"],
+    "DIRECCION DPTO CALIDAD": ["GERENCIA CALIDAD", "CONTROL DE PROCESOS"],
     "TESORERIA": ["PLANILLAJE Y FACTURACION", "PLANILLAJE", "CARTERA"],
     "CONTROL INTERNO": ["DIRECCION CONTROLLER", "CONTROLLER"],
     "DIRECCION DPTO COMERCIAL": ["DIRECCION SURTIDORES", "SURTIDORES"],
-    "PLANEACION": ["PLANEACION FINANCIERA"],
+    "PLANEACION": ["PLANEACION FINANCIERA", "PLANEACION Y PROYECTOS"],
     "ADMINISTRACION": ["SERVICIOS GENERALES", "VIGILANCIA"],
+    "DIRECCION PRODUCCION": ["DIRECCION OPERACIONES", "DIRECCION DE OPERACIONES"],
+    "DIRECCION ADMON Y FINANCIERA": ["DIRECCION ADMON", "DIRECCION ADMINISTRATIVA"],
+    "LIMPIEZA Y DESINFECCION": ["LYD", "L Y D", "L&D"],
+    "L&D DESPOSTE": ["LYD DESPOSTE", "L Y D DESPOSTE"],
+}
+
+# Áreas que deben existir en catálogo aunque antes no estuvieran en area.nombre
+_CATALOG_AREAS_TO_ENSURE = {
+    "SST": "DPTO CALIDAD",
 }
 
 
@@ -6215,6 +6224,27 @@ def _build_area_alias_lookup():
         for alias in aliases:
             lookup[_normalize_area_key(alias)] = catalog_name
     return lookup
+
+
+def _ensure_catalog_areas():
+    """Crea en catálogo áreas usadas por empleados pero ausentes en area.nombre."""
+    for area_name, depto_name in _CATALOG_AREAS_TO_ENSURE.items():
+        exists = query(
+            "SELECT id FROM area WHERE UPPER(TRIM(nombre)) = %s",
+            (area_name.upper(),), one=True,
+        )
+        if exists:
+            continue
+        depto = query(
+            "SELECT id FROM departamento WHERE UPPER(TRIM(nombre)) = %s",
+            (depto_name.upper(),), one=True,
+        )
+        if not depto:
+            continue
+        execute(
+            "INSERT INTO area (departamento_id, nombre) VALUES (%s, %s)",
+            (depto["id"], area_name.upper()),
+        )
 
 
 def _sync_legacy_area_names():
@@ -6340,6 +6370,7 @@ def _build_areas_grouped(area_rows):
 @login_required
 @module_required("organizacion")
 def areas():
+    _ensure_catalog_areas()
     synced = _sync_legacy_area_names()
     if synced:
         flash(f"Se actualizaron {synced} registro(s) de área al catálogo vigente.", "info")
