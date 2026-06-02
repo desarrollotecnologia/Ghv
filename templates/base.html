@@ -166,6 +166,10 @@
                 <span class="material-symbols-outlined">badge</span>
                 <span class="nav-label">Perfil Ocupacional</span>
             </a>
+            <a href="{{ url_for('directorio_jefes') }}" class="nav-item {{ 'active' if active_page == 'Directorio Jefes' }}">
+                <span class="material-symbols-outlined">account_tree</span>
+                <span class="nav-label">Directorio Jefes</span>
+            </a>
         </div>
         {% endif %}
 

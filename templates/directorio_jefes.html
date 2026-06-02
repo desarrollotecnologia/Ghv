@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="cal-breadcrumb" style="margin-bottom:16px">
+    <a href="{{ url_for('home') }}">Home</a> &rsaquo; <span>Directorio de Jefes</span>
+</div>
+
+<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:20px">
+    <p style="margin:0;flex:1;color:var(--text-secondary);font-size:13px">
+        Mapeo oficial área → jefe encargado (fuente: <strong>{{ xlsx_path }}</strong>).
+        Se sincroniza automáticamente al abrir <a href="{{ url_for('areas') }}">Áreas</a>
+        (Admin / COORD. GH): crea jefes faltantes y asigna encargados al personal activo.
+    </p>
+    <a href="{{ url_for('directorio_jefes_export') }}" class="btn btn-secondary" style="text-decoration:none">
+        <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle">download</span>
+        Exportar Excel
+    </a>
+</div>
+
+<div class="table-wrap">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Departamento</th>
+                <th>Área</th>
+                <th>Jefe Inmediato</th>
+                <th>Correo</th>
+                <th style="text-align:center">Usuario</th>
+                <th style="text-align:right">Empleados</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <td>{{ row.departamento }}</td>
+                <td><strong>{{ row.area }}</strong></td>
+                <td>{{ row.jefe_inmediato }}</td>
+                <td style="font-size:12px">{{ row.correo }}</td>
+                <td style="text-align:center">
+                    {% if row.usuario_ok %}
+                    <span class="badge badge-green" title="{{ row.usuario_rol }}">OK</span>
+                    {% else %}
+                    <span class="badge badge-orange">Crear</span>
+                    {% endif %}
+                </td>
+                <td style="text-align:right">{{ row.empleados_vinculados }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

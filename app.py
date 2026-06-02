@@ -20,6 +20,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from config import Config
+from directorio_colbeef import DEFAULT_XLSX, apply_directorio, load_directorio, area_variants, _normalize_key
 from mail_utils import (
     send_mail,
     notificar_nueva_solicitud_permiso,
@@ -6389,6 +6390,41 @@ def _build_areas_grouped(area_rows):
     return grouped, total_pres, total_ejec
 
 
+def _directorio_db_callbacks():
+    """Adaptadores query/execute para directorio_colbeef.apply_directorio."""
+
+    def fetch_all(sql, params=None):
+        return query(sql, params) or []
+
+    def fetch_one(sql, params=None):
+        return query(sql, params, one=True)
+
+    def execute_fn(sql, params=None):
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(sql, params or ())
+        n = cur.rowcount
+        conn.commit()
+        cur.close()
+        conn.close()
+        return n
+
+    return fetch_all, fetch_one, execute_fn
+
+
+def _sync_directorio_jefes():
+    """Aplica database/Directorio_Colbeef.xlsx → usuarios jefe + encargados por área."""
+    user = get_current_user()
+    if not user or get_role_permission(user.get("rol") or "") != "ALL":
+        return None
+    try:
+        fetch_all, fetch_one, execute_fn = _directorio_db_callbacks()
+        return apply_directorio(fetch_all, fetch_one, execute_fn, DEFAULT_XLSX, dry_run=False)
+    except Exception as exc:
+        current_app.logger.warning("sync directorio jefes: %s", exc)
+        return {"error": str(exc)}
+
+
 @app.route("/areas")
 @login_required
 @module_required("organizacion")
@@ -6397,6 +6433,19 @@ def areas():
     synced = _sync_legacy_area_names()
     if synced:
         flash(f"Se actualizaron {synced} registro(s) de área al catálogo vigente.", "info")
+    dir_result = _sync_directorio_jefes()
+    if dir_result and not dir_result.get("error"):
+        creados = dir_result.get("usuarios_creados") or []
+        asignados = sum(int(a.get("empleados") or 0) for a in (dir_result.get("areas") or []))
+        if creados or asignados:
+            msg = "Directorio de jefes sincronizado"
+            if creados:
+                msg += f": {len(creados)} usuario(s) creado(s)"
+            if asignados:
+                msg += f"{', ' if creados else ':'} {asignados} encargado(s) asignado(s) por área"
+            flash(msg + ".", "info")
+    elif dir_result and dir_result.get("error"):
+        flash(f"No se pudo sincronizar el directorio de jefes: {dir_result['error']}", "warning")
     area_rows = _fetch_areas_live_stats()
     grouped, total_pres, total_ejec = _build_areas_grouped(area_rows)
     unmapped_areas = _fetch_unmapped_active_areas()
@@ -6414,6 +6463,91 @@ def areas():
         unmapped_total=unmapped_total,
         ultima_actualizacion=ultima_actualizacion,
     )
+
+
+@app.route("/directorio-jefes")
+@login_required
+@module_required("organizacion")
+def directorio_jefes():
+    rows = load_directorio(DEFAULT_XLSX)
+    active = query("SELECT area FROM empleado WHERE estado = 'ACTIVO'") or []
+    area_counts: dict[str, int] = {}
+    for emp in active:
+        key = _normalize_key(emp.get("area"))
+        if key:
+            area_counts[key] = area_counts.get(key, 0) + 1
+
+    enriched = []
+    for r in rows:
+        email = r.get("email") or ""
+        u = query(
+            "SELECT id_user, nombre, email, rol, id_cedula FROM usuario "
+            "WHERE LOWER(TRIM(email)) = LOWER(TRIM(%s)) LIMIT 1",
+            (email,),
+            one=True,
+        )
+        variants = set(area_variants(r["area"]))
+        n_emp = sum(c for k, c in area_counts.items() if k in variants)
+        enriched.append(
+            {
+                **r,
+                "jefe_inmediato": r.get("jefe") or "",
+                "correo": email,
+                "usuario_ok": bool(u),
+                "usuario_rol": (u or {}).get("rol") or "",
+                "empleados_vinculados": n_emp,
+            }
+        )
+    user = get_current_user()
+    perm = get_role_permission(user["rol"] or "") if user else "READ"
+    return render_template(
+        "directorio_jefes.html",
+        active_page="Directorio Jefes",
+        rows=enriched,
+        can_apply=perm == "ALL",
+        xlsx_path=os.path.basename(DEFAULT_XLSX),
+    )
+
+
+@app.route("/directorio-jefes/aplicar", methods=["POST"])
+@login_required
+@role_required("ALL")
+def directorio_jefes_aplicar():
+    dir_result = _sync_directorio_jefes()
+    if dir_result and not dir_result.get("error"):
+        creados = len(dir_result.get("usuarios_creados") or [])
+        asignados = sum(int(a.get("empleados") or 0) for a in (dir_result.get("areas") or []))
+        flash(
+            f"Directorio sincronizado: {creados} usuario(s) creado(s), "
+            f"{asignados} encargado(s) asignado(s).",
+            "success",
+        )
+    elif dir_result and dir_result.get("error"):
+        flash(f"Error al sincronizar directorio: {dir_result['error']}", "error")
+    return redirect(url_for("directorio_jefes"))
+
+
+@app.route("/directorio-jefes/export")
+@login_required
+@module_required("organizacion")
+def directorio_jefes_export():
+    rows = load_directorio(DEFAULT_XLSX)
+    export_rows = [
+        {
+            "departamento": r.get("departamento") or "",
+            "area": r.get("area") or "",
+            "jefe_inmediato": r.get("jefe") or "",
+            "correo": r.get("email") or "",
+        }
+        for r in rows
+    ]
+    cols = [
+        ("departamento", "Departamento"),
+        ("area", "Área"),
+        ("jefe_inmediato", "Jefe Inmediato"),
+        ("correo", "Correo"),
+    ]
+    return export_excel_response_generic(export_rows, cols, "Directorio_Colbeef")
 
 
 @app.route("/areas/<int:area_id>")
