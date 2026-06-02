@@ -6193,7 +6193,10 @@ def _area_name_sql(expr):
 
 def _fetch_areas_live_stats():
     """Presupuestados y ejecutados en vivo por área del catálogo."""
-    rows = query(
+    area_key = _area_name_sql("e.area")
+    estado_key = _area_name_sql("e.estado")
+    area_match = _area_name_sql("a.nombre")
+    sql = (
         "SELECT a.id, a.nombre AS area, a.presupuestados, "
         "d.id AS depto_id, d.nombre AS departamento, "
         "COALESCE(ec.cnt, 0) AS ejecutados, "
@@ -6201,17 +6204,18 @@ def _fetch_areas_live_stats():
         "FROM area a "
         "JOIN departamento d ON a.departamento_id = d.id "
         "LEFT JOIN ("
-        "  SELECT " + _area_name_sql("e.area") + " AS area_key, COUNT(*) AS cnt "
+        f"  SELECT {area_key} AS area_key, COUNT(*) AS cnt "
         "  FROM empleado e "
-        "  WHERE " + _area_name_sql("e.estado") + " = 'ACTIVO' "
+        f"  WHERE {estado_key} = 'ACTIVO' "
         "  GROUP BY area_key"
-        ") ec ON ec.area_key = " + _area_name_sql("a.nombre") + " "
+        f") ec ON ec.area_key = {area_match} "
         "LEFT JOIN ("
         "  SELECT area_id, SUM(COALESCE(presupuestados, 0)) AS pres_perfiles "
         "  FROM perfil_ocupacional GROUP BY area_id"
         ") pp ON pp.area_id = a.id "
         "ORDER BY d.nombre, a.nombre"
-    ) or []
+    )
+    rows = query(sql) or []
     return rows
 
 
@@ -6224,16 +6228,20 @@ def _resolve_area_presupuestados(stored_pres, pres_perfiles):
 
 def _fetch_unmapped_active_areas():
     """Empleados activos cuya área no coincide con el catálogo."""
-    return query(
+    estado_key = _area_name_sql("e.estado")
+    area_a = _area_name_sql("a.nombre")
+    area_e = _area_name_sql("e.area")
+    sql = (
         "SELECT e.area, COUNT(*) AS cnt "
         "FROM empleado e "
-        "WHERE " + _area_name_sql("e.estado") + " = 'ACTIVO' "
+        f"WHERE {estado_key} = 'ACTIVO' "
         "AND COALESCE(TRIM(e.area), '') <> '' "
         "AND NOT EXISTS ("
-        "  SELECT 1 FROM area a WHERE " + _area_name_sql("a.nombre") + " = " + _area_name_sql("e.area")
+        f"  SELECT 1 FROM area a WHERE {area_a} = {area_e}"
         ") "
         "GROUP BY e.area ORDER BY cnt DESC, e.area"
-    ) or []
+    )
+    return query(sql) or []
 
 
 def _build_areas_grouped(area_rows):
@@ -6312,18 +6320,19 @@ def area_detail(area_id):
         "WHERE a.id = %s ORDER BY p.perfil_ocupacional",
         (area_id,),
     )
+    area_eq = _area_name_sql("area") + " = " + _area_name_sql("%s")
+    estado_eq = _area_name_sql("estado") + " = 'ACTIVO'"
     empleados = query(
         "SELECT id_cedula, apellidos_nombre, lugar_expedicion "
         "FROM empleado "
-        "WHERE " + _area_name_sql("area") + " = " + _area_name_sql("%s") + " "
-        "AND " + _area_name_sql("estado") + " = 'ACTIVO' "
+        f"WHERE {area_eq} AND {estado_eq} "
         "ORDER BY apellidos_nombre",
         (area["area"],),
     )
     retirados = query(
         "SELECT id_cedula, id_retiro, apellidos_nombre "
         "FROM retirado "
-        "WHERE " + _area_name_sql("area") + " = " + _area_name_sql("%s") + " "
+        f"WHERE {area_eq} "
         "ORDER BY apellidos_nombre",
         (area["area"],),
     )
@@ -6354,20 +6363,19 @@ def perfil_detail(area_id, perfil_id):
         flash("Perfil no encontrado", "error")
         return redirect(url_for("area_detail", area_id=area_id))
 
+    area_eq = _area_name_sql("area") + " = " + _area_name_sql("%s")
+    estado_eq = _area_name_sql("estado") + " = 'ACTIVO'"
     empleados = query(
         "SELECT id_cedula, apellidos_nombre, lugar_expedicion "
         "FROM empleado "
-        "WHERE " + _area_name_sql("area") + " = " + _area_name_sql("%s") + " "
-        "AND id_perfil_ocupacional = %s "
-        "AND " + _area_name_sql("estado") + " = 'ACTIVO' "
+        f"WHERE {area_eq} AND id_perfil_ocupacional = %s AND {estado_eq} "
         "ORDER BY apellidos_nombre",
         (perfil["area"], str(perfil_id)),
     )
     retirados = query(
         "SELECT id_cedula, id_retiro, apellidos_nombre "
         "FROM retirado "
-        "WHERE " + _area_name_sql("area") + " = " + _area_name_sql("%s") + " "
-        "AND id_perfil_ocupacional = %s "
+        f"WHERE {area_eq} AND id_perfil_ocupacional = %s "
         "ORDER BY apellidos_nombre",
         (perfil["area"], str(perfil_id)),
     )
@@ -7011,14 +7019,13 @@ def area_editar(id):
         (nombre, int(departamento_id), int(presupuestados) if presupuestados else None, id),
     )
     if prev_nombre and nombre and prev_nombre.upper() != nombre.upper():
+        area_eq = _area_name_sql("area") + " = " + _area_name_sql("%s")
         execute(
-            "UPDATE empleado SET area = %s "
-            "WHERE " + _area_name_sql("area") + " = " + _area_name_sql("%s"),
+            f"UPDATE empleado SET area = %s WHERE {area_eq}",
             (nombre, prev_nombre),
         )
         execute(
-            "UPDATE retirado SET area = %s "
-            "WHERE " + _area_name_sql("area") + " = " + _area_name_sql("%s"),
+            f"UPDATE retirado SET area = %s WHERE {area_eq}",
             (nombre, prev_nombre),
         )
     flash("Área actualizada", "success")
