@@ -239,6 +239,21 @@ def _can_encargado_mode(user):
     return _has_assigned_team(user)
 
 
+def _is_coord_gh(user):
+    return bool(user and user.get("rol") == "COORD. GH")
+
+
+def _can_enter_encargado_mode(user):
+    """Puede activar vista de jefe encargado. COORD. GH también; ADMIN no."""
+    if not user:
+        return False
+    if user.get("rol") == "ADMIN":
+        return False
+    if _is_coord_gh(user):
+        return True
+    return _can_encargado_mode(user)
+
+
 def _is_employee_mode(user=None):
     """True cuando está activo el modo empleado temporal."""
     user = user or get_current_user()
@@ -757,8 +772,7 @@ def inject_user():
             switchable_accounts = [a for a in linked if (a.get("id_user") or "") != (user.get("id_user") or "")]
             can_switch_to_employee = _can_show_switch_to_employee(user) and not session.get("switch_back_user_id")
         can_enter_employee_vac_mode = _can_employee_vacation_mode(user)
-        # Excepción: ADMIN y COORD. GH no deben entrar al modo jefe encargado.
-        can_enter_encargado_mode = _can_encargado_mode(user) and (not _es_admin_o_coord(user))
+        can_enter_encargado_mode = _can_enter_encargado_mode(user)
         if encargado_mode and not can_enter_encargado_mode:
             session.pop("encargado_mode", None)
             session.pop("encargado_mode_opt_out", None)
@@ -768,12 +782,17 @@ def inject_user():
                 vm[k] = False
             vm["permisos"] = True
             show_permisos_menu = True
-        if can_enter_encargado_mode and not employee_vac_mode and not encargado_mode_opt_out:
-            # Modo jefe encargado predeterminado al iniciar sesión.
+        if (
+            can_enter_encargado_mode
+            and not employee_vac_mode
+            and not encargado_mode_opt_out
+            and not _is_coord_gh(user)
+        ):
+            # Modo jefe encargado predeterminado al iniciar sesión (jefes; no COORD. GH).
             if not encargado_mode:
                 session["encargado_mode"] = True
                 encargado_mode = True
-        if encargado_mode and can_enter_encargado_mode and not employee_vac_mode:
+        if encargado_mode and can_enter_encargado_mode and not employee_vac_mode and not _is_coord_gh(user):
             # En modo jefe solo debe ver "Mi Equipo" (no Personal Activo/Inactivo).
             vm["personal"] = False
             vm["personal_inactivo"] = False
@@ -982,7 +1001,7 @@ def desactivar_modo_empleado_vacaciones():
 @login_required
 def activar_modo_encargado():
     user = get_current_user()
-    if not _can_encargado_mode(user):
+    if not _can_enter_encargado_mode(user):
         flash("No tienes personal asignado para activar el modo jefe encargado.", "error")
         return redirect(url_for("home"))
     session["encargado_mode"] = True
@@ -3110,7 +3129,7 @@ def vacaciones_index():
         )
     return render_template(
         "vacaciones_list.html",
-        active_page="Listado vacaciones",
+        active_page="Vacaciones empleados",
         rows=rows,
         puede_aprobar=_puede_ver_listado_solicitudes(),
     )
@@ -3650,7 +3669,7 @@ def incapacidad_index():
         r["_puede_resolver"] = es_admin_coord or ((r.get("id_user_encargado") or "") == (cur_user.get("id_user") or ""))
     return render_template(
         "incapacidad_list.html",
-        active_page="Listado incapacidades",
+        active_page="Incapacidades empleados",
         rows=rows,
         puede_aprobar=_puede_ver_listado_solicitudes(),
     )
@@ -5236,7 +5255,7 @@ def personal_activo():
 @login_required
 def mi_equipo():
     user = get_current_user()
-    if not _can_encargado_mode(user):
+    if not _can_enter_encargado_mode(user):
         flash("No tienes personal asignado.", "info")
         return redirect(url_for("home"))
 

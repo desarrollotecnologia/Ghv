@@ -253,13 +253,13 @@
             </a>
             {% endif %}
             {% if not employee_vac_mode %}
-            <a href="{{ url_for('vacaciones_index') }}" class="nav-item {{ 'active' if active_page == 'Listado vacaciones' }}">
+            <a href="{{ url_for('vacaciones_index') }}" class="nav-item {{ 'active' if active_page == 'Vacaciones empleados' }}">
                 <span class="material-symbols-outlined">list</span>
-                <span class="nav-label">{{ 'Solicitudes vacaciones empleados' if encargado_mode else 'Listado vacaciones' }}</span>
+                <span class="nav-label">Vacaciones empleados</span>
             </a>
-            <a href="{{ url_for('incapacidad_index') }}" class="nav-item {{ 'active' if active_page == 'Listado incapacidades' }}">
+            <a href="{{ url_for('incapacidad_index') }}" class="nav-item {{ 'active' if active_page == 'Incapacidades empleados' }}">
                 <span class="material-symbols-outlined">monitor_heart</span>
-                <span class="nav-label">{{ 'Solicitudes incapacidad empleados' if encargado_mode else 'Listado incapacidades' }}</span>
+                <span class="nav-label">Incapacidades empleados</span>
             </a>
             {% if not encargado_mode and not is_logistica_coordinator %}
             <a href="{{ url_for('vacaciones_mis_solicitudes') }}" class="nav-item {{ 'active' if active_page == 'Mis solicitudes de vacaciones' }}">
