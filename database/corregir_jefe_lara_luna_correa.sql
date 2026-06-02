@@ -44,7 +44,7 @@ SELECT
     @jefe_coord_user,
     'coordinacion.tecnologia@colbeef.com',
     @hash_estandar,
-    apellidos_nombre,
+    'JEFE TICS',
     'JEFE INMEDIATO',
     1,
     'APROBAR',
@@ -53,7 +53,7 @@ SELECT
 FROM empleado
 WHERE id_cedula = @jefe_cedula
 ON DUPLICATE KEY UPDATE
-    nombre = VALUES(nombre),
+    nombre = 'JEFE TICS',
     rol = 'JEFE INMEDIATO',
     estado = 1,
     acciones = 'APROBAR',

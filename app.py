@@ -1644,7 +1644,9 @@ def resolve_empleado_catalogos(records):
         if p and p not in prof_map and _looks_like_id(p):
             missing_prof.add(p)
         pid = str(it.get("id_perfil_ocupacional") or "").strip()
-        if pid and pid not in perfil_map and _looks_like_id(pid):
+        if pid and not (
+            perfil_map.get(pid) or perfil_map.get(pid.lower()) or perfil_map.get(pid.upper())
+        ):
             missing_perfil.add(pid)
 
     if missing_tipo:
