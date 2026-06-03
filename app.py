@@ -622,6 +622,17 @@ def _normalize_email(s):
     return " ".join(str(s).split()).strip().lower()
 
 
+# Módulos del rol exclusivo SISO (siso@colbeef.com). Se suman al rol en BD (p. ej. JEFE INMEDIATO).
+_SISO_COLBEEF_EXTRA_MODULES = (
+    "incidencias", "incidencias_dashboard", "personal", "personal_inactivo",
+)
+
+
+def _is_siso_colbeef_user(user):
+    """Líder SST: JEFE INMEDIATO en BD + módulos exclusivos SISO (incidencias, personal)."""
+    return bool(user and _normalize_email(user.get("email")) == "siso@colbeef.com")
+
+
 def _is_logistica_coordinator(user):
     """Coord. logística: solo aprueba/rechaza, no solicita para sí."""
     if not user:
@@ -709,13 +720,11 @@ def module_required(module_key):
             user = get_current_user()
             if user is None:
                 return redirect(url_for("login"))
-            # Incidencias: visible también si el usuario es Siso@colbeef.com (aunque tenga otro rol)
-            email_lower = (user.get("email") or "").strip().lower()
-            tiene_incidencias = (
+            tiene_modulo = (
                 _get_effective_modules(user["rol"]).get(module_key, False)
-                or (module_key in ("incidencias", "incidencias_dashboard") and email_lower == "siso@colbeef.com")
+                or (module_key in _SISO_COLBEEF_EXTRA_MODULES and _is_siso_colbeef_user(user))
             )
-            if not tiene_incidencias:
+            if not tiene_modulo:
                 flash("No tienes acceso a este módulo", "error")
                 if (user.get("rol") or "").strip().upper() == "EMPLEADO":
                     return redirect(url_for("empleado_portal"))
@@ -751,10 +760,10 @@ def inject_user():
         vm["suite_principal"] = True
         vm["locker"] = _is_locker_user(user)
         vm["catalogos"] = _can_use_catalogos(user)
-        # Usuario Siso@colbeef.com: siempre ve el módulo Incidencias (aunque su rol sea GESTOR SST u otro)
-        if (user.get("email") or "").strip().lower() == "siso@colbeef.com":
-            vm["incidencias"] = True
-            vm["incidencias_dashboard"] = True
+        # siso@colbeef.com: rol en BD (JEFE INMEDIATO) + módulos exclusivos SISO
+        if _is_siso_colbeef_user(user):
+            for mod in _SISO_COLBEEF_EXTRA_MODULES:
+                vm[mod] = True
         # Nómina, contratación y gerencia pueden consultar incapacitados.
         if _can_view_incapacitados(user):
             vm["incapacitados"] = True
@@ -795,8 +804,9 @@ def inject_user():
                 encargado_mode = True
         if encargado_mode and can_enter_encargado_mode and not employee_vac_mode and not _is_coord_gh(user):
             # En modo jefe solo debe ver "Mi Equipo" (no Personal Activo/Inactivo).
-            vm["personal"] = False
-            vm["personal_inactivo"] = False
+            if not _is_siso_colbeef_user(user):
+                vm["personal"] = False
+                vm["personal_inactivo"] = False
             vm["retiro"] = False
     return dict(
         current_user=user,
@@ -5189,7 +5199,7 @@ def api_personal_buscar():
 @login_required
 @module_required("personal")
 def personal_activo():
-    if session.get("encargado_mode"):
+    if session.get("encargado_mode") and not _is_siso_colbeef_user(get_current_user()):
         flash("En modo jefe encargado solo puedes ver Mi Equipo.", "info")
         return redirect(url_for("mi_equipo"))
     # Solo un modo: inactivos=1 en la URL → inactivos; si no → activos
@@ -5212,11 +5222,14 @@ def personal_activo():
     )
     personal_filter_areas = [r["a"] for r in (areas_opts or []) if r.get("a")]
 
+    user = get_current_user()
+    encargado_filtra_equipo = session.get("encargado_mode") and not _is_siso_colbeef_user(user)
+
     where = ["estado = %s"]
     params = [estado]
-    if session.get("encargado_mode"):
+    if encargado_filtra_equipo:
         where.append("id_user_encargado = %s")
-        params.append((get_current_user() or {}).get("id_user"))
+        params.append((user or {}).get("id_user"))
     if filtro_depto:
         where.append("departamento = %s")
         params.append(filtro_depto)
@@ -5234,9 +5247,9 @@ def personal_activo():
     # para que Activos/Inactivos siempre muestren ambos conteos reales.
     where_counts = []
     params_counts = []
-    if session.get("encargado_mode"):
+    if encargado_filtra_equipo:
         where_counts.append("id_user_encargado = %s")
-        params_counts.append((get_current_user() or {}).get("id_user"))
+        params_counts.append((user or {}).get("id_user"))
     if filtro_depto:
         where_counts.append("departamento = %s")
         params_counts.append(filtro_depto)
@@ -5280,7 +5293,6 @@ def personal_activo():
         {"value": n_inactivos, "label": "Inactivos",     "icon": "person_off", "color": "orange"},
         {"value": deptos,    "label": "Departamentos",   "icon": "business",   "color": "blue"},
     ]
-    user = get_current_user()
     perm = get_role_permission(user["rol"] or "") if user else "READ"
     show_add_btn = perm in ("WRITE", "ALL")  # Solo Contratación, Coord. GH y Admin pueden agregar
     export_key = "personal_inactivo" if show_inactivos else "personal_activo"
@@ -5936,9 +5948,11 @@ def eliminar_retirado(id):
 @login_required
 @module_required("personal_inactivo")
 def personal_inactivo():
-    if session.get("encargado_mode"):
+    user = get_current_user()
+    if session.get("encargado_mode") and not _is_siso_colbeef_user(user):
         flash("En modo jefe encargado solo puedes ver Mi Equipo.", "info")
         return redirect(url_for("mi_equipo"))
+    encargado_filtra_equipo = session.get("encargado_mode") and not _is_siso_colbeef_user(user)
     estado = "INACTIVO"
     filtro_depto = request.args.get("depto", "").strip()
     filtro_area = request.args.get("area", "").strip()
@@ -5956,9 +5970,9 @@ def personal_inactivo():
     personal_filter_areas = [r["a"] for r in (areas_opts or []) if r.get("a")]
     where = ["estado = %s"]
     params = [estado]
-    if session.get("encargado_mode"):
+    if encargado_filtra_equipo:
         where.append("id_user_encargado = %s")
-        params.append((get_current_user() or {}).get("id_user"))
+        params.append((user or {}).get("id_user"))
     if filtro_depto:
         where.append("departamento = %s")
         params.append(filtro_depto)
