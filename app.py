@@ -1512,6 +1512,44 @@ def _looks_like_id(val):
     return bool(re.match(r"^[a-z0-9]{6,20}$", s, re.I))
 
 
+_directorio_cargo_cache = None
+
+
+def _cargo_distinto_de_nombre(cargo, emp_nombre):
+    c = str(cargo or "").strip()
+    if not c:
+        return False
+    n = str(emp_nombre or "").strip()
+    if n and _normalize_key(c) == _normalize_key(n):
+        return False
+    return True
+
+
+def _get_directorio_cargo_lookups():
+    """Área/correo del directorio Colbeef → título del jefe (cargo)."""
+    global _directorio_cargo_cache
+    if _directorio_cargo_cache is not None:
+        return _directorio_cargo_cache
+    by_area = {}
+    by_email = {}
+    try:
+        for row in load_directorio():
+            jefe = (row.get("jefe") or "").strip()
+            if not jefe:
+                continue
+            email = (row.get("email") or "").strip().lower()
+            if email:
+                by_email[email] = jefe
+            for variant in area_variants(row.get("area") or ""):
+                key = _normalize_key(variant)
+                if key:
+                    by_area[key] = jefe
+    except Exception:
+        pass
+    _directorio_cargo_cache = (by_area, by_email)
+    return _directorio_cargo_cache
+
+
 def enrich_calendar_row(row_dict, tipo_map, nivel_map, prof_map):
     """Pone en row_dict celular normalizado y etiquetas para tipo_documento, nivel_educativo, profesion."""
     if "celular" in row_dict:
@@ -1620,21 +1658,28 @@ def resolve_empleado_catalogos(records):
         perfil_map = {}
         perfil_name_set = set()
 
-    # Jefes/coordinadores vinculados por cédula (solo cuentas que no son EMPLEADO).
+    # Jefes/coordinadores: cuenta de usuario (cédula o correo) → título del cargo.
     usuario_cargo_map = {}
+    usuario_cargo_by_email = {}
     try:
         user_rows = query(
-            "SELECT id_cedula, nombre FROM usuario "
-            "WHERE id_cedula IS NOT NULL AND TRIM(id_cedula) <> '' "
-            "AND UPPER(COALESCE(rol, '')) <> 'EMPLEADO' "
-            "ORDER BY id_user"
+            "SELECT id_cedula, nombre, email, rol FROM usuario "
+            "WHERE UPPER(COALESCE(rol, '')) <> 'EMPLEADO' "
+            "ORDER BY CASE WHEN UPPER(COALESCE(rol, '')) = 'JEFE INMEDIATO' THEN 0 ELSE 1 END, id_user"
         )
         for r in (user_rows or []):
+            nombre = (r.get("nombre") or "").strip()
             cid = str(r.get("id_cedula") or "").strip()
-            if cid and cid not in usuario_cargo_map:
-                usuario_cargo_map[cid] = (r.get("nombre") or "").strip()
+            if cid and cid not in usuario_cargo_map and nombre:
+                usuario_cargo_map[cid] = nombre
+            email = str(r.get("email") or "").strip().lower()
+            if email and email not in usuario_cargo_by_email and nombre:
+                usuario_cargo_by_email[email] = nombre
     except Exception:
         usuario_cargo_map = {}
+        usuario_cargo_by_email = {}
+
+    dir_cargo_by_area, dir_cargo_by_email = _get_directorio_cargo_lookups()
 
     # Fallback: ids que no estén precargados (catálogo recién creado, etc.)
     missing_tipo = set()
@@ -1734,16 +1779,41 @@ def resolve_empleado_catalogos(records):
                 # 3) Si lo guardaron como nombre directamente
                 if not nombre and pid.upper() in perfil_name_set:
                     nombre = pid
+                # 4) Cargo como texto en id_perfil_ocupacional (importación Excel)
+                if not nombre and not _looks_like_id(pid) and len(pid) >= 3 and not pid.isdigit():
+                    nombre = pid
+            emp_nombre = str(it.get("apellidos_nombre") or "").strip()
             if not nombre:
                 prof = str(it.get("profesion") or "").strip()
-                if prof and not _looks_like_id(prof):
+                if prof and not _looks_like_id(prof) and _cargo_distinto_de_nombre(prof, emp_nombre):
                     nombre = prof
             if not nombre:
                 cid = str(it.get("id_cedula") or "").strip()
-                emp_nombre = str(it.get("apellidos_nombre") or "").strip()
                 cargo_usuario = usuario_cargo_map.get(cid, "") if cid else ""
-                if cargo_usuario and _normalize_key(cargo_usuario) != _normalize_key(emp_nombre):
+                if _cargo_distinto_de_nombre(cargo_usuario, emp_nombre):
                     nombre = cargo_usuario
+            if not nombre:
+                email = str(it.get("direccion_email") or "").strip().lower()
+                if email:
+                    for cargo_src in (
+                        usuario_cargo_by_email.get(email, ""),
+                        dir_cargo_by_email.get(email, ""),
+                    ):
+                        if _cargo_distinto_de_nombre(cargo_src, emp_nombre):
+                            nombre = cargo_src
+                            break
+            if not nombre:
+                for field in (it.get("area"), it.get("departamento")):
+                    raw_field = str(field or "").strip()
+                    if not raw_field:
+                        continue
+                    for variant in area_variants(raw_field):
+                        cargo_area = dir_cargo_by_area.get(_normalize_key(variant), "")
+                        if _cargo_distinto_de_nombre(cargo_area, emp_nombre):
+                            nombre = cargo_area
+                            break
+                    if nombre:
+                        break
             it["perfil_ocupacional_nombre"] = nombre
         for phone_key in ("celular", "telefono", "telefono_contacto"):
             if phone_key in it:
