@@ -2196,10 +2196,23 @@ TIPOS_PERMISO_LEGACY = {
     "Reuniones Escolares": "Reuniones escolares",
 }
 
+# Permisos que exigen adjuntar soporte aunque sean remunerados.
+TIPOS_PERMISO_REQUIEREN_SOPORTE = (
+    "Ejercer derecho al voto",
+    "Jurado de votación",
+)
+
 
 def _normalizar_tipo_permiso(tipo):
     tipo = (tipo or "Diligencias personales").strip()
     return TIPOS_PERMISO_LEGACY.get(tipo, tipo)
+
+
+def _permiso_requiere_evidencia(tipo, permiso_remunerado):
+    """No remunerado o permiso de voto/jurado de votación requieren soporte adjunto."""
+    if permiso_remunerado == 0:
+        return True
+    return _normalizar_tipo_permiso(tipo) in TIPOS_PERMISO_REQUIEREN_SOPORTE
 
 
 _ICD11_TOKEN_CACHE = {"access_token": None, "expires_at": None}
@@ -2736,11 +2749,11 @@ def permiso_solicitar():
         except ValueError:
             flash("Fechas inválidas.", "error")
             return redirect(url_for("permiso_solicitar"))
-        requiere_evidencia = permiso_remunerado == 0
+        requiere_evidencia = _permiso_requiere_evidencia(tipo, permiso_remunerado)
         if requiere_evidencia:
             evidencia_file = request.files.get("evidencia")
             if not evidencia_file or not evidencia_file.filename:
-                flash("Debe adjuntar evidencia (PDF o imagen) para permiso no remunerado.", "error")
+                flash("Debe adjuntar soporte (PDF o imagen) para este permiso.", "error")
                 return redirect(url_for("permiso_solicitar"))
         emp = query("SELECT id_cedula, apellidos_nombre, direccion_email, area FROM empleado WHERE id_cedula = %s AND estado = 'ACTIVO'", (id_cedula,), one=True)
         if not emp:
@@ -2942,11 +2955,11 @@ def permiso_editar(id):
             evidencia_ruta = os.path.join("permisos", nombre_safe)
             evidencia_full_path = os.path.join(upload_dir, nombre_safe)
             evidencia_file.save(evidencia_full_path)
-        requiere_evidencia = permiso_remunerado == 0
+        requiere_evidencia = _permiso_requiere_evidencia(tipo, permiso_remunerado)
         if requiere_evidencia and not evidencia_ruta:
-            flash("Debes adjuntar evidencia (PDF o imagen) para permiso no remunerado.", "error")
+            flash("Debe adjuntar soporte (PDF o imagen) para este permiso.", "error")
             return redirect(url_for("permiso_editar", id=id))
-        if permiso_remunerado == 1:
+        if permiso_remunerado == 1 and _normalizar_tipo_permiso(tipo) not in TIPOS_PERMISO_REQUIEREN_SOPORTE:
             evidencia_ruta = None
 
         try:

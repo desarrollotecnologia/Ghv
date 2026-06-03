@@ -353,7 +353,7 @@ def notificar_nueva_solicitud_permiso(
     if evidencia_path and os.path.isfile(evidencia_path):
         attachments = [(os.path.basename(evidencia_path), evidencia_path)]
 
-    nota_evidencia = "<p><strong>Se adjunta la evidencia</strong> enviada por el empleado (permiso no remunerado).</p>" if attachments else ""
+    nota_evidencia = "<p><strong>Se adjunta el soporte</strong> enviado por el empleado (evidencia o certificado de votación/jurado).</p>" if attachments else ""
 
     force_to = _parse_emails(force_recipients)
 

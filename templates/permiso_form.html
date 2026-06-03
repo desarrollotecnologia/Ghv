@@ -147,15 +147,7 @@
                             <option value="1">Remunerado</option>
                             <option value="0">No Remunerado</option>
                         </select>
-                        <p class="gh-formato-label" style="margin-top:6px;font-weight:400;font-size:12px">Si es no remunerado debe adjuntar evidencia (PDF o imagen).</p>
-                    </div>
-                </div>
-
-                <!-- Evidencia (solo si no remunerado) -->
-                <div class="gh-formato-fila una permiso-evidencia-row" id="rowEvidencia" style="display:none; margin-bottom:16px">
-                    <div class="form-group">
-                        <label class="gh-formato-label">Adjuntar evidencia <span class="required">*</span> <span style="font-size:12px;color:#6b7280">(PDF, JPG, PNG – máx. 5 MB)</span></label>
-                        <input type="file" name="evidencia" id="evidencia" class="gh-formato-input" accept=".pdf,.jpg,.jpeg,.png,.webp">
+                        <p class="gh-formato-label" id="hintEvidencia" style="margin-top:6px;font-weight:400;font-size:12px">Si es no remunerado, o permiso por votación/jurado de votación, debe adjuntar soporte (PDF o imagen).</p>
                     </div>
                 </div>
 
@@ -175,7 +167,7 @@
                 <div class="gh-formato-fila una" style="margin-bottom:8px">
                     <div class="form-group">
                         <label class="gh-formato-label">Motivo <span class="required">*</span></label>
-                        <select name="tipo" class="gh-formato-input" required style="max-width:220px">
+                        <select name="tipo" id="tipoPermiso" class="gh-formato-input" required style="max-width:220px">
                             <option value="Cita médica">Cita médica</option>
                             <option value="Calamidad doméstica">Calamidad doméstica</option>
                             <option value="Ejercer derecho al voto">Ejercer derecho al voto</option>
@@ -185,6 +177,14 @@
                             <option value="Reuniones escolares">Reuniones escolares</option>
                             <option value="Otros">Otros</option>
                         </select>
+                    </div>
+                </div>
+
+                <!-- Soporte / evidencia (no remunerado o votación/jurado) -->
+                <div class="gh-formato-fila una permiso-evidencia-row" id="rowEvidencia" style="display:none; margin-bottom:16px">
+                    <div class="form-group">
+                        <label class="gh-formato-label" id="labelEvidencia">Adjuntar soporte <span class="required">*</span> <span style="font-size:12px;color:#6b7280">(PDF, JPG, PNG – máx. 5 MB)</span></label>
+                        <input type="file" name="evidencia" id="evidencia" class="gh-formato-input" accept=".pdf,.jpg,.jpeg,.png,.webp">
                     </div>
                 </div>
 
@@ -265,12 +265,22 @@
         actualizarNombre();
     }
     var remunerado = document.getElementById('permisoRemunerado');
+    var tipoPermiso = document.getElementById('tipoPermiso');
     var rowEvidencia = document.getElementById('rowEvidencia');
     var evidenciaInput = document.getElementById('evidencia');
+    var labelEvidencia = document.getElementById('labelEvidencia');
+    var tiposConSoporte = ['Ejercer derecho al voto', 'Jurado de votación'];
     function toggleEvidencia() {
         var esNoRemunerado = remunerado && remunerado.value === '0';
-        var requiere = !!esNoRemunerado;
+        var tipo = tipoPermiso ? tipoPermiso.value : '';
+        var esVoto = tiposConSoporte.indexOf(tipo) !== -1;
+        var requiere = esNoRemunerado || esVoto;
         if (rowEvidencia) rowEvidencia.style.display = requiere ? '' : 'none';
+        if (labelEvidencia) {
+            labelEvidencia.innerHTML = esVoto && !esNoRemunerado
+                ? 'Adjuntar soporte de votación / jurado <span class="required">*</span> <span style="font-size:12px;color:#6b7280">(PDF, JPG, PNG – máx. 5 MB)</span>'
+                : 'Adjuntar soporte <span class="required">*</span> <span style="font-size:12px;color:#6b7280">(PDF, JPG, PNG – máx. 5 MB)</span>';
+        }
         if (evidenciaInput) {
             evidenciaInput.required = requiere;
             if (!requiere) evidenciaInput.value = '';
@@ -278,6 +288,9 @@
     }
     if (remunerado) {
         remunerado.addEventListener('change', toggleEvidencia);
+    }
+    if (tipoPermiso) {
+        tipoPermiso.addEventListener('change', toggleEvidencia);
     }
     toggleEvidencia();
 })();

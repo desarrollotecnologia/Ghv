@@ -56,7 +56,7 @@
 
         <div>
           <label class="permiso-edit-label">Motivo</label>
-          <select class="permiso-edit-input" name="tipo" required>
+          <select class="permiso-edit-input" name="tipo" id="permisoEditTipo" required>
             {% for t in ['Cita médica','Calamidad doméstica','Ejercer derecho al voto','Jurado de votación','Diligencias personales','Exámenes médicos','Reuniones escolares','Otros'] %}
             <option value="{{ t }}" {{ 'selected' if solicitud.tipo == t else '' }}>{{ t }}</option>
             {% endfor %}
@@ -86,10 +86,13 @@
           <textarea class="permiso-edit-input" name="motivo_cambio" rows="3" required placeholder="Explique por qué corrige esta solicitud"></textarea>
         </div>
 
-        <div class="permiso-edit-full">
-          <label class="permiso-edit-label">Evidencia (PDF o foto)</label>
-          <input class="permiso-edit-input" type="file" name="evidencia" accept=".pdf,.jpg,.jpeg,.png,.webp">
-          <p class="permiso-edit-hint">Obligatoria para permiso no remunerado.</p>
+        <div class="permiso-edit-full" id="rowEvidenciaEdit">
+          <label class="permiso-edit-label" id="labelEvidenciaEdit">Soporte (PDF o foto)</label>
+          <input class="permiso-edit-input" type="file" name="evidencia" id="evidenciaEdit" accept=".pdf,.jpg,.jpeg,.png,.webp">
+          <p class="permiso-edit-hint" id="hintEvidenciaEdit">Obligatorio para permiso no remunerado o por votación/jurado de votación.</p>
+          {% if solicitud.evidencia %}
+          <p class="permiso-edit-hint">Ya hay un archivo adjunto; suba otro solo si desea reemplazarlo.</p>
+          {% endif %}
         </div>
       </div>
 
@@ -103,5 +106,34 @@
     </form>
   </div>
 </div>
+<script>
+(function() {
+    var remunerado = document.querySelector('select[name="permiso_remunerado"]');
+    var tipo = document.getElementById('permisoEditTipo');
+    var row = document.getElementById('rowEvidenciaEdit');
+    var input = document.getElementById('evidenciaEdit');
+    var hint = document.getElementById('hintEvidenciaEdit');
+    var tieneAdjunto = {{ 'true' if solicitud.evidencia else 'false' }};
+    var tiposConSoporte = ['Ejercer derecho al voto', 'Jurado de votación'];
+    function toggleEvidenciaEdit() {
+        var esNoRem = remunerado && remunerado.value === '0';
+        var esVoto = tipo && tiposConSoporte.indexOf(tipo.value) !== -1;
+        var requiere = esNoRem || esVoto;
+        if (row) row.style.display = requiere ? '' : 'none';
+        if (input) {
+            input.required = requiere && !tieneAdjunto;
+            if (!requiere) input.value = '';
+        }
+        if (hint) {
+            hint.textContent = esVoto && !esNoRem
+                ? 'Debe adjuntar soporte de votación o jurado de votación (certificado, citación, etc.).'
+                : 'Obligatorio para permiso no remunerado o por votación/jurado de votación.';
+        }
+    }
+    if (remunerado) remunerado.addEventListener('change', toggleEvidenciaEdit);
+    if (tipo) tipo.addEventListener('change', toggleEvidenciaEdit);
+    toggleEvidenciaEdit();
+})();
+</script>
 {% endblock %}
 
