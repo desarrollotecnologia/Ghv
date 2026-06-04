@@ -38,21 +38,22 @@
 
         <div>
           <label class="permiso-edit-label">Fecha desde</label>
-          <input class="permiso-edit-input" type="date" name="fecha_desde" required value="{{ solicitud.fecha_desde_iso or '' }}">
+          <input class="permiso-edit-input" type="date" name="fecha_desde" id="fechaDesdeEdit" required value="{{ solicitud.fecha_desde_iso or '' }}">
         </div>
         <div>
           <label class="permiso-edit-label">Fecha hasta</label>
-          <input class="permiso-edit-input" type="date" name="fecha_hasta" required value="{{ solicitud.fecha_hasta_iso or '' }}">
+          <input class="permiso-edit-input" type="date" name="fecha_hasta" id="fechaHastaEdit" required value="{{ solicitud.fecha_hasta_iso or '' }}">
         </div>
 
         <div>
           <label class="permiso-edit-label">Hora inicio</label>
-          <input class="permiso-edit-input" type="time" name="hora_inicio" value="{{ solicitud.hora_inicio_hhmm or '' }}">
+          <input class="permiso-edit-input" type="time" name="hora_inicio" id="horaInicioEdit" value="{{ solicitud.hora_inicio_hhmm or '' }}">
         </div>
         <div>
           <label class="permiso-edit-label">Hora final</label>
-          <input class="permiso-edit-input" type="time" name="hora_fin" value="{{ solicitud.hora_fin_hhmm or '' }}">
+          <input class="permiso-edit-input" type="time" name="hora_fin" id="horaFinEdit" value="{{ solicitud.hora_fin_hhmm or '' }}">
         </div>
+        <p class="permiso-edit-hint permiso-edit-full" id="hintHorarioVotoEdit" style="display:none"></p>
 
         <div>
           <label class="permiso-edit-label">Motivo</label>
@@ -133,6 +134,107 @@
     if (remunerado) remunerado.addEventListener('change', toggleEvidenciaEdit);
     if (tipo) tipo.addEventListener('change', toggleEvidenciaEdit);
     toggleEvidenciaEdit();
+
+    var TIPO_VOTO = 'Ejercer derecho al voto';
+    var TIPO_JURADO = 'Jurado de votación';
+    var horaInicio = document.getElementById('horaInicioEdit');
+    var horaFin = document.getElementById('horaFinEdit');
+    var fechaDesde = document.getElementById('fechaDesdeEdit');
+    var fechaHasta = document.getElementById('fechaHastaEdit');
+    var hintHorario = document.getElementById('hintHorarioVotoEdit');
+    var formEdit = document.querySelector('form');
+
+    function minutosEntreHoras(hi, hf) {
+        if (!hi || !hf) return null;
+        var p1 = hi.split(':');
+        var p2 = hf.split(':');
+        if (p1.length < 2 || p2.length < 2) return null;
+        var start = parseInt(p1[0], 10) * 60 + parseInt(p1[1], 10);
+        var end = parseInt(p2[0], 10) * 60 + parseInt(p2[1], 10);
+        if (isNaN(start) || isNaN(end) || end <= start) return null;
+        return end - start;
+    }
+
+    function aplicarReglasVotoJuradoEdit() {
+        var t = tipo ? tipo.value : '';
+        if (t === TIPO_VOTO) {
+            if (fechaDesde && fechaHasta && fechaDesde.value) {
+                fechaHasta.value = fechaDesde.value;
+                fechaHasta.readOnly = true;
+            }
+            if (hintHorario) {
+                hintHorario.style.display = '';
+                hintHorario.textContent = 'Ejercer derecho al voto: un solo día y exactamente 4 horas entre hora de inicio y hora final.';
+            }
+        } else if (t === TIPO_JURADO) {
+            if (fechaHasta) fechaHasta.readOnly = false;
+            if (hintHorario) {
+                hintHorario.style.display = '';
+                hintHorario.textContent = 'Jurado de votación: permiso de día completo (puede abarcar uno o más días; si indica horario, mínimo 8 horas).';
+            }
+        } else {
+            if (fechaHasta) fechaHasta.readOnly = false;
+            if (hintHorario) {
+                hintHorario.style.display = 'none';
+                hintHorario.textContent = '';
+            }
+        }
+    }
+
+    function validarHorarioSubmitEdit(e) {
+        var t = tipo ? tipo.value : '';
+        var hi = horaInicio ? horaInicio.value : '';
+        var hf = horaFin ? horaFin.value : '';
+        var fd = fechaDesde ? fechaDesde.value : '';
+        var fh = fechaHasta ? fechaHasta.value : '';
+        if (t === TIPO_VOTO) {
+            if (fd && fh && fd !== fh) {
+                e.preventDefault();
+                alert('El permiso por ejercer derecho al voto debe ser de un solo día.');
+                return false;
+            }
+            if (!hi || !hf) {
+                e.preventDefault();
+                alert('Indique hora de inicio y hora final (exactamente 4 horas).');
+                return false;
+            }
+            if (minutosEntreHoras(hi, hf) !== 240) {
+                e.preventDefault();
+                alert('El permiso por ejercer derecho al voto solo permite 4 horas.');
+                return false;
+            }
+        }
+        if (t === TIPO_JURADO && hi && hf) {
+            var minsJ = minutosEntreHoras(hi, hf);
+            if (minsJ === null) {
+                e.preventDefault();
+                alert('La hora final debe ser posterior a la hora de inicio.');
+                return false;
+            }
+            if (fd === fh && minsJ < 480) {
+                e.preventDefault();
+                alert('El permiso por jurado de votación debe ser de día completo (mínimo 8 horas).');
+                return false;
+            }
+        }
+        if (t === TIPO_JURADO && ((hi && !hf) || (!hi && hf))) {
+            e.preventDefault();
+            alert('Complete hora de inicio y hora final, o deje ambas vacías para día completo.');
+            return false;
+        }
+        return true;
+    }
+
+    if (tipo) tipo.addEventListener('change', aplicarReglasVotoJuradoEdit);
+    if (fechaDesde) {
+        fechaDesde.addEventListener('change', function() {
+            if (tipo && tipo.value === TIPO_VOTO && fechaHasta) {
+                fechaHasta.value = fechaDesde.value;
+            }
+        });
+    }
+    if (formEdit) formEdit.addEventListener('submit', validarHorarioSubmitEdit);
+    aplicarReglasVotoJuradoEdit();
 })();
 </script>
 {% endblock %}

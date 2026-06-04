@@ -2285,6 +2285,65 @@ def _permiso_requiere_evidencia(tipo, permiso_remunerado):
     return _normalizar_tipo_permiso(tipo) in TIPOS_PERMISO_REQUIEREN_SOPORTE
 
 
+HORAS_PERMISO_VOTO = 4
+HORAS_JURADO_DIA_COMPLETO = 8
+
+
+def _parse_hora_permiso(value):
+    if value is None:
+        return None
+    if hasattr(value, "hour"):
+        return value
+    s = str(value).strip()
+    if not s:
+        return None
+    for fmt in ("%H:%M:%S", "%H:%M"):
+        try:
+            return datetime.strptime(s, fmt).time()
+        except ValueError:
+            continue
+    return None
+
+
+def _minutos_duracion_horas(hora_inicio, hora_fin):
+    hi = _parse_hora_permiso(hora_inicio)
+    hf = _parse_hora_permiso(hora_fin)
+    if not hi or not hf:
+        return None
+    start = hi.hour * 60 + hi.minute
+    end = hf.hour * 60 + hf.minute
+    if end <= start:
+        return None
+    return end - start
+
+
+def _validar_reglas_horario_permiso(tipo, fecha_desde, fecha_hasta, hora_inicio, hora_fin):
+    """Reglas de duración: voto = 4 h en un día; jurado = día completo."""
+    tipo = _normalizar_tipo_permiso(tipo)
+    if tipo == "Ejercer derecho al voto":
+        if fecha_desde != fecha_hasta:
+            return "El permiso por ejercer derecho al voto debe ser de un solo día."
+        if not hora_inicio or not hora_fin:
+            return "Indique hora de inicio y hora final (debe ser exactamente 4 horas)."
+        mins = _minutos_duracion_horas(hora_inicio, hora_fin)
+        if mins is None:
+            return "La hora final debe ser posterior a la hora de inicio."
+        if mins != HORAS_PERMISO_VOTO * 60:
+            return "El permiso por ejercer derecho al voto solo permite 4 horas."
+        return None
+    if tipo == "Jurado de votación":
+        if hora_inicio and hora_fin:
+            mins = _minutos_duracion_horas(hora_inicio, hora_fin)
+            if mins is None:
+                return "La hora final debe ser posterior a la hora de inicio."
+            if fecha_desde == fecha_hasta and mins < HORAS_JURADO_DIA_COMPLETO * 60:
+                return "El permiso por jurado de votación debe ser de día completo (mínimo 8 horas)."
+        elif hora_inicio or hora_fin:
+            return "Complete hora de inicio y hora final, o deje ambas vacías para día completo."
+        return None
+    return None
+
+
 _ICD11_TOKEN_CACHE = {"access_token": None, "expires_at": None}
 
 
@@ -2819,6 +2878,10 @@ def permiso_solicitar():
         except ValueError:
             flash("Fechas inválidas.", "error")
             return redirect(url_for("permiso_solicitar"))
+        err_horario = _validar_reglas_horario_permiso(tipo, fecha_desde, fecha_hasta, hora_inicio, hora_fin)
+        if err_horario:
+            flash(err_horario, "error")
+            return redirect(url_for("permiso_solicitar"))
         requiere_evidencia = _permiso_requiere_evidencia(tipo, permiso_remunerado)
         if requiere_evidencia:
             evidencia_file = request.files.get("evidencia")
@@ -3004,6 +3067,10 @@ def permiso_editar(id):
                 return redirect(url_for("permiso_editar", id=id))
         except ValueError:
             flash("Fechas inválidas.", "error")
+            return redirect(url_for("permiso_editar", id=id))
+        err_horario = _validar_reglas_horario_permiso(tipo, fecha_desde, fecha_hasta, hora_inicio, hora_fin)
+        if err_horario:
+            flash(err_horario, "error")
             return redirect(url_for("permiso_editar", id=id))
 
         evidencia_ruta = solicitud.get("evidencia")

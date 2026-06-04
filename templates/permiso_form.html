@@ -131,9 +131,9 @@
                     <div class="form-group">
                         <label class="gh-formato-label">Fecha del permiso / Licencia <span class="required">*</span></label>
                         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-                            <input type="date" name="fecha_desde" class="gh-formato-input" required style="max-width:160px">
+                            <input type="date" name="fecha_desde" id="fechaDesde" class="gh-formato-input" required style="max-width:160px">
                             <span>a</span>
-                            <input type="date" name="fecha_hasta" class="gh-formato-input" required style="max-width:160px">
+                            <input type="date" name="fecha_hasta" id="fechaHasta" class="gh-formato-input" required style="max-width:160px">
                         </div>
                     </div>
                 </div>
@@ -152,16 +152,17 @@
                 </div>
 
                 <!-- Hora de Inicio / Hora Final -->
-                <div class="gh-formato-fila dos" style="margin-bottom:16px">
+                <div class="gh-formato-fila dos" style="margin-bottom:8px">
                     <div class="form-group">
                         <label class="gh-formato-label">Hora de Inicio</label>
-                        <input type="time" name="hora_inicio" class="gh-formato-input" value="">
+                        <input type="time" name="hora_inicio" id="horaInicio" class="gh-formato-input" value="">
                     </div>
                     <div class="form-group">
                         <label class="gh-formato-label">Hora Final</label>
-                        <input type="time" name="hora_fin" class="gh-formato-input" value="">
+                        <input type="time" name="hora_fin" id="horaFin" class="gh-formato-input" value="">
                     </div>
                 </div>
+                <p class="gh-formato-label" id="hintHorarioVoto" style="display:none;margin:-4px 0 16px;font-weight:400;font-size:12px;color:#92400e"></p>
 
                 <!-- Motivo (tipo de permiso) -->
                 <div class="gh-formato-fila una" style="margin-bottom:8px">
@@ -293,6 +294,112 @@
         tipoPermiso.addEventListener('change', toggleEvidencia);
     }
     toggleEvidencia();
+
+    var TIPO_VOTO = 'Ejercer derecho al voto';
+    var TIPO_JURADO = 'Jurado de votación';
+    var horaInicio = document.getElementById('horaInicio');
+    var horaFin = document.getElementById('horaFin');
+    var fechaDesde = document.getElementById('fechaDesde');
+    var fechaHasta = document.getElementById('fechaHasta');
+    var hintHorario = document.getElementById('hintHorarioVoto');
+    var formPermiso = document.getElementById('formPermiso');
+
+    function minutosEntreHoras(hi, hf) {
+        if (!hi || !hf) return null;
+        var p1 = hi.split(':');
+        var p2 = hf.split(':');
+        if (p1.length < 2 || p2.length < 2) return null;
+        var start = parseInt(p1[0], 10) * 60 + parseInt(p1[1], 10);
+        var end = parseInt(p2[0], 10) * 60 + parseInt(p2[1], 10);
+        if (isNaN(start) || isNaN(end) || end <= start) return null;
+        return end - start;
+    }
+
+    function aplicarReglasVotoJurado() {
+        var tipo = tipoPermiso ? tipoPermiso.value : '';
+        if (tipo === TIPO_VOTO) {
+            if (fechaDesde && fechaHasta && fechaDesde.value) {
+                fechaHasta.value = fechaDesde.value;
+                fechaHasta.readOnly = true;
+            }
+            if (hintHorario) {
+                hintHorario.style.display = '';
+                hintHorario.textContent = 'Ejercer derecho al voto: un solo día y exactamente 4 horas entre hora de inicio y hora final.';
+            }
+        } else if (tipo === TIPO_JURADO) {
+            if (fechaHasta) fechaHasta.readOnly = false;
+            if (hintHorario) {
+                hintHorario.style.display = '';
+                hintHorario.textContent = 'Jurado de votación: permiso de día completo (puede abarcar uno o más días; si indica horario, mínimo 8 horas).';
+            }
+        } else {
+            if (fechaHasta) fechaHasta.readOnly = false;
+            if (hintHorario) {
+                hintHorario.style.display = 'none';
+                hintHorario.textContent = '';
+            }
+        }
+    }
+
+    function validarHorarioSubmit(e) {
+        var tipo = tipoPermiso ? tipoPermiso.value : '';
+        var hi = horaInicio ? horaInicio.value : '';
+        var hf = horaFin ? horaFin.value : '';
+        var fd = fechaDesde ? fechaDesde.value : '';
+        var fh = fechaHasta ? fechaHasta.value : '';
+        if (tipo === TIPO_VOTO) {
+            if (fd && fh && fd !== fh) {
+                e.preventDefault();
+                alert('El permiso por ejercer derecho al voto debe ser de un solo día.');
+                return false;
+            }
+            if (!hi || !hf) {
+                e.preventDefault();
+                alert('Indique hora de inicio y hora final (exactamente 4 horas).');
+                return false;
+            }
+            var mins = minutosEntreHoras(hi, hf);
+            if (mins !== 240) {
+                e.preventDefault();
+                alert('El permiso por ejercer derecho al voto solo permite 4 horas.');
+                return false;
+            }
+        }
+        if (tipo === TIPO_JURADO && hi && hf) {
+            var minsJ = minutosEntreHoras(hi, hf);
+            if (minsJ === null) {
+                e.preventDefault();
+                alert('La hora final debe ser posterior a la hora de inicio.');
+                return false;
+            }
+            if (fd === fh && minsJ < 480) {
+                e.preventDefault();
+                alert('El permiso por jurado de votación debe ser de día completo (mínimo 8 horas).');
+                return false;
+            }
+        }
+        if (tipo === TIPO_JURADO && ((hi && !hf) || (!hi && hf))) {
+            e.preventDefault();
+            alert('Complete hora de inicio y hora final, o deje ambas vacías para día completo.');
+            return false;
+        }
+        return true;
+    }
+
+    if (tipoPermiso) {
+        tipoPermiso.addEventListener('change', aplicarReglasVotoJurado);
+    }
+    if (fechaDesde) {
+        fechaDesde.addEventListener('change', function() {
+            if (tipoPermiso && tipoPermiso.value === TIPO_VOTO && fechaHasta) {
+                fechaHasta.value = fechaDesde.value;
+            }
+        });
+    }
+    if (formPermiso) {
+        formPermiso.addEventListener('submit', validarHorarioSubmit);
+    }
+    aplicarReglasVotoJurado();
 })();
 </script>
 {% endblock %}
