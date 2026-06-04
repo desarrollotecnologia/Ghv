@@ -2332,11 +2332,13 @@ def _validar_reglas_horario_permiso(tipo, fecha_desde, fecha_hasta, hora_inicio,
             return "El permiso por ejercer derecho al voto solo permite 4 horas."
         return None
     if tipo == "Jurado de votación":
+        if fecha_desde != fecha_hasta:
+            return "El permiso por jurado de votación debe ser de un solo día."
         if hora_inicio and hora_fin:
             mins = _minutos_duracion_horas(hora_inicio, hora_fin)
             if mins is None:
                 return "La hora final debe ser posterior a la hora de inicio."
-            if fecha_desde == fecha_hasta and mins < HORAS_JURADO_DIA_COMPLETO * 60:
+            if mins < HORAS_JURADO_DIA_COMPLETO * 60:
                 return "El permiso por jurado de votación debe ser de día completo (mínimo 8 horas)."
         elif hora_inicio or hora_fin:
             return "Complete hora de inicio y hora final, o deje ambas vacías para día completo."

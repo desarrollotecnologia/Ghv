@@ -167,10 +167,13 @@
                 hintHorario.textContent = 'Ejercer derecho al voto: un solo día y exactamente 4 horas entre hora de inicio y hora final.';
             }
         } else if (t === TIPO_JURADO) {
-            if (fechaHasta) fechaHasta.readOnly = false;
+            if (fechaDesde && fechaHasta && fechaDesde.value) {
+                fechaHasta.value = fechaDesde.value;
+                fechaHasta.readOnly = true;
+            }
             if (hintHorario) {
                 hintHorario.style.display = '';
-                hintHorario.textContent = 'Jurado de votación: permiso de día completo (puede abarcar uno o más días; si indica horario, mínimo 8 horas).';
+                hintHorario.textContent = 'Jurado de votación: un solo día completo (si indica horario, mínimo 8 horas).';
             }
         } else {
             if (fechaHasta) fechaHasta.readOnly = false;
@@ -204,23 +207,29 @@
                 return false;
             }
         }
-        if (t === TIPO_JURADO && hi && hf) {
-            var minsJ = minutosEntreHoras(hi, hf);
-            if (minsJ === null) {
+        if (t === TIPO_JURADO) {
+            if (fd && fh && fd !== fh) {
                 e.preventDefault();
-                alert('La hora final debe ser posterior a la hora de inicio.');
+                alert('El permiso por jurado de votación debe ser de un solo día.');
                 return false;
             }
-            if (fd === fh && minsJ < 480) {
+            if (hi && hf) {
+                var minsJ = minutosEntreHoras(hi, hf);
+                if (minsJ === null) {
+                    e.preventDefault();
+                    alert('La hora final debe ser posterior a la hora de inicio.');
+                    return false;
+                }
+                if (minsJ < 480) {
+                    e.preventDefault();
+                    alert('El permiso por jurado de votación debe ser de día completo (mínimo 8 horas).');
+                    return false;
+                }
+            } else if (hi || hf) {
                 e.preventDefault();
-                alert('El permiso por jurado de votación debe ser de día completo (mínimo 8 horas).');
+                alert('Complete hora de inicio y hora final, o deje ambas vacías para día completo.');
                 return false;
             }
-        }
-        if (t === TIPO_JURADO && ((hi && !hf) || (!hi && hf))) {
-            e.preventDefault();
-            alert('Complete hora de inicio y hora final, o deje ambas vacías para día completo.');
-            return false;
         }
         return true;
     }
@@ -228,8 +237,10 @@
     if (tipo) tipo.addEventListener('change', aplicarReglasVotoJuradoEdit);
     if (fechaDesde) {
         fechaDesde.addEventListener('change', function() {
-            if (tipo && tipo.value === TIPO_VOTO && fechaHasta) {
-                fechaHasta.value = fechaDesde.value;
+            if (tipo && fechaHasta && fechaDesde.value) {
+                if (tipo.value === TIPO_VOTO || tipo.value === TIPO_JURADO) {
+                    fechaHasta.value = fechaDesde.value;
+                }
             }
         });
     }
