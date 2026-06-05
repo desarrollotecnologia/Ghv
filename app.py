@@ -75,11 +75,10 @@ def enforce_session_timeout():
     last_activity = session.get("last_activity_ts")
 
     if last_activity and (now_ts - float(last_activity) > timeout_minutes * 60):
-        session.clear()
+        _clear_user_session(preserve_flash=True)
         if _is_api_request():
-            return jsonify({"error": "Sesion expirada por inactividad"}), 401
-        flash("Sesion expirada por inactividad. Inicia sesion de nuevo.", "warning")
-        return redirect(url_for("login"))
+            return jsonify({"error": "Sesión expirada por inactividad"}), 401
+        return _redirect_login_sesion_expirada()
 
     session["last_activity_ts"] = now_ts
     session.permanent = True
@@ -177,6 +176,19 @@ def get_current_user():
             (session["user_id"],), one=True,
         )
     return g._user
+
+
+def _clear_user_session(preserve_flash=False):
+    """Elimina datos de autenticación de la sesión Flask (no modifica contraseñas en BD)."""
+    flashes = list(session.get("_flashes") or []) if preserve_flash else None
+    session.clear()
+    if preserve_flash and flashes:
+        session["_flashes"] = flashes
+
+
+def _redirect_login_sesion_expirada():
+    flash("Sesión expirada por inactividad. Inicie sesión de nuevo.", "warning")
+    return redirect(url_for("login", sesion_expirada=1))
 
 
 def _find_employee_account(user):
@@ -823,6 +835,7 @@ def inject_user():
         encargado_mode=encargado_mode,
         can_enter_encargado_mode=can_enter_encargado_mode,
         is_logistica_coordinator=_is_logistica_coordinator(user),
+        session_timeout_minutes=int(app.config.get("SESSION_TIMEOUT_MINUTES", 30)),
     )
 
 
@@ -830,8 +843,15 @@ def inject_user():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    if get_current_user():
-        return redirect(url_for("home"))
+    sesion_expirada = request.args.get("sesion_expirada") in ("1", "true", "yes")
+
+    if request.method == "GET":
+        if sesion_expirada:
+            _clear_user_session(preserve_flash=True)
+            if not session.get("_flashes"):
+                flash("Sesión expirada por inactividad. Inicie sesión de nuevo.", "warning")
+        elif get_current_user():
+            return redirect(url_for("home"))
 
     if request.method == "POST":
         login_value = request.form.get("email", "").strip()
@@ -857,6 +877,7 @@ def login():
             session.clear()
             session["user_id"] = user["id_user"]
             session.permanent = True
+            session["last_activity_ts"] = datetime.utcnow().timestamp()
             registrar_audit(
                 "Inicio de sesión",
                 "auth",
@@ -874,7 +895,7 @@ def login():
 
         flash("Correo o contraseña incorrectos", "error")
 
-    return render_template("login.html")
+    return render_template("login.html", sesion_expirada=sesion_expirada)
 
 
 @app.route("/register", methods=["GET", "POST"])

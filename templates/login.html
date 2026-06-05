@@ -409,6 +409,7 @@
         }
         .alert.error   { background: #fff0f0; color: #c0392b; border-left: 4px solid var(--red); }
         .alert.success { background: #f0fdf4; color: #166534; border-left: 4px solid var(--g3); }
+        .alert.warning { background: #fffbeb; color: #92400e; border-left: 4px solid #f59e0b; }
         .alert .material-symbols-outlined { font-size: 18px; flex-shrink: 0; }
 
         /* Fields */
@@ -636,9 +637,9 @@
                     {% with messages = get_flashed_messages(with_categories=true) %}
                         {% if messages %}
                             {% for cat, msg in messages %}
-                                <div class="alert {{ 'success' if cat == 'success' else 'error' }}">
+                                <div class="alert {{ 'success' if cat == 'success' else ('warning' if cat == 'warning' else 'error') }}">
                                     <span class="material-symbols-outlined">
-                                        {{ 'check_circle' if cat == 'success' else 'error' }}
+                                        {{ 'check_circle' if cat == 'success' else ('warning' if cat == 'warning' else 'error') }}
                                     </span>
                                     {{ msg }}
                                 </div>
@@ -669,7 +670,7 @@
                                 <span class="material-symbols-outlined ico">lock</span>
                                 <input type="password" name="password" id="pw"
                                        placeholder="••••••••"
-                                       required autocomplete="current-password">
+                                       required autocomplete="{{ 'off' if sesion_expirada else 'current-password' }}">
                                 <button type="button" class="toggle-pw" onclick="togglePw()" title="Mostrar/ocultar">
                                     <span class="material-symbols-outlined" id="pwIcon">visibility</span>
                                 </button>
@@ -836,6 +837,22 @@
         pw.type = pw.type === 'password' ? 'text' : 'password';
         ic.textContent = pw.type === 'password' ? 'visibility' : 'visibility_off';
     }
+
+    /* ── Sesión expirada: limpiar contraseña (no reiniciar en BD) ── */
+    (function() {
+        var pw = document.getElementById('pw');
+        var sesionExpirada = {{ 'true' if sesion_expirada|default(false) else 'false' }};
+        if (!pw) return;
+        pw.value = '';
+        if (sesionExpirada) {
+            pw.setAttribute('autocomplete', 'off');
+            pw.setAttribute('readonly', 'readonly');
+            pw.addEventListener('focus', function clearReadonly() {
+                pw.removeAttribute('readonly');
+            }, { once: true });
+            setTimeout(function() { pw.value = ''; }, 50);
+        }
+    })();
 
     /* ── Button ripple + loading ─────── */
     document.getElementById('loginForm').addEventListener('submit', function(e) {

@@ -153,5 +153,22 @@
             });
         })();
     </script>
+    {% if current_user and session_timeout_minutes|default(0) > 0 %}
+    <script>
+    (function() {
+        var timeoutMs = {{ session_timeout_minutes }} * 60 * 1000;
+        var lastActivity = Date.now();
+        function touch() { lastActivity = Date.now(); }
+        ['click', 'keydown', 'scroll', 'mousemove', 'touchstart'].forEach(function(ev) {
+            document.addEventListener(ev, touch, { passive: true });
+        });
+        setInterval(function() {
+            if (Date.now() - lastActivity >= timeoutMs) {
+                window.location.replace('{{ url_for("login", sesion_expirada=1) }}');
+            }
+        }, 15000);
+    })();
+    </script>
+    {% endif %}
 </body>
 </html>
