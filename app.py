@@ -636,7 +636,7 @@ def _normalize_email(s):
 
 # Módulos del rol exclusivo SISO (siso@colbeef.com). Se suman al rol en BD (p. ej. JEFE INMEDIATO).
 _SISO_COLBEEF_EXTRA_MODULES = (
-    "incidencias", "incidencias_dashboard", "personal", "personal_inactivo",
+    "incidencias", "incidencias_dashboard", "personal", "personal_inactivo", "incapacitados",
 )
 
 
@@ -2138,10 +2138,12 @@ def _es_admin_o_coord(user=None):
 
 
 def _can_view_incapacitados(user=None):
-    """Acceso al módulo de incapacidades: GH, nómina, contratación y gerencia."""
+    """Acceso al módulo de incapacidades: GH, nómina, contratación, gerencia y SISO."""
     user = user or get_current_user()
     if not user:
         return False
+    if _is_siso_colbeef_user(user):
+        return True
     rol = _rol_match(user.get("rol") or "")
     if rol in (
         "ADMIN", "COORD. GH", "GH INFORMADA",
