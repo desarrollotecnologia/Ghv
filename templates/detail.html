@@ -5,6 +5,14 @@
     <a href="{{ back_url }}" class="btn btn-outline btn-sm">
         <span class="material-symbols-outlined" style="font-size:18px">arrow_back</span> Volver
     </a>
+    {% if data.estado == 'ACTIVO' %}
+    <a href="{{ url_for('certificado_laboral', cedula=data.id_cedula) }}" target="_blank" rel="noopener" class="btn btn-outline btn-sm" title="Ver certificado laboral">
+        <span class="material-symbols-outlined" style="font-size:18px">description</span> Certificado laboral
+    </a>
+    <a href="{{ url_for('certificado_laboral', cedula=data.id_cedula, descargar=1) }}" class="btn btn-outline btn-sm" title="Descargar PDF">
+        <span class="material-symbols-outlined" style="font-size:18px">download</span>
+    </a>
+    {% endif %}
     {% if can_write %}
     <a href="{{ url_for('editar_empleado', id=data.id_cedula) }}" class="btn btn-primary btn-sm">
         <span class="material-symbols-outlined" style="font-size:18px">edit</span> Editar

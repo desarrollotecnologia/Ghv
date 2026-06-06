@@ -2,6 +2,8 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
+# Sobrescrituras solo en tu PC (no va al servidor). Copiar .env.local.example → .env.local
+load_dotenv(".env.local", override=True)
 
 
 class Config:
@@ -30,6 +32,13 @@ class Config:
         os.getenv("GESTOR_CONTRATACION_PORTAL_URL")
         or "http://192.168.20.205:5001/acceso-integrado"
     ).strip()
+    # Portal corporativo (enlace "Sitio Colbeef" en menú). En local puedes apuntar a otra URL en .env.local.
+    PORTAL_COLBEEF_URL = (
+        os.getenv("PORTAL_COLBEEF_URL")
+        or "http://192.168.20.205:8000/site.html"
+    ).strip()
+    # Puerto solo para pruebas locales (run_local.py). El servidor sigue usando 5000 vía run.py.
+    FLASK_PORT = int(os.getenv("FLASK_PORT", "5002"))
     # Solo informada: recibe la misma notificación de nueva solicitud pero no aprueba/rechaza (rol GH INFORMADA).
     MAIL_GH_INFORMADA = os.getenv("MAIL_GH_INFORMADA", "gestionhumana@colbeef.com")
     # Pruebas: dejar vacío o poner un correo extra que reciba copia en cada envío.

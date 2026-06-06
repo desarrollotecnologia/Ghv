@@ -88,12 +88,17 @@ def enforce_session_timeout():
 # ── DB helpers ────────────────────────────────────────────────
 
 def get_db():
+    host = app.config["MYSQL_HOST"] or "localhost"
+    # En Windows, "localhost" usa socket y falla si MySQL no está instalado localmente.
+    if host == "localhost":
+        host = "127.0.0.1"
     return mysql.connector.connect(
-        host=app.config["MYSQL_HOST"],
+        host=host,
         port=app.config["MYSQL_PORT"],
         user=app.config["MYSQL_USER"],
         password=app.config["MYSQL_PASSWORD"],
         database=app.config["MYSQL_DATABASE"],
+        connection_timeout=10,
     )
 
 
@@ -304,8 +309,15 @@ def _can_show_switch_to_employee(user):
 
 
 def _is_api_request():
-    """True si la petición espera JSON (rutas /api/ o Accept: application/json)."""
-    return request.path.startswith("/api/") or "application/json" in request.accept_mimetypes
+    """True si la petición espera respuesta JSON (rutas /api/ o fetch/AJAX)."""
+    if request.path.startswith("/api/"):
+        return True
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return True
+    # No usar solo "application/json in accept_mimetypes": el navegador envía */*
+    # y Werkzeug lo interpreta como JSON aceptable → muestra {"error":"No autenticado"} en vez del login.
+    best = request.accept_mimetypes.best_match(["application/json", "text/html"])
+    return best == "application/json"
 
 
 def _build_email_action_serializer():
@@ -1347,6 +1359,100 @@ def empleado_cambiar_password():
         flash("Contraseña actualizada. Use la nueva contraseña en su próximo inicio de sesión.", "success")
         return redirect(url_for("empleado_portal"))
     return render_template("empleado_cambiar_password.html", active_page="Cambiar contraseña")
+
+
+def _firma_gh_image_path():
+    root = app.root_path
+    firma_en_raiz = os.path.join(root, "firma digital cindy.png")
+    firma_cfg = (app.config.get("SIGNATURE_IMAGE_PATH") or "").strip()
+    if os.path.isfile(firma_en_raiz):
+        return firma_en_raiz
+    if firma_cfg:
+        p = firma_cfg if os.path.isabs(firma_cfg) else os.path.join(root, firma_cfg)
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def _renovacion_contrato_empleado(fecha_ingreso):
+    """ANUAL si lleva 1+ año vinculado; si no, TRIMESTRAL."""
+    fi = parse_fecha(fecha_ingreso)
+    if not fi:
+        return "TRIMESTRAL"
+    return "ANUAL" if (date.today() - fi).days >= 365 else "TRIMESTRAL"
+
+
+def _empleado_datos_certificado(emp):
+    resolve_empleado_catalogos(emp)
+    return {
+        "apellidos_nombre": emp.get("apellidos_nombre"),
+        "id_cedula": emp.get("id_cedula"),
+        "sexo": emp.get("sexo"),
+        "fecha_ingreso": emp.get("fecha_ingreso"),
+        "perfil_ocupacional_nombre": emp.get("perfil_ocupacional_nombre") or "",
+        "renovacion": _renovacion_contrato_empleado(emp.get("fecha_ingreso")),
+    }
+
+
+@app.route("/certificado-laboral")
+@app.route("/certificado-laboral/<cedula>")
+@login_required
+def certificado_laboral(cedula=None):
+    """Descarga certificado laboral PDF (empleado: el suyo; GH: cualquier activo)."""
+    user = get_current_user() or {}
+    user_cedula = str(user.get("id_cedula") or "").strip()
+    target = (cedula or user_cedula).strip()
+    if not target:
+        flash("Su cuenta no tiene cédula vinculada.", "error")
+        return redirect(url_for("home"))
+
+    rol = (user.get("rol") or "").strip().upper()
+    perm = get_role_permission(user.get("rol") or "")
+    puede_otros = perm in ("WRITE", "ALL") or rol in (
+        "ADMIN", "COORD. GH", "GESTOR DE NOMINA", "GH INFORMADA", "BIENESTAR SOCIAL",
+    )
+    if target != user_cedula and not puede_otros:
+        flash("No tiene permiso para descargar certificados de otros empleados.", "error")
+        return redirect(url_for("empleado_portal") if rol == "EMPLEADO" else url_for("home"))
+
+    emp = query(
+        """SELECT e.*, p.perfil_ocupacional AS perfil_ocupacional_nombre
+           FROM empleado e
+           LEFT JOIN perfil_ocupacional p ON TRIM(p.id_perfil) = TRIM(e.id_perfil_ocupacional)
+           WHERE e.id_cedula = %s AND e.estado = 'ACTIVO'""",
+        (target,), one=True,
+    )
+    if not emp:
+        flash("Empleado activo no encontrado.", "error")
+        if rol == "EMPLEADO":
+            return redirect(url_for("empleado_portal"))
+        return redirect(url_for("personal_activo"))
+
+    try:
+        from pdf_certificado_laboral import generar_certificado_laboral_bytes
+    except ImportError:
+        flash("Falta instalar reportlab para generar el PDF.", "error")
+        return redirect(url_for("empleado_portal") if rol == "EMPLEADO" else url_for("detalle_empleado", id=target))
+
+    pdf_bytes = generar_certificado_laboral_bytes(
+        _empleado_datos_certificado(emp),
+        _firma_gh_image_path(),
+    )
+    if not pdf_bytes:
+        flash("No se pudo generar el certificado laboral.", "error")
+        return redirect(url_for("empleado_portal") if rol == "EMPLEADO" else url_for("detalle_empleado", id=target))
+
+    nombre_safe = re.sub(r"[^\w\-]+", "_", str(emp.get("apellidos_nombre") or target))[:60]
+    filename = f"Certificado_laboral_{nombre_safe}.pdf"
+    descargar = request.args.get("descargar", "").strip().lower() in ("1", "true", "yes")
+    resp = make_response(pdf_bytes)
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Length"] = str(len(pdf_bytes))
+    if descargar:
+        resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    else:
+        resp.headers["Content-Disposition"] = f'inline; filename="{filename}"'
+    return resp
 
 
 # ── HOME Y DESCARGA PRESENTACIÓN ─────────────────────────────
