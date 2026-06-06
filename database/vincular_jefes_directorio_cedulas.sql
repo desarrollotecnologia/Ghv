@@ -76,6 +76,25 @@ FROM empleado e WHERE e.id_cedula = '1098725715'
 ON DUPLICATE KEY UPDATE
     nombre = VALUES(nombre), id_cedula = VALUES(id_cedula), rol = 'EMPLEADO', estado = 1, acciones = 'VISTA';
 
+-- ------------------------------------------------------------
+-- 5) jefe.mercadeo@ — MUÑOZ BERNAL PAOLA ANDREA (52822147)
+-- Ver también: database/vincular_jefe_mercadeo_paola.sql
+-- ------------------------------------------------------------
+UPDATE usuario
+SET nombre = 'JEFE DE MERCADEO', rol = 'JEFE INMEDIATO', estado = 1, acciones = 'APROBAR', id_cedula = '52822147'
+WHERE email = 'jefe.mercadeo@colbeef.com';
+
+INSERT INTO usuario (id_user, email, password_hash, nombre, rol, estado, acciones, id_cedula, debe_cambiar_clave)
+SELECT
+    'EMP-52822147',
+    '52822147@empleado.colbeef.local',
+    @hash_estandar,
+    e.apellidos_nombre,
+    'EMPLEADO', 1, 'VISTA', '52822147', 1
+FROM empleado e WHERE e.id_cedula = '52822147'
+ON DUPLICATE KEY UPDATE
+    nombre = VALUES(nombre), id_cedula = VALUES(id_cedula), rol = 'EMPLEADO', estado = 1, acciones = 'VISTA';
+
 -- Verificación
 SELECT u.email, u.nombre, u.rol, u.id_cedula, e.apellidos_nombre
 FROM usuario u
@@ -84,7 +103,8 @@ WHERE LOWER(TRIM(u.email)) IN (
     'coordinacion.ambiental@colbeef.com',
     'coordinacion.lyd@colbeef.com',
     'director.surtidores@colbeef.com',
-    'gerencia.operaciones@colbeef.com'
+    'gerencia.operaciones@colbeef.com',
+    'jefe.mercadeo@colbeef.com'
 )
 ORDER BY u.email;
 

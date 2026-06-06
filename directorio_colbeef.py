@@ -37,6 +37,7 @@ JEFE_CEDULA_VINCULOS: dict[str, str] = {
     "coordinacion.lyd@colbeef.com": "1095835855",         # ISIDRO ARCILA PAULA ANDREA
     "director.surtidores@colbeef.com": "1977852",         # RINCON SARMIENTO CARLOS ANDRES
     "gerencia.operaciones@colbeef.com": "1098725715",     # QUESADA ZORRILLA WILHELM ARLEY
+    "jefe.mercadeo@colbeef.com": "52822147",              # MUÑOZ BERNAL PAOLA ANDREA
 }
 
 # Nombres de área en empleado.area equivalentes al catálogo / Excel.
@@ -84,7 +85,7 @@ DIRECTORIO_FALLBACK: list[dict[str, str]] = [
     {"departamento": "DPTO CALIDAD", "area": "LAVANDERIA", "jefe": "Supervisor LyD", "email": "coordinacion.lyd@colbeef.com"},
     {"departamento": "DPTO ADMON Y FINANCIERO", "area": "JARDINERIA", "jefe": "Jefe Compras", "email": "jefe.compras@colbeef.com"},
     {"departamento": "DPTO COMERCIAL", "area": "DIRECCION DPTO COMERCIAL", "jefe": "Direccion Comercial", "email": "gerencia.comercial@colbeef.com"},
-    {"departamento": "DPTO COMERCIAL", "area": "MERCADEO", "jefe": "Director Admin. Financiero", "email": "gerencia.financiera@colbeef.com"},
+    {"departamento": "DPTO COMERCIAL", "area": "MERCADEO", "jefe": "Jefe de Mercadeo", "email": "jefe.mercadeo@colbeef.com"},
     {"departamento": "NEGOCIOS GANADEROS", "area": "FOMENTO GANADERO", "jefe": "Director Negocios Ganaderos", "email": "director.surtidores@colbeef.com"},
     {"departamento": "NEGOCIOS GANADEROS", "area": "NEGOCIOS GANADEROS", "jefe": "Director Negocios Ganaderos", "email": "director.surtidores@colbeef.com"},
     {"departamento": "DPTO DE OPERACIONES", "area": "DIRECCION PRODUCCION", "jefe": "Directora Planta", "email": "gerencia.calidad@colbeef.com"},
