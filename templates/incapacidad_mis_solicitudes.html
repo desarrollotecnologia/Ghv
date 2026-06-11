@@ -1,58 +1,60 @@
-{% extends "base_empleado.html" %}
+{% extends layout|default('base.html') %}
 
 {% block content %}
 <div class="detail-card">
-  <h3 class="form-section-title" style="color:var(--colbeef-green, #2D9E3F)">
-    <span class="material-symbols-outlined">clinical_notes</span>
-    Mis incapacidades
-  </h3>
-  <p style="margin-bottom:16px">
-    <a href="{{ url_for('incapacidad_solicitar') }}" class="btn btn-primary btn-sm">
-      <span class="material-symbols-outlined" style="font-size:18px">add</span>
-      Nueva solicitud
-    </a>
-  </p>
+    <h3 class="form-section-title" style="color:var(--colbeef-green, #2D9E3F)">
+        <span class="material-symbols-outlined">clinical_notes</span>
+        Mis incapacidades
+    </h3>
+    <p style="margin-bottom:16px">
+        <a href="{{ url_for('incapacidad_solicitar') }}" class="btn btn-primary btn-sm">
+            <span class="material-symbols-outlined" style="font-size:18px">add</span>
+            Nueva solicitud
+        </a>
+    </p>
 
-  {% if rows %}
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th>Fecha solicitud</th>
-        <th>Area</th>
-        <th>Desde</th>
-        <th>Hasta</th>
-        <th>Dias</th>
-        <th>Descripcion</th>
-        <th>Estado</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for r in rows %}
-      <tr>
-        <td>{{ r.fecha_solicitud.strftime('%d/%m/%Y') if r.fecha_solicitud else '—' }}</td>
-        <td>{{ r.area or '—' }}</td>
-        <td>{{ r.fecha_desde.strftime('%d/%m/%Y') if r.fecha_desde else '—' }}</td>
-        <td>{{ r.fecha_hasta.strftime('%d/%m/%Y') if r.fecha_hasta else '—' }}</td>
-        <td>{{ r.dias_incapacidad if r.dias_incapacidad is not none else '—' }}</td>
-        <td>{{ r.descripcion or '—' }}</td>
-        <td>
-          {% if r.estado == 'PENDIENTE' %}
-          <span class="badge badge-warning">PENDIENTE</span>
-          {% elif r.estado == 'APROBADO' %}
-          <span class="badge badge-active">APROBADO</span>
-          {% else %}
-          <span class="badge badge-inactive">{{ r.estado }}</span>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <div class="empty-state">
-    <p>No tiene solicitudes de incapacidad.</p>
-    <a href="{{ url_for('incapacidad_solicitar') }}" class="btn btn-primary btn-sm" style="margin-top:12px">Nueva solicitud</a>
-  </div>
-  {% endif %}
+    {% if rows %}
+    <div class="table-wrapper table-mobile-cards">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Fecha solicitud</th>
+                    <th>Área</th>
+                    <th>Desde</th>
+                    <th>Hasta</th>
+                    <th>Días</th>
+                    <th>Descripción</th>
+                    <th>Estado</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr>
+                    <td>{{ r.fecha_solicitud|fecha_display or '—' }}</td>
+                    <td>{{ r.area or '—' }}</td>
+                    <td>{{ r.fecha_desde|fecha_display or '—' }}</td>
+                    <td>{{ r.fecha_hasta|fecha_display or '—' }}</td>
+                    <td>{{ r.dias_incapacidad if r.dias_incapacidad is not none else '—' }}</td>
+                    <td>{{ r.descripcion or '—' }}</td>
+                    <td>
+                        {% if r.estado == 'PENDIENTE' %}
+                        <span class="badge badge-warning">PENDIENTE</span>
+                        {% elif r.estado == 'APROBADO' %}
+                        <span class="badge badge-active">APROBADO</span>
+                        {% else %}
+                        <span class="badge badge-inactive">{{ r.estado }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>No tiene solicitudes de incapacidad.</p>
+        <a href="{{ url_for('incapacidad_solicitar') }}" class="btn btn-primary btn-sm" style="margin-top:12px">Nueva solicitud</a>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}

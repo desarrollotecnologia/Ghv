@@ -275,6 +275,22 @@ def _is_employee_mode(user=None):
     return bool(session.get("employee_mode") or session.get("employee_vac_mode")) and _can_employee_vacation_mode(user)
 
 
+def _use_portal_empleado_layout(user=None):
+    """Layout portal empleado (base_empleado) vs suite principal (base)."""
+    user = user or get_current_user()
+    if not user:
+        return False
+    if (user.get("rol") or "").strip().upper() == "EMPLEADO":
+        return True
+    if session.get("switch_back_user_id"):
+        return True
+    return _is_employee_mode(user)
+
+
+def _mis_solicitudes_layout(user=None):
+    return "base_empleado.html" if _use_portal_empleado_layout(user) else "base.html"
+
+
 def _linked_accounts_for_user(user):
     """Lista cuentas activas vinculadas por cédula (para switch estilo GitHub)."""
     if not user:
@@ -3641,9 +3657,6 @@ def vacaciones_mis_solicitudes():
     if _is_logistica_coordinator(user):
         flash("Coordinación logística no tiene módulo de solicitudes propias.", "info")
         return redirect(url_for("vacaciones_index"))
-    if session.get("encargado_mode"):
-        flash("En modo jefe solo puedes revisar solicitudes que envía tu equipo.", "info")
-        return redirect(url_for("vacaciones_index"))
     id_cedula = (user.get("id_cedula") or "").strip()
     if not id_cedula:
         flash("No tiene cédula vinculada.", "error")
@@ -3653,10 +3666,13 @@ def vacaciones_mis_solicitudes():
         "FROM solicitud_vacaciones WHERE id_cedula = %s ORDER BY fecha_solicitud DESC",
         (id_cedula,),
     )
+    for r in rows or []:
+        format_record_dates(r, ["fecha_solicitud", "fecha_inicio", "fecha_fin", "fecha_regreso", "fecha_resolucion"])
     return render_template(
         "vacaciones_mis_solicitudes.html",
         active_page="Mis solicitudes de vacaciones",
         rows=rows,
+        layout=_mis_solicitudes_layout(user),
     )
 
 
@@ -3932,13 +3948,11 @@ def incapacidad_index():
 
 @app.route("/incapacidades/mis-solicitudes")
 @login_required
+@module_required("permisos")
 def incapacidad_mis_solicitudes():
     user = get_current_user()
     if _is_logistica_coordinator(user):
         flash("Coordinacion logistica no tiene modulo de solicitudes propias.", "info")
-        return redirect(url_for("incapacidad_index"))
-    if session.get("encargado_mode"):
-        flash("En modo jefe solo puedes revisar solicitudes que envia tu equipo.", "info")
         return redirect(url_for("incapacidad_index"))
     id_cedula = (user.get("id_cedula") or "").strip()
     if not id_cedula:
@@ -3949,10 +3963,13 @@ def incapacidad_mis_solicitudes():
         "FROM solicitud_incapacidad WHERE id_cedula = %s ORDER BY fecha_solicitud DESC",
         (id_cedula,),
     )
+    for r in rows or []:
+        format_record_dates(r, ["fecha_solicitud", "fecha_desde", "fecha_hasta", "fecha_resolucion"])
     return render_template(
         "incapacidad_mis_solicitudes.html",
         active_page="Mis incapacidades",
         rows=rows,
+        layout=_mis_solicitudes_layout(user),
     )
 
 

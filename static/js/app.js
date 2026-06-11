@@ -273,8 +273,22 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ── Tablas en tarjetas (móvil) ──────────────────────────
+    function ensureTableWrapper(table) {
+        if (!table || table.closest('.table-wrapper')) {
+            return table ? table.closest('.table-wrapper') : null;
+        }
+        const wrapper = document.createElement('div');
+        wrapper.className = 'table-wrapper';
+        table.parentNode.insertBefore(wrapper, table);
+        wrapper.appendChild(table);
+        return wrapper;
+    }
+
     function enhanceMobileTables() {
         const mobile = window.innerWidth <= 768;
+        document.querySelectorAll('.detail-card table.data-table').forEach((table) => {
+            if (!table.closest('.table-wrapper')) ensureTableWrapper(table);
+        });
         document.querySelectorAll('.table-wrapper').forEach((wrapper) => {
             const table = wrapper.querySelector('table.data-table');
             if (!table || table.classList.contains('areas-grouped-table')) return;
