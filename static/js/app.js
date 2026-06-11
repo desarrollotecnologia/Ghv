@@ -10,20 +10,54 @@ document.addEventListener('DOMContentLoaded', () => {
         window.dispatchEvent(new CustomEvent('app-pageshow', { detail: { persisted: false } }));
     } catch (e) {}
 
-    // ── Sidebar toggle ──────────────────────────────────────
+    // ── Sidebar toggle (móvil: overlay + cierre al navegar) ─
     const toggle = document.getElementById('menuToggle');
     const body = document.body;
+    const sidebar = document.getElementById('sidebar');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+    function isMobileNav() {
+        return window.innerWidth <= 768;
+    }
+
+    function setSidebarOpen(open) {
+        if (!sidebar) return;
+        if (open) {
+            sidebar.classList.add('open');
+            body.classList.add('sidebar-open');
+            if (sidebarOverlay) sidebarOverlay.setAttribute('aria-hidden', 'false');
+        } else {
+            sidebar.classList.remove('open');
+            body.classList.remove('sidebar-open');
+            if (sidebarOverlay) sidebarOverlay.setAttribute('aria-hidden', 'true');
+        }
+    }
 
     if (toggle) {
         toggle.addEventListener('click', () => {
-            const sidebar = document.getElementById('sidebar');
-            if (window.innerWidth <= 768) {
-                sidebar.classList.toggle('open');
+            if (isMobileNav()) {
+                setSidebarOpen(!sidebar.classList.contains('open'));
             } else {
                 body.classList.toggle('sidebar-collapsed');
             }
         });
     }
+
+    if (sidebarOverlay) {
+        sidebarOverlay.addEventListener('click', () => setSidebarOpen(false));
+    }
+
+    if (sidebar) {
+        sidebar.querySelectorAll('.nav-item').forEach((link) => {
+            link.addEventListener('click', () => {
+                if (isMobileNav()) setSidebarOpen(false);
+            });
+        });
+    }
+
+    window.addEventListener('resize', () => {
+        if (!isMobileNav()) setSidebarOpen(false);
+    });
 
     // ── Ctrl+K to focus search ──────────────────────────────
     const globalSearch = document.getElementById('globalSearch');
@@ -238,15 +272,46 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 4000);
     });
 
-    // ── Close sidebar on mobile when clicking outside ───────
-    document.addEventListener('click', (e) => {
-        const sidebar = document.getElementById('sidebar');
-        if (window.innerWidth <= 768 && sidebar?.classList.contains('open')) {
-            if (!sidebar.contains(e.target) && !toggle?.contains(e.target)) {
-                sidebar.classList.remove('open');
+    // ── Tablas en tarjetas (móvil) ──────────────────────────
+    function enhanceMobileTables() {
+        const mobile = window.innerWidth <= 768;
+        document.querySelectorAll('.table-wrapper').forEach((wrapper) => {
+            const table = wrapper.querySelector('table.data-table');
+            if (!table || table.classList.contains('areas-grouped-table')) return;
+            if (wrapper.classList.contains('table-scroll')) return;
+            if (!mobile) {
+                wrapper.classList.remove('table-mobile-cards');
+                return;
             }
-        }
+            const headers = [];
+            table.querySelectorAll('thead th').forEach((th) => {
+                const clone = th.cloneNode(true);
+                clone.querySelectorAll('.sort-icon, .material-symbols-outlined').forEach((el) => el.remove());
+                headers.push((clone.textContent || '').replace(/\s+/g, ' ').trim());
+            });
+            if (!headers.length) return;
+            table.querySelectorAll('tbody tr').forEach((tr) => {
+                if (tr.classList.contains('depto-header-row')) return;
+                tr.querySelectorAll('td').forEach((td, idx) => {
+                    if (!td.getAttribute('data-label')) {
+                        td.setAttribute('data-label', headers[idx] || '');
+                    }
+                    if (!headers[idx] && td.querySelector('.btn-icon')) {
+                        td.classList.add('td-row-action');
+                    }
+                });
+            });
+            wrapper.classList.add('table-mobile-cards');
+        });
+    }
+
+    enhanceMobileTables();
+    let resizeTablesTimer;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTablesTimer);
+        resizeTablesTimer = setTimeout(enhanceMobileTables, 150);
     });
+    window.addEventListener('app-pageshow', enhanceMobileTables);
 
     // ── Active nav item scroll into view ────────────────────
     const activeNav = document.querySelector('.nav-item.active');

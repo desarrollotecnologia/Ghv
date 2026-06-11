@@ -2,11 +2,12 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>{% block title %}Portal del Empleado{% endblock %} - Gestion Humana</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght@24,400">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/mobile.css') }}">
     <style>
         .emp-header { position: sticky; top: 0; z-index: 120; background: #fff; border-bottom: 1px solid #e5e7eb; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
         .emp-header-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -49,7 +50,7 @@
         }
     </style>
 </head>
-<body>
+<body class="emp-portal">
     <header class="emp-header">
         <div class="emp-header-left">
             <button type="button" class="emp-menu-btn" id="empMenuBtn" aria-label="Mostrar menu">

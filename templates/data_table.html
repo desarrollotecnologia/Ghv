@@ -223,7 +223,7 @@
     </div>
 </div>
 
-<div class="table-wrapper">
+<div class="table-wrapper table-mobile-cards">
     {% if rows|length > 0 %}
     <table class="data-table paginated-table" id="mainDataTable">
         <thead>
@@ -240,7 +240,7 @@
             {% for row in rows %}
             <tr {% if detail_route is defined and detail_route %}class="row-clickable" data-href="{{ url_for(detail_route, id=row[pk]) }}"{% endif %}>
                 {% for col in columns %}
-                <td>
+                <td data-label="{{ col.label }}">
                     {% set val = row[col.key] %}
                     {% if val is none %}
                         <span class="text-muted">—</span>
@@ -287,7 +287,7 @@
                 </td>
                 {% endfor %}
                 {% if detail_route is defined and detail_route %}
-                <td>
+                <td class="td-row-action" data-label="">
                     <a href="{{ url_for(detail_route, id=row[pk]) }}" class="btn-icon" title="Ver detalle">
                         <span class="material-symbols-outlined">chevron_right</span>
                     </a>

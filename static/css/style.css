@@ -1342,8 +1342,8 @@ a { color: inherit; text-decoration: none; }
     .app-title {
         font-size: 14px;
     }
+    /* Búsqueda y layout móvil: ver static/css/mobile.css */
     .app-subtitle,
-    .topbar-center,
     .user-info,
     .profile-info-inline,
     .profile-chevron,
