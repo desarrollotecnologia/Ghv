@@ -53,6 +53,8 @@
                     {% endif %}
                 {% elif 'fecha' in ((field.key|string)|lower) %}
                     {{ val|fecha_display }}
+                {% elif field.key in ('celular', 'telefono', 'telefono_contacto') %}
+                    {{ val|telefono or '—' }}
                 {% else %}
                     {{ val }}
                 {% endif %}

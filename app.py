@@ -1500,6 +1500,14 @@ def _normalize_celular(val):
         return str(val)
     if isinstance(val, float):
         return str(int(val)) if val == int(val) else str(val)
+    try:
+        from decimal import Decimal
+        if isinstance(val, Decimal):
+            if val == val.to_integral_value():
+                return str(int(val))
+            return str(val).rstrip("0").rstrip(".") if "." in str(val) else str(val)
+    except ImportError:
+        pass
     if not isinstance(val, str) and hasattr(val, "__int__"):
         try:
             return str(int(val))
@@ -1523,6 +1531,17 @@ def _normalize_celular(val):
 def telefono_filter(val):
     normalized = _normalize_celular(val)
     return normalized if normalized else ""
+
+
+def _normalize_phone_fields_in_rows(rows):
+    """Normaliza celular/teléfono en listados (evita 3187487924.0 en tablas)."""
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        for key in ("celular", "telefono", "telefono_contacto"):
+            if key in row:
+                row[key] = _normalize_celular(row.get(key))
+    return rows
 
 
 def _looks_like_id(val):
@@ -5417,6 +5436,7 @@ def personal_activo():
         "FROM empleado WHERE " + " AND ".join(where) + " ORDER BY apellidos_nombre"
     )
     rows = query(sql, tuple(params))
+    _normalize_phone_fields_in_rows(rows)
 
     # KPIs de estados: calcularlos sin filtrar por estado seleccionado,
     # para que Activos/Inactivos siempre muestren ambos conteos reales.
@@ -5512,6 +5532,7 @@ def mi_equipo():
         "FROM empleado WHERE " + " AND ".join(where) + " ORDER BY apellidos_nombre",
         tuple(params),
     )
+    _normalize_phone_fields_in_rows(rows)
     columns = [
         {"key": "id_cedula",        "label": "Cédula"},
         {"key": "apellidos_nombre", "label": "Nombre"},
