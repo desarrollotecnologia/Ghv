@@ -13,7 +13,46 @@
         </a>
     </p>
     {% if rows %}
-    <div class="table-wrapper table-mobile-cards">
+    <div class="solicitud-mobile-only emp-solicitud-list">
+        {% for r in rows %}
+        <article class="emp-solicitud-card">
+            <header class="emp-solicitud-card__head">
+                <span class="emp-solicitud-card__date">{{ r.fecha_solicitud|fecha_display or '—' }}</span>
+                {% if r.estado == 'PENDIENTE' %}
+                <span class="badge badge-warning">PENDIENTE</span>
+                {% elif r.estado == 'APROBADO' %}
+                <span class="badge badge-active">APROBADO</span>
+                {% else %}
+                <span class="badge badge-inactive">{{ r.estado }}</span>
+                {% endif %}
+            </header>
+            <dl class="emp-solicitud-card__rows">
+                <div class="emp-solicitud-card__row">
+                    <dt>Periodo causado</dt>
+                    <dd>{{ r.periodo_causado or '—' }}</dd>
+                </div>
+                <div class="emp-solicitud-card__row">
+                    <dt>Días en tiempo</dt>
+                    <dd>{{ r.dias_en_tiempo if r.dias_en_tiempo is not none else '—' }}</dd>
+                </div>
+                <div class="emp-solicitud-card__row">
+                    <dt>Desde</dt>
+                    <dd>{{ r.fecha_inicio|fecha_display or '—' }}</dd>
+                </div>
+                <div class="emp-solicitud-card__row">
+                    <dt>Hasta</dt>
+                    <dd>{{ r.fecha_fin|fecha_display or '—' }}</dd>
+                </div>
+                <div class="emp-solicitud-card__row">
+                    <dt>Regreso</dt>
+                    <dd>{{ r.fecha_regreso|fecha_display or '—' }}</dd>
+                </div>
+            </dl>
+        </article>
+        {% endfor %}
+    </div>
+
+    <div class="table-wrapper solicitud-desktop-only">
         <table class="data-table">
             <thead>
                 <tr>

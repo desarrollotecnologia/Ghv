@@ -14,7 +14,48 @@
     </p>
 
     {% if rows %}
-    <div class="table-wrapper table-mobile-cards">
+    <div class="solicitud-mobile-only emp-solicitud-list">
+        {% for r in rows %}
+        <article class="emp-solicitud-card">
+            <header class="emp-solicitud-card__head">
+                <span class="emp-solicitud-card__date">{{ r.fecha_solicitud|fecha_display or '—' }}</span>
+                {% if r.estado == 'PENDIENTE' %}
+                <span class="badge badge-warning">PENDIENTE</span>
+                {% elif r.estado == 'APROBADO' %}
+                <span class="badge badge-active">APROBADO</span>
+                {% else %}
+                <span class="badge badge-inactive">{{ r.estado }}</span>
+                {% endif %}
+            </header>
+            <dl class="emp-solicitud-card__rows">
+                <div class="emp-solicitud-card__row">
+                    <dt>Área</dt>
+                    <dd>{{ r.area or '—' }}</dd>
+                </div>
+                <div class="emp-solicitud-card__row">
+                    <dt>Desde</dt>
+                    <dd>{{ r.fecha_desde|fecha_display or '—' }}</dd>
+                </div>
+                <div class="emp-solicitud-card__row">
+                    <dt>Hasta</dt>
+                    <dd>{{ r.fecha_hasta|fecha_display or '—' }}</dd>
+                </div>
+                <div class="emp-solicitud-card__row">
+                    <dt>Días</dt>
+                    <dd>{{ r.dias_incapacidad if r.dias_incapacidad is not none else '—' }}</dd>
+                </div>
+                {% if r.descripcion %}
+                <div class="emp-solicitud-card__row emp-solicitud-card__row--block">
+                    <dt>Descripción</dt>
+                    <dd>{{ r.descripcion }}</dd>
+                </div>
+                {% endif %}
+            </dl>
+        </article>
+        {% endfor %}
+    </div>
+
+    <div class="table-wrapper solicitud-desktop-only">
         <table class="data-table">
             <thead>
                 <tr>

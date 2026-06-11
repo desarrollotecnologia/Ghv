@@ -527,3 +527,96 @@
         padding: 14px;
     }
 }
+
+/* Tarjetas de solicitudes propias (portal empleado y móvil) */
+.solicitud-mobile-only {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.solicitud-desktop-only {
+    display: block;
+}
+
+body.emp-portal .solicitud-mobile-only {
+    display: flex;
+}
+
+body.emp-portal .solicitud-desktop-only {
+    display: none !important;
+}
+
+@media (max-width: 768px) {
+    .solicitud-mobile-only {
+        display: flex;
+    }
+
+    .solicitud-desktop-only {
+        display: none !important;
+    }
+}
+
+.emp-solicitud-card {
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.06));
+}
+
+.emp-solicitud-card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-light, #f3f4f6);
+}
+
+.emp-solicitud-card__date {
+    font-weight: 600;
+    color: var(--text, #111827);
+    font-size: 0.95rem;
+}
+
+.emp-solicitud-card__rows {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+}
+
+.emp-solicitud-card__row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 0.9rem;
+}
+
+.emp-solicitud-card__row dt {
+    margin: 0;
+    color: var(--text-secondary, #6b7280);
+    font-weight: 500;
+    flex: 0 0 auto;
+}
+
+.emp-solicitud-card__row dd {
+    margin: 0;
+    color: var(--text, #111827);
+    font-weight: 500;
+    text-align: right;
+}
+
+.emp-solicitud-card__row--block {
+    flex-direction: column;
+    gap: 4px;
+}
+
+.emp-solicitud-card__row--block dd {
+    text-align: left;
+    font-weight: 400;
+    line-height: 1.45;
+    word-break: break-word;
+}
