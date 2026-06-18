@@ -43,5 +43,9 @@ class Config:
     # Cierre automático de sesión por inactividad (minutos).
     SESSION_TIMEOUT_MINUTES = int(os.getenv("SESSION_TIMEOUT_MINUTES", "30"))
 
+    # Solicitud de incapacidad (formulario /incapacidades/*). 1 = habilitado. No afecta Salud (/incapacitados).
+    ENABLE_INCAPACIDADES = os.getenv("ENABLE_INCAPACIDADES", "0") == "1"
+    ENABLE_CERTIFICADOS = os.getenv("ENABLE_CERTIFICADOS", "0") == "1"
+
     # Catalogo CIE-10 local. Si queda vacio, app.py busca en rutas comunes del proyecto/servidor.
     CIE10_JSON_PATH = (os.getenv("CIE10_JSON_PATH") or "").strip()

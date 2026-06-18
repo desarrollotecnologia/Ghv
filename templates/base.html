@@ -253,31 +253,47 @@
                 <span class="material-symbols-outlined">beach_access</span>
                 <span class="nav-label">Solicitud de vacaciones</span>
             </a>
+            {% if modulo_incapacidades_habilitado %}
             <a href="{{ url_for('incapacidad_solicitar') }}" class="nav-item {{ 'active' if active_page in ['Solicitud de incapacidad', 'Reporte de Incapacidad'] }}">
                 <span class="material-symbols-outlined">medical_services</span>
                 <span class="nav-label">Reporte de Incapacidad</span>
             </a>
+            {% endif %}
             {% endif %}
             {% if not employee_vac_mode %}
             <a href="{{ url_for('vacaciones_index') }}" class="nav-item {{ 'active' if active_page == 'Vacaciones empleados' }}">
                 <span class="material-symbols-outlined">list</span>
                 <span class="nav-label">Vacaciones empleados</span>
             </a>
+            {% if modulo_incapacidades_habilitado %}
             <a href="{{ url_for('incapacidad_index') }}" class="nav-item {{ 'active' if active_page == 'Incapacidades empleados' }}">
                 <span class="material-symbols-outlined">monitor_heart</span>
                 <span class="nav-label">Incapacidades empleados</span>
             </a>
+            {% endif %}
             {% endif %}
             {% if not is_logistica_coordinator and current_user and current_user.id_cedula %}
             <a href="{{ url_for('vacaciones_mis_solicitudes') }}" class="nav-item {{ 'active' if active_page == 'Mis solicitudes de vacaciones' }}">
                 <span class="material-symbols-outlined">event_note</span>
                 <span class="nav-label">Mis vacaciones</span>
             </a>
+            {% if modulo_incapacidades_habilitado %}
             <a href="{{ url_for('incapacidad_mis_solicitudes') }}" class="nav-item {{ 'active' if active_page == 'Mis incapacidades' }}">
                 <span class="material-symbols-outlined">clinical_notes</span>
                 <span class="nav-label">Mis incapacidades</span>
             </a>
             {% endif %}
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if can_informe_historico_permiso_vacaciones %}
+        <div class="sidebar-section">
+            <span class="sidebar-label">Informes</span>
+            <a href="{{ url_for('informe_historico_permiso_vacaciones') }}" class="nav-item {{ 'active' if active_page == 'Informe histórico permisos y vacaciones' }}">
+                <span class="material-symbols-outlined">history</span>
+                <span class="nav-label">Histórico permisos y vacaciones</span>
+            </a>
         </div>
         {% endif %}
 

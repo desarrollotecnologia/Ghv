@@ -40,6 +40,15 @@ app.permanent_session_lifetime = timedelta(minutes=app.config.get("SESSION_TIMEO
 _audit_log_ready = False
 
 
+def _modulo_incapacidades_habilitado():
+    """Formulario y gestión de solicitudes (/incapacidades). No incluye módulo Salud (/incapacitados)."""
+    return bool(app.config.get("ENABLE_INCAPACIDADES"))
+
+
+def _modulo_certificados_habilitado():
+    return bool(app.config.get("ENABLE_CERTIFICADOS"))
+
+
 @app.before_request
 def _bootstrap_audit_log_once():
     """Crea audit_log si falta, para que estadísticas de ingreso funcionen sin migración manual."""
@@ -82,6 +91,48 @@ def enforce_session_timeout():
 
     session["last_activity_ts"] = now_ts
     session.permanent = True
+    return None
+
+
+@app.before_request
+def _bloquear_modulos_desactivados():
+    """Bloquea solicitud de incapacidad (/incapacidades) y certificados si el flag está apagado."""
+    path = (request.path or "").rstrip("/") or "/"
+
+    if not _modulo_incapacidades_habilitado() and path.startswith("/incapacidades"):
+        if path.startswith("/incapacidades/email-action"):
+            return render_template(
+                "incapacidad_email_action.html",
+                estado="error",
+                mensaje="La solicitud de incapacidad no está disponible por ahora.",
+                solicitud=None,
+                token="",
+                accion="",
+                actor_email="",
+            ), 403
+        user = get_current_user()
+        flash("La solicitud de incapacidad no está disponible por ahora.", "info")
+        if user and (
+            (user.get("rol") or "").strip().upper() == "EMPLEADO"
+            or _is_employee_mode(user)
+        ):
+            return redirect(url_for("empleado_portal"))
+        if user:
+            return redirect(url_for("home"))
+        return redirect(url_for("login"))
+
+    if not _modulo_certificados_habilitado() and path.startswith("/certificado-laboral"):
+        user = get_current_user()
+        flash("Los certificados laborales no están disponibles por ahora.", "info")
+        if user and (
+            (user.get("rol") or "").strip().upper() == "EMPLEADO"
+            or _is_employee_mode(user)
+        ):
+            return redirect(url_for("empleado_portal"))
+        if user:
+            return redirect(url_for("home"))
+        return redirect(url_for("login"))
+
     return None
 
 
@@ -762,6 +813,38 @@ def module_required(module_key):
     return decorator
 
 
+_INFORME_HISTORICO_GH_EMAILS = frozenset({
+    "gestionhumana@colbeef.com",
+})
+
+
+def _can_ver_informe_historico_permiso_vacaciones(user=None):
+    """Informe histórico Excel: solo ADMIN y gestionhumana@colbeef.com."""
+    user = user or get_current_user()
+    if not user:
+        return False
+    if _rol_match(user.get("rol") or "") == "ADMIN":
+        return True
+    email = _normalize_email(user.get("email"))
+    if email in _INFORME_HISTORICO_GH_EMAILS:
+        return True
+    admin_email = _normalize_email(app.config.get("ADMIN_EMAIL", "tecnologia@colbeef.com"))
+    return email == admin_email
+
+
+def informe_historico_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        user = get_current_user()
+        if user is None:
+            return redirect(url_for("login"))
+        if not _can_ver_informe_historico_permiso_vacaciones(user):
+            flash("No tienes acceso a este informe.", "error")
+            return redirect(url_for("home"))
+        return f(*args, **kwargs)
+    return decorated
+
+
 @app.context_processor
 def inject_user():
     user = get_current_user()
@@ -792,7 +875,7 @@ def inject_user():
         if _is_siso_colbeef_user(user):
             for mod in _SISO_COLBEEF_EXTRA_MODULES:
                 vm[mod] = True
-        # Nómina, contratación y gerencia pueden consultar incapacitados.
+        # Nómina, contratación, gerencia y SISO pueden consultar incapacitados (Salud).
         if _can_view_incapacitados(user):
             vm["incapacitados"] = True
         # GESTOR SST no ve Permisos (ni por código ni por BD)
@@ -852,6 +935,9 @@ def inject_user():
         can_enter_encargado_mode=can_enter_encargado_mode,
         is_logistica_coordinator=_is_logistica_coordinator(user),
         session_timeout_minutes=int(app.config.get("SESSION_TIMEOUT_MINUTES", 30)),
+        modulo_incapacidades_habilitado=_modulo_incapacidades_habilitado(),
+        modulo_certificados_habilitado=_modulo_certificados_habilitado(),
+        can_informe_historico_permiso_vacaciones=_can_ver_informe_historico_permiso_vacaciones(user),
     )
 
 
@@ -1971,7 +2057,25 @@ def export_excel_response_generic(rows, columns, filename_prefix):
     wb = Workbook()
     ws = wb.active
     ws.title = "Data"
+    _fill_excel_worksheet(ws, rows, columns)
 
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    today_str = date.today().strftime("%Y-%m-%d")
+    resp = make_response(buf.getvalue())
+    resp.headers["Content-Type"] = (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    resp.headers["Content-Disposition"] = (
+        f'attachment; filename="{filename_prefix}.ViewData.{today_str}.xlsx"'
+    )
+    return resp
+
+
+def _fill_excel_worksheet(ws, rows, columns):
+    """Escribe filas con estilo Colbeef en una hoja openpyxl."""
     header_font = Font(name="Calibri", bold=True, size=11, color="FFFFFF")
     header_fill = PatternFill(start_color="2D9E3F", end_color="2D9E3F", fill_type="solid")
     header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -2001,7 +2105,6 @@ def export_excel_response_generic(rows, columns, filename_prefix):
             key_l = str(key or "").lower()
             label_l = str(label or "").lower()
             is_fecha_col = ("fecha" in key_l) or ("fecha" in label_l)
-            # Estandarizar fechas a formato Colombia para evitar MM/DD/YYYY en Excel.
             if is_fecha_col:
                 if isinstance(val, datetime):
                     val = val.strftime("%d/%m/%Y %H:%M")
@@ -2021,7 +2124,6 @@ def export_excel_response_generic(rows, columns, filename_prefix):
             cell.alignment = cell_align
             cell.border = thin_border
             if is_fecha_col:
-                # Forzar texto evita que Excel reinterprete según locale (MM/DD vs DD/MM).
                 cell.number_format = "@"
             if r % 2 == 0:
                 cell.fill = alt_fill
@@ -2034,13 +2136,23 @@ def export_excel_response_generic(rows, columns, filename_prefix):
                 max_len = max(max_len, len(str(val)))
         ws.column_dimensions[get_column_letter(c)].width = min(max_len + 3, 45)
 
-    ws.auto_filter.ref = ws.dimensions
+    if rows:
+        ws.auto_filter.ref = ws.dimensions
     ws.freeze_panes = "A2"
+
+
+def export_excel_workbook_response(sheet_specs, filename_prefix):
+    """Excel con varias hojas: lista de (titulo, filas, columnas)."""
+    wb = Workbook()
+    wb.remove(wb.active)
+    for title, rows, columns in sheet_specs:
+        safe_title = (title or "Datos")[:31]
+        ws = wb.create_sheet(title=safe_title)
+        _fill_excel_worksheet(ws, rows, columns)
 
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-
     today_str = date.today().strftime("%Y-%m-%d")
     resp = make_response(buf.getvalue())
     resp.headers["Content-Type"] = (
@@ -2173,7 +2285,7 @@ def _es_admin_o_coord(user=None):
 
 
 def _can_view_incapacitados(user=None):
-    """Acceso al módulo de incapacidades: GH, nómina, contratación, gerencia y SISO."""
+    """Acceso al módulo Salud (/incapacitados): GH, nómina, contratación, gerencia y SISO."""
     user = user or get_current_user()
     if not user:
         return False
@@ -5251,6 +5363,296 @@ def permisos_export():
         else:
             r["fecha_solicitud_str"] = ""
     return export_excel_response_generic(rows, PERMISOS_EXPORT_COLUMNS, "Solicitudes_permiso")
+
+
+HISTORICO_PERMISOS_EXPORT_COLUMNS = [
+    ("categoria", "Categoría"),
+    ("id", "ID solicitud"),
+    ("cedula_solicitante", "Cédula solicitante"),
+    ("nombre_solicitante", "Nombre solicitante"),
+    ("email_solicitante", "Correo solicitante"),
+    ("departamento", "Departamento"),
+    ("area", "Área"),
+    ("tipo", "Tipo permiso"),
+    ("fecha_desde", "Fecha desde"),
+    ("fecha_hasta", "Fecha hasta"),
+    ("hora_inicio", "Hora inicio"),
+    ("hora_fin", "Hora fin"),
+    ("permiso_remunerado", "Remunerado"),
+    ("permiso_no_remunerado", "No remunerado"),
+    ("motivo", "Motivo"),
+    ("estado", "Estado"),
+    ("fecha_solicitud", "Fecha solicitud"),
+    ("fecha_resolucion", "Fecha resolución"),
+    ("cedula_autorizador", "Cédula autorizador"),
+    ("id_autorizador", "ID usuario autorizador"),
+    ("nombre_autorizador", "Nombre autorizador"),
+    ("email_autorizador", "Correo autorizador"),
+    ("rol_autorizador", "Rol autorizador"),
+    ("resuelto_por_registro", "Resuelto por (registro BD)"),
+    ("origen_resolucion", "Origen resolución"),
+    ("observaciones", "Observaciones resolución"),
+]
+
+HISTORICO_VACACIONES_EXPORT_COLUMNS = [
+    ("categoria", "Categoría"),
+    ("id", "ID solicitud"),
+    ("cedula_solicitante", "Cédula solicitante"),
+    ("nombre_solicitante", "Nombre solicitante"),
+    ("email_solicitante", "Correo solicitante"),
+    ("departamento", "Departamento"),
+    ("area", "Área"),
+    ("periodo_causado", "Periodo causado"),
+    ("dias_en_tiempo", "Días en tiempo"),
+    ("dias_compensados_dinero", "Días compensados dinero"),
+    ("fecha_inicio", "Fecha inicio vacaciones"),
+    ("fecha_fin", "Fecha fin vacaciones"),
+    ("fecha_regreso", "Fecha regreso"),
+    ("pago_anticipado", "Pago anticipado"),
+    ("estado", "Estado"),
+    ("fecha_solicitud", "Fecha solicitud"),
+    ("fecha_resolucion", "Fecha resolución"),
+    ("cedula_autorizador", "Cédula autorizador"),
+    ("id_autorizador", "ID usuario autorizador"),
+    ("nombre_autorizador", "Nombre autorizador"),
+    ("email_autorizador", "Correo autorizador"),
+    ("rol_autorizador", "Rol autorizador"),
+    ("resuelto_por_registro", "Resuelto por (registro BD)"),
+    ("origen_resolucion", "Origen resolución"),
+    ("observaciones", "Observaciones resolución"),
+]
+
+def _format_historico_si_no(value):
+    if value is None or value == "":
+        return ""
+    if value in (1, True, "1"):
+        return "Sí"
+    if value in (0, False, "0"):
+        return "No"
+    return str(value)
+
+
+def _format_historico_hora(value):
+    if value is None:
+        return ""
+    if hasattr(value, "strftime"):
+        return value.strftime("%H:%M")
+    return str(value).strip()[:5]
+
+
+def _parse_informe_historico_filtros(req=None):
+    """Lee rango de fechas de solicitud y estado desde query/form."""
+    req = req or request
+    hoy = date.today()
+    default_desde = hoy.replace(day=1)
+    fecha_desde = parse_fecha(req.values.get("fecha_desde") or req.values.get("desde") or default_desde)
+    fecha_hasta = parse_fecha(req.values.get("fecha_hasta") or req.values.get("hasta") or hoy)
+    if not fecha_desde:
+        fecha_desde = default_desde
+    if not fecha_hasta:
+        fecha_hasta = hoy
+    if fecha_desde > fecha_hasta:
+        fecha_desde, fecha_hasta = fecha_hasta, fecha_desde
+    estado = "APROBADO"
+    has_form = any(k in req.values for k in ("fecha_desde", "fecha_hasta", "desde", "hasta"))
+    if has_form:
+        incluir_permisos = req.values.get("incluir_permisos") in ("1", "true", "on", "yes", "si")
+        incluir_vacaciones = req.values.get("incluir_vacaciones") in ("1", "true", "on", "yes", "si")
+    else:
+        incluir_permisos = True
+        incluir_vacaciones = True
+    return fecha_desde, fecha_hasta, estado, incluir_permisos, incluir_vacaciones
+
+
+_HISTORICO_AUTORIZADOR_SELECT = (
+    "COALESCE(u_id.id_user, u_em.id_user) AS autorizador_id_user, "
+    "COALESCE(u_id.nombre, u_em.nombre) AS autorizador_nombre, "
+    "COALESCE(u_id.email, u_em.email) AS autorizador_email, "
+    "COALESCE(u_id.rol, u_em.rol) AS autorizador_rol, "
+    "COALESCE(u_id.id_cedula, u_em.id_cedula) AS autorizador_cedula "
+)
+
+_HISTORICO_AUTORIZADOR_JOINS = (
+    "LEFT JOIN usuario u_id ON u_id.id_user = {col} "
+    "LEFT JOIN usuario u_em ON LOWER(u_em.email) = LOWER({col}) AND u_id.id_user IS NULL "
+)
+
+
+def _origen_resolucion_historico(resuelto_por, autorizador_nombre, autorizador_email):
+    rp = (resuelto_por or "").strip()
+    if not rp:
+        return "Sin resolución"
+    if (autorizador_nombre or "").strip() or (autorizador_email or "").strip():
+        return "Plataforma"
+    if "@" in rp:
+        return "Histórico (correo en BD)"
+    return "Histórico / externo"
+
+
+def _campos_autorizador_historico(row):
+    rp = (row.get("resuelto_por") or "").strip()
+    nombre = (row.get("autorizador_nombre") or "").strip()
+    email = (row.get("autorizador_email") or "").strip()
+    cedula = (row.get("autorizador_cedula") or "").strip()
+    rol = (row.get("autorizador_rol") or "").strip()
+    id_user = (row.get("autorizador_id_user") or "").strip()
+    if not email and "@" in rp:
+        email = rp
+    if not id_user:
+        id_user = rp if rp and "@" not in rp else id_user
+    return {
+        "cedula_autorizador": cedula,
+        "id_autorizador": id_user or rp,
+        "nombre_autorizador": nombre,
+        "email_autorizador": email,
+        "rol_autorizador": rol,
+        "resuelto_por_registro": rp,
+        "origen_resolucion": _origen_resolucion_historico(rp, nombre, email),
+    }
+
+
+def _fetch_historico_permisos(fecha_desde, fecha_hasta, estado=None):
+    col = "p.resuelto_por"
+    sql = (
+        "SELECT p.id, p.id_cedula, e.apellidos_nombre, e.direccion_email, e.departamento, "
+        "COALESCE(p.area, e.area) AS area, p.tipo, p.fecha_desde, p.fecha_hasta, "
+        "p.hora_inicio, p.hora_fin, p.permiso_remunerado, p.permiso_no_remunerado, "
+        "p.motivo, p.estado, p.fecha_solicitud, p.fecha_resolucion, p.observaciones, "
+        "p.solicitante_email, p.resuelto_por, "
+        + _HISTORICO_AUTORIZADOR_SELECT
+        + "FROM solicitud_permiso p "
+        "JOIN empleado e ON e.id_cedula = p.id_cedula "
+        + _HISTORICO_AUTORIZADOR_JOINS.format(col=col)
+        + "WHERE DATE(p.fecha_solicitud) >= %s AND DATE(p.fecha_solicitud) <= %s "
+    )
+    params = [fecha_desde, fecha_hasta]
+    if estado:
+        sql += "AND p.estado = %s "
+        params.append(estado)
+    sql += "ORDER BY p.fecha_solicitud DESC, p.id DESC"
+    rows = query(sql, tuple(params)) or []
+    export_rows = []
+    for r in rows:
+        auth = _campos_autorizador_historico(r)
+        export_rows.append({
+            "categoria": "Permiso",
+            "id": r.get("id"),
+            "cedula_solicitante": r.get("id_cedula") or "",
+            "nombre_solicitante": r.get("apellidos_nombre") or "",
+            "email_solicitante": r.get("direccion_email") or r.get("solicitante_email") or "",
+            "departamento": r.get("departamento") or "",
+            "area": r.get("area") or "",
+            "tipo": r.get("tipo") or "",
+            "fecha_desde": r.get("fecha_desde"),
+            "fecha_hasta": r.get("fecha_hasta"),
+            "hora_inicio": _format_historico_hora(r.get("hora_inicio")),
+            "hora_fin": _format_historico_hora(r.get("hora_fin")),
+            "permiso_remunerado": _format_historico_si_no(r.get("permiso_remunerado")),
+            "permiso_no_remunerado": _format_historico_si_no(r.get("permiso_no_remunerado")),
+            "motivo": r.get("motivo") or "",
+            "estado": r.get("estado") or "",
+            "fecha_solicitud": r.get("fecha_solicitud"),
+            "fecha_resolucion": r.get("fecha_resolucion"),
+            "observaciones": r.get("observaciones") or "",
+            **auth,
+        })
+    return export_rows
+
+
+def _fetch_historico_vacaciones(fecha_desde, fecha_hasta, estado=None):
+    col = "v.resuelto_por"
+    sql = (
+        "SELECT v.id, v.id_cedula, e.apellidos_nombre, e.direccion_email, e.departamento, e.area, "
+        "v.periodo_causado, v.dias_en_tiempo, v.dias_compensados_dinero, "
+        "v.fecha_inicio, v.fecha_fin, v.fecha_regreso, v.pago_anticipado, "
+        "v.estado, v.fecha_solicitud, v.fecha_resolucion, v.observaciones, v.solicitante_email, "
+        "v.resuelto_por, "
+        + _HISTORICO_AUTORIZADOR_SELECT
+        + "FROM solicitud_vacaciones v "
+        "JOIN empleado e ON e.id_cedula = v.id_cedula "
+        + _HISTORICO_AUTORIZADOR_JOINS.format(col=col)
+        + "WHERE v.fecha_solicitud >= %s AND v.fecha_solicitud <= %s "
+    )
+    params = [fecha_desde, fecha_hasta]
+    if estado:
+        sql += "AND v.estado = %s "
+        params.append(estado)
+    sql += "ORDER BY v.fecha_solicitud DESC, v.id DESC"
+    rows = query(sql, tuple(params)) or []
+    export_rows = []
+    for r in rows:
+        auth = _campos_autorizador_historico(r)
+        export_rows.append({
+            "categoria": "Vacaciones",
+            "id": r.get("id"),
+            "cedula_solicitante": r.get("id_cedula") or "",
+            "nombre_solicitante": r.get("apellidos_nombre") or "",
+            "email_solicitante": r.get("direccion_email") or r.get("solicitante_email") or "",
+            "departamento": r.get("departamento") or "",
+            "area": r.get("area") or "",
+            "periodo_causado": r.get("periodo_causado") or "",
+            "dias_en_tiempo": r.get("dias_en_tiempo"),
+            "dias_compensados_dinero": r.get("dias_compensados_dinero"),
+            "fecha_inicio": r.get("fecha_inicio"),
+            "fecha_fin": r.get("fecha_fin"),
+            "fecha_regreso": r.get("fecha_regreso"),
+            "pago_anticipado": _format_historico_si_no(r.get("pago_anticipado")),
+            "estado": r.get("estado") or "",
+            "fecha_solicitud": r.get("fecha_solicitud"),
+            "fecha_resolucion": r.get("fecha_resolucion"),
+            "observaciones": r.get("observaciones") or "",
+            **auth,
+        })
+    return export_rows
+
+
+@app.route("/informes/permisos-vacaciones")
+@login_required
+@informe_historico_required
+def informe_historico_permiso_vacaciones():
+    fecha_desde, fecha_hasta, estado, incluir_permisos, incluir_vacaciones = _parse_informe_historico_filtros()
+    total_permisos = len(_fetch_historico_permisos(fecha_desde, fecha_hasta, estado)) if incluir_permisos else 0
+    total_vacaciones = len(_fetch_historico_vacaciones(fecha_desde, fecha_hasta, estado)) if incluir_vacaciones else 0
+    return render_template(
+        "informe_historico_permiso_vacaciones.html",
+        active_page="Informe histórico permisos y vacaciones",
+        fecha_desde=fecha_desde.strftime("%Y-%m-%d"),
+        fecha_hasta=fecha_hasta.strftime("%Y-%m-%d"),
+        fecha_desde_label=fecha_desde.strftime("%d/%m/%Y"),
+        fecha_hasta_label=fecha_hasta.strftime("%d/%m/%Y"),
+        estado=estado or "",
+        incluir_permisos=incluir_permisos,
+        incluir_vacaciones=incluir_vacaciones,
+        total_permisos=total_permisos,
+        total_vacaciones=total_vacaciones,
+    )
+
+
+@app.route("/informes/permisos-vacaciones/export")
+@login_required
+@informe_historico_required
+def informe_historico_permiso_vacaciones_export():
+    fecha_desde, fecha_hasta, estado, incluir_permisos, incluir_vacaciones = _parse_informe_historico_filtros()
+    if not incluir_permisos and not incluir_vacaciones:
+        flash("Seleccione al menos permisos o vacaciones para exportar.", "error")
+        return redirect(url_for("informe_historico_permiso_vacaciones", **request.values.to_dict()))
+    sheet_specs = []
+    if incluir_permisos:
+        sheet_specs.append((
+            "Permisos",
+            _fetch_historico_permisos(fecha_desde, fecha_hasta, estado),
+            HISTORICO_PERMISOS_EXPORT_COLUMNS,
+        ))
+    if incluir_vacaciones:
+        sheet_specs.append((
+            "Vacaciones",
+            _fetch_historico_vacaciones(fecha_desde, fecha_hasta, estado),
+            HISTORICO_VACACIONES_EXPORT_COLUMNS,
+        ))
+    tag_desde = fecha_desde.strftime("%Y%m%d")
+    tag_hasta = fecha_hasta.strftime("%Y%m%d")
+    filename = f"Historico_permisos_vacaciones_{tag_desde}_{tag_hasta}"
+    return export_excel_workbook_response(sheet_specs, filename)
 
 
 @app.route("/api/aniversario")

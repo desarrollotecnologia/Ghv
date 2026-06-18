@@ -89,10 +89,12 @@
                 <span class="material-symbols-outlined" style="font-size:20px">beach_access</span>
                 Solicitud de vacaciones
             </a>
+            {% if modulo_incapacidades_habilitado %}
             <a href="{{ url_for('incapacidad_solicitar') }}" class="{{ 'active' if active_page in ['Solicitud de incapacidad', 'Reporte de Incapacidad'] else '' }}">
                 <span class="material-symbols-outlined" style="font-size:20px">medical_services</span>
                 Reporte de Incapacidad
             </a>
+            {% endif %}
             <a href="{{ url_for('empleado_mis_solicitudes') }}" class="{{ 'active' if active_page == 'Mis solicitudes' else '' }}">
                 <span class="material-symbols-outlined" style="font-size:20px">list</span>
                 Mis solicitudes
@@ -101,10 +103,12 @@
                 <span class="material-symbols-outlined" style="font-size:20px">event_note</span>
                 Mis vacaciones
             </a>
+            {% if modulo_incapacidades_habilitado %}
             <a href="{{ url_for('incapacidad_mis_solicitudes') }}" class="{{ 'active' if active_page == 'Mis incapacidades' else '' }}">
                 <span class="material-symbols-outlined" style="font-size:20px">clinical_notes</span>
                 Mis incapacidades
             </a>
+            {% endif %}
             <a href="{{ url_for('empleado_cambiar_password') }}" class="{{ 'active' if active_page == 'Cambiar contraseña' else '' }}">
                 <span class="material-symbols-outlined" style="font-size:20px">lock</span>
                 Cambiar contraseña
