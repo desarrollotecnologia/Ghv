@@ -5615,7 +5615,7 @@ def informe_historico_permiso_vacaciones():
     total_vacaciones = len(_fetch_historico_vacaciones(fecha_desde, fecha_hasta, estado)) if incluir_vacaciones else 0
     return render_template(
         "informe_historico_permiso_vacaciones.html",
-        active_page="Informe histórico permisos y vacaciones",
+        active_page="Histórico solicitudes",
         fecha_desde=fecha_desde.strftime("%Y-%m-%d"),
         fecha_hasta=fecha_hasta.strftime("%Y-%m-%d"),
         fecha_desde_label=fecha_desde.strftime("%d/%m/%Y"),
@@ -5651,7 +5651,7 @@ def informe_historico_permiso_vacaciones_export():
         ))
     tag_desde = fecha_desde.strftime("%Y%m%d")
     tag_hasta = fecha_hasta.strftime("%Y%m%d")
-    filename = f"Historico_permisos_vacaciones_{tag_desde}_{tag_hasta}"
+    filename = f"Historico_solicitudes_{tag_desde}_{tag_hasta}"
     return export_excel_workbook_response(sheet_specs, filename)
 
 
