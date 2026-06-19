@@ -2449,8 +2449,28 @@ def _normalizar_tipo_permiso(tipo):
 
 
 def _permiso_requiere_evidencia(tipo, permiso_remunerado=None):
-    """El solicitante no adjunta soporte; el jefe define remunerado al aprobar."""
-    return False
+    """Solo voto y jurado de votación exigen prueba adjunta del solicitante."""
+    return _normalizar_tipo_permiso(tipo) in TIPOS_PERMISO_REQUIEREN_SOPORTE
+
+
+def _guardar_evidencia_permiso(evidencia_file, id_cedula):
+    """Guarda PDF/imagen de soporte; devuelve (ruta_relativa, error_flash) o (None, mensaje)."""
+    if not evidencia_file or not evidencia_file.filename:
+        return None, "Debe adjuntar la prueba (certificado, citación o soporte de votación/jurado)."
+    ext = os.path.splitext(secure_filename(evidencia_file.filename))[1].lower()
+    if ext not in (".pdf", ".jpg", ".jpeg", ".png"):
+        return None, "La prueba debe ser PDF o imagen (JPG, PNG)."
+    evidencia_file.seek(0, 2)
+    size = evidencia_file.tell()
+    evidencia_file.seek(0)
+    if size > 5 * 1024 * 1024:
+        return None, "La prueba no debe superar 5 MB."
+    upload_dir = os.path.join(current_app.instance_path, "uploads", "permisos")
+    os.makedirs(upload_dir, exist_ok=True)
+    nombre_safe = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{id_cedula}{ext}"
+    evidencia_ruta = os.path.join("permisos", nombre_safe)
+    evidencia_file.save(os.path.join(upload_dir, nombre_safe))
+    return evidencia_ruta, None
 
 
 def _parse_permiso_remunerado_jefe(form):
@@ -3067,6 +3087,11 @@ def permiso_solicitar():
             area = emp["area"]
 
         evidencia_ruta = None
+        if _permiso_requiere_evidencia(tipo):
+            evidencia_ruta, err_evidencia = _guardar_evidencia_permiso(request.files.get("evidencia"), id_cedula)
+            if err_evidencia:
+                flash(err_evidencia, "error")
+                return redirect(url_for("permiso_solicitar"))
 
         try:
             execute(
@@ -3217,7 +3242,17 @@ def permiso_editar(id):
             flash(err_horario, "error")
             return redirect(url_for("permiso_editar", id=id))
 
-        evidencia_ruta = solicitud.get("evidencia")
+        requiere_evidencia = _permiso_requiere_evidencia(tipo)
+        evidencia_ruta = solicitud.get("evidencia") if requiere_evidencia else None
+        evidencia_file = request.files.get("evidencia")
+        if evidencia_file and evidencia_file.filename:
+            evidencia_ruta, err_evidencia = _guardar_evidencia_permiso(evidencia_file, user_cedula)
+            if err_evidencia:
+                flash(err_evidencia, "error")
+                return redirect(url_for("permiso_editar", id=id))
+        if requiere_evidencia and not evidencia_ruta:
+            flash("Debe adjuntar la prueba (certificado, citación o soporte de votación/jurado).", "error")
+            return redirect(url_for("permiso_editar", id=id))
 
         try:
             execute(

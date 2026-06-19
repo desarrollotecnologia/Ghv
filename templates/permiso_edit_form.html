@@ -69,6 +69,15 @@
         </div>
         <p class="permiso-edit-hint permiso-edit-full" id="hintHorarioVotoEdit" style="display:none"></p>
 
+        <div class="permiso-edit-full" id="rowEvidenciaEdit" style="display:none">
+          <label class="permiso-edit-label" id="labelEvidenciaEdit">Adjuntar prueba <span style="color:#dc2626">*</span></label>
+          <input class="permiso-edit-input" type="file" name="evidencia" id="evidenciaEdit" accept=".pdf,.jpg,.jpeg,.png,.webp">
+          <p class="permiso-edit-hint" id="hintEvidenciaEdit">Certificado, citación o soporte de votación/jurado (PDF o imagen, máx. 5 MB).</p>
+          {% if solicitud.evidencia %}
+          <p class="permiso-edit-hint">Ya hay un archivo adjunto; suba otro solo si desea reemplazarlo.</p>
+          {% endif %}
+        </div>
+
         <div class="permiso-edit-full">
           <label class="permiso-edit-label">Área</label>
           <input class="permiso-edit-input" type="text" name="area" value="{{ solicitud.area or solicitud.area_empleado or '' }}" readonly>
@@ -93,6 +102,21 @@
 <script>
 (function() {
     var tipo = document.getElementById('permisoEditTipo');
+    var row = document.getElementById('rowEvidenciaEdit');
+    var input = document.getElementById('evidenciaEdit');
+    var tieneAdjunto = {{ 'true' if solicitud.evidencia else 'false' }};
+    var tiposConPrueba = ['Ejercer derecho al voto', 'Jurado de votación'];
+    function toggleEvidenciaEdit() {
+        var requiere = tipo && tiposConPrueba.indexOf(tipo.value) !== -1;
+        if (row) row.style.display = requiere ? '' : 'none';
+        if (input) {
+            input.required = requiere && !tieneAdjunto;
+            if (!requiere) input.value = '';
+        }
+    }
+    if (tipo) tipo.addEventListener('change', toggleEvidenciaEdit);
+    toggleEvidenciaEdit();
+
     var TIPO_VOTO = 'Ejercer derecho al voto';
     var TIPO_JURADO = 'Jurado de votación';
     var horaInicio = document.getElementById('horaInicioEdit');
@@ -192,7 +216,10 @@
         return true;
     }
 
-    if (tipo) tipo.addEventListener('change', aplicarReglasVotoJuradoEdit);
+    if (tipo) {
+        tipo.addEventListener('change', aplicarReglasVotoJuradoEdit);
+        tipo.addEventListener('change', toggleEvidenciaEdit);
+    }
     if (fechaDesde) {
         fechaDesde.addEventListener('change', function() {
             if (tipo && fechaHasta && fechaDesde.value) {

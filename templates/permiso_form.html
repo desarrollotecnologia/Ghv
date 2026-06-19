@@ -176,6 +176,14 @@
                 </div>
                 <p class="gh-formato-label" id="hintHorarioVoto" style="display:none;margin:-4px 0 16px;font-weight:400;font-size:12px;color:#92400e"></p>
 
+                <!-- Prueba voto / jurado -->
+                <div class="gh-formato-fila una permiso-evidencia-row" id="rowEvidencia" style="display:none;margin-bottom:16px">
+                    <div class="form-group">
+                        <label class="gh-formato-label" id="labelEvidencia">Adjuntar prueba <span class="required">*</span> <span style="font-size:12px;color:#6b7280">(certificado, citación – PDF, JPG, PNG – máx. 5 MB)</span></label>
+                        <input type="file" name="evidencia" id="evidencia" class="gh-formato-input" accept=".pdf,.jpg,.jpeg,.png,.webp">
+                    </div>
+                </div>
+
                 <div class="gh-formato-divider"></div>
 
                 <!-- Bloque de firmas: igual al formato oficial -->
@@ -245,6 +253,21 @@
         actualizarNombre();
     }
     var tipoPermiso = document.getElementById('tipoPermiso');
+    var rowEvidencia = document.getElementById('rowEvidencia');
+    var evidenciaInput = document.getElementById('evidencia');
+    var tiposConPrueba = ['Ejercer derecho al voto', 'Jurado de votación'];
+    function toggleEvidencia() {
+        var tipo = tipoPermiso ? tipoPermiso.value : '';
+        var requiere = tiposConPrueba.indexOf(tipo) !== -1;
+        if (rowEvidencia) rowEvidencia.style.display = requiere ? '' : 'none';
+        if (evidenciaInput) {
+            evidenciaInput.required = requiere;
+            if (!requiere) evidenciaInput.value = '';
+        }
+    }
+    if (tipoPermiso) tipoPermiso.addEventListener('change', toggleEvidencia);
+    toggleEvidencia();
+
     var TIPO_VOTO = 'Ejercer derecho al voto';
     var TIPO_JURADO = 'Jurado de votación';
     var horaInicio = document.getElementById('horaInicio');
@@ -347,6 +370,7 @@
 
     if (tipoPermiso) {
         tipoPermiso.addEventListener('change', aplicarReglasVotoJurado);
+        tipoPermiso.addEventListener('change', toggleEvidencia);
     }
     if (fechaDesde) {
         fechaDesde.addEventListener('change', function() {
