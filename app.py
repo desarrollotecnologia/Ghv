@@ -4637,24 +4637,13 @@ def permiso_aprobar(id):
     registrar_audit("Solicitud aprobada", "permisos", f"id={id} cédula={solicitud.get('id_cedula')}")
     emp = query("SELECT apellidos_nombre, direccion_email FROM empleado WHERE id_cedula = %s", (solicitud["id_cedula"],), one=True)
     attachments = []
-    evidencia_ruta = (solicitud.get("evidencia") or "").strip()
-    # Firma digital: misma imagen que en el correo. Prioridad: "firma digital cindy.png" en la raíz, luego SIGNATURE_IMAGE_PATH.
-    root = getattr(current_app, "root_path", None) or os.path.dirname(os.path.abspath(__file__))
-    firma_en_raiz = os.path.join(root, "firma digital cindy.png")
-    firma_cfg = (current_app.config.get("SIGNATURE_IMAGE_PATH") or "").strip()
-    if os.path.isfile(firma_en_raiz):
-        firma_path_abs = firma_en_raiz
-    elif firma_cfg and os.path.isfile(firma_cfg):
-        firma_path_abs = firma_cfg if os.path.isabs(firma_cfg) else os.path.join(current_app.static_folder, firma_cfg)
-    else:
-        firma_path_abs = None
-    # PDF informe: formulario GH-FR-007 con datos diligenciados y firma de Coordinación (siempre al aprobar)
+    # PDF informe: formulario GH-FR-007 con datos diligenciados (sin firma digital)
     temp_informe = None
     try:
         from pdf_informe_permiso import generar_informe_permiso_pdf
         fd, temp_informe = tempfile.mkstemp(suffix=".pdf")
         os.close(fd)
-        if generar_informe_permiso_pdf(solicitud, emp["apellidos_nombre"] if emp else "", temp_informe, firma_image_path=firma_path_abs):
+        if generar_informe_permiso_pdf(solicitud, emp["apellidos_nombre"] if emp else "", temp_informe, firma_image_path=None):
             attachments.append(("Informe_permiso_GH-FR-007.pdf", temp_informe))
         elif temp_informe and os.path.isfile(temp_informe):
             try:
@@ -4669,28 +4658,6 @@ def permiso_aprobar(id):
             except Exception:
                 pass
         temp_informe = None
-    # Opcional: si la evidencia subida era PDF, además se envía el PDF firmado (estampado)
-    if evidencia_ruta and firma_path_abs and os.path.isfile(firma_path_abs):
-        evidencia_full = os.path.join(current_app.instance_path, "uploads", evidencia_ruta)
-        if os.path.isfile(evidencia_full) and evidencia_full.lower().endswith(".pdf"):
-            temp_pdf = None
-            try:
-                from pdf_firma import firmar_pdf
-                fd, temp_pdf = tempfile.mkstemp(suffix=".pdf")
-                os.close(fd)
-                if firmar_pdf(evidencia_full, firma_path_abs, temp_pdf, posicion="gh_celda_firma"):
-                    attachments.append(("Formato_permiso_firmado.pdf", temp_pdf))
-                elif temp_pdf and os.path.isfile(temp_pdf):
-                    try:
-                        os.unlink(temp_pdf)
-                    except Exception:
-                        pass
-            except Exception:
-                if temp_pdf and os.path.isfile(temp_pdf):
-                    try:
-                        os.unlink(temp_pdf)
-                    except Exception:
-                        pass
     email_empleado = _resolver_email_empleado(solicitud["id_cedula"])
     correo_ok = notificar_resolucion_permiso(app, solicitud, emp["apellidos_nombre"] if emp else "", email_empleado, aprobado=True, observaciones=observaciones, attachments=attachments if attachments else None)
     _cur = get_current_user() or {}
@@ -4718,7 +4685,7 @@ def permiso_aprobar(id):
         pass  # columnas no existen si no se ejecutó migration_correo_resolucion_validar.sql
     if correo_ok:
         if attachments:
-            flash("Solicitud aprobada. Se notificó al empleado por correo con el informe en PDF (formato GH-FR-007 y firma digital) adjunto.", "success")
+            flash("Solicitud aprobada. Se notificó al empleado por correo con el informe en PDF (formato GH-FR-007) adjunto.", "success")
         else:
             flash("Solicitud aprobada. Se ha notificado al empleado por correo.", "success")
     else:

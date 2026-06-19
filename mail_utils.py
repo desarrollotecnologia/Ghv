@@ -434,7 +434,7 @@ def notificar_nueva_solicitud_permiso(
     return ok
 
 
-def _body_informe_permiso_aprobado(solicitud, empleado_nombre, firma_img_html, fecha_resolucion_display, observaciones=None):
+def _body_informe_permiso_aprobado(solicitud, empleado_nombre, fecha_resolucion_display, observaciones=None):
     """
     Genera el cuerpo del correo como informe del formulario GH-FR-007: mismo diseño que el formulario web.
     Usa solo tablas y estilos inline para que Gmail y otros clientes muestren el diseño correctamente.
@@ -481,8 +481,8 @@ def _body_informe_permiso_aprobado(solicitud, empleado_nombre, firma_img_html, f
         f'</div></td></tr>'
     )
     return f"""
-<p style="margin:0 0 16px 0;font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;"><span style="display:inline-block;padding:6px 12px;border-radius:8px;font-size:13px;font-weight:600;background:#d1fae5;color:#047857;">Permiso aprobado</span></p>
-<p style="margin:0 0 20px 0;font-size:14px;color:#374151;font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;">Se adjunta el <strong>informe en PDF</strong> (Formato GH-FR-007) con los datos que diligenció y la firma digital de Coordinación Gestión Humana.</p>
+<p style="margin:0 0 16px 0;font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;"><span style="display:inline-block;padding:6px 12px;border-radius:8px;font-size:13px;font-weight:600;background:#d1fae5;color:#047857;">APROBADO</span></p>
+<p style="margin:0 0 20px 0;font-size:14px;color:#374151;font-family:Segoe UI,Tahoma,Geneva,Verdana,sans-serif;">Se adjunta el <strong>informe en PDF</strong> (Formato GH-FR-007) con los datos de su solicitud.</p>
 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:720px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;border-collapse:separate;border-spacing:0;overflow:hidden;">
   <tr>
     <td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;background:#fafafa;">
@@ -524,7 +524,6 @@ def _body_informe_permiso_aprobado(solicitud, empleado_nombre, firma_img_html, f
           </td>
           <td width="34%" style="padding:14px 12px;text-align:center;background:#f0fdf4;vertical-align:top;">
             <p style="font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.3px;margin:0 0 8px 0;">Firma Recibido Gestión Humana</p>
-            {firma_img_html}
             <p style="font-size:12px;color:#166534;margin:8px 0 0;line-height:1.4;">Coordinación de Gestión Humana<br>Colbeef</p>
           </td>
         </tr>
@@ -538,8 +537,8 @@ def _body_informe_permiso_aprobado(solicitud, empleado_nombre, firma_img_html, f
 def notificar_resolucion_permiso(app, solicitud, empleado_nombre, empleado_email, aprobado, observaciones=None, attachments=None):
     """Notifica al empleado que su solicitud fue aprobada o rechazada.
     El correo va al empleado (direccion_email en BD). Si está vacío, se usa el primer correo de MAIL_PRUEBAS_CC para pruebas.
-    Si aprobado=True, el cuerpo del correo es un informe con la estructura del formulario GH-FR-007, datos completos y firma digital.
-    attachments: lista opcional de (nombre_archivo, ruta_archivo), ej. PDF firmado al aprobar."""
+    Si aprobado=True, el cuerpo del correo es un informe con la estructura del formulario GH-FR-007.
+    attachments: lista opcional de (nombre_archivo, ruta_archivo), ej. PDF informe al aprobar."""
     original_email = (empleado_email or "").strip()
     if not original_email:
         empleado_email = app.config.get("MAIL_PRUEBAS_CC", "").split(",")[0].strip() or None
@@ -551,30 +550,17 @@ def notificar_resolucion_permiso(app, solicitud, empleado_nombre, empleado_email
         if app and hasattr(app, "logger"):
             app.logger.warning("[Permisos] No se envió correo de resolución: empleado sin direccion_email y MAIL_PRUEBAS_CC vacío")
         return False
-    estado = "APROBADA" if aprobado else "RECHAZADA"
-    estado_label = "Aprobada" if aprobado else "Rechazada"
+    estado = "APROBADO" if aprobado else "RECHAZADO"
+    estado_label = "Aprobado" if aprobado else "Rechazado"
     badge_class = "aprobado" if aprobado else "rechazado"
     subject = f"Resolución: permiso {estado_label} – {empleado_nombre}"
-    # Firma digital: imagen para informe (aprobado) o mensaje breve (rechazado)
-    root = getattr(app, "root_path", None) or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    firma_en_raiz = os.path.join(root, "firma digital cindy.png")
-    firma_cfg = (app.config.get("SIGNATURE_IMAGE_PATH") or "").strip()
-    firma_path = firma_en_raiz if os.path.isfile(firma_en_raiz) else (firma_cfg if firma_cfg and os.path.isfile(firma_cfg) else None)
-    inline_images = [("firma_gh", firma_path)] if firma_path else []
-    firma_img_html = (
-        '<div style="margin:8px 0 6px"><img src="cid:firma_gh" alt="Firma Coordinación" style="max-height:72px; display:block;"></div>'
-        if firma_path
-        else '<div class="mail-sign-name" style="margin:8px 0">Coordinación Gestión Humana</div>'
-    )
-    if not aprobado:
-        inline_images = []
     try:
         from datetime import datetime
         fecha_resolucion_display = datetime.now().strftime("%d-%m-%Y")
     except Exception:
         fecha_resolucion_display = _fecha_display(solicitud.get("fecha_resolucion"))
     if aprobado:
-        body_content = _body_informe_permiso_aprobado(solicitud, empleado_nombre, firma_img_html, fecha_resolucion_display, observaciones=observaciones)
+        body_content = _body_informe_permiso_aprobado(solicitud, empleado_nombre, fecha_resolucion_display, observaciones=observaciones)
     else:
         tabla_filas = [
             ("<th>Tipo de permiso</th>", f"<td>{html_escape(str(solicitud.get('tipo', 'Permiso')))}</td>"),
@@ -590,7 +576,7 @@ def notificar_resolucion_permiso(app, solicitud, empleado_nombre, empleado_email
     <p>Estimado/a <strong>{nombre_safe}</strong>,</p>
     <p>Coordinación Gestión Humana ha resuelto su solicitud de permiso/licencia.</p>
     <p><span class="mail-badge {badge_class}">{estado_label}</span></p>
-    <p>Su solicitud de permiso no ha sido aprobada. Si tiene dudas o desea más información, puede contactar a Coordinación Gestión Humana.</p>
+    <p>Su solicitud de permiso no ha sido aprobado. Si tiene dudas o desea más información, puede contactar a Coordinación Gestión Humana.</p>
     {tabla}
     """
     body = _wrap_html(body_content, title=subject, subtitle=f"Informe de permiso {estado_label}" if aprobado else f"Solicitud de permiso {estado_label}")
@@ -598,7 +584,7 @@ def notificar_resolucion_permiso(app, solicitud, empleado_nombre, empleado_email
     id_sol = solicitud.get("id")
     if app and hasattr(app, "logger"):
         app.logger.info(f"[Permisos] Resolución solicitud id={id_sol} → enviando a {empleado_email} ({estado})")
-    ok = send_mail(empleado_email, subject, body, body_text=plain, app=app, attachments=attachments or [], inline_images=inline_images)
+    ok = send_mail(empleado_email, subject, body, body_text=plain, app=app, attachments=attachments or [])
     if app and hasattr(app, "logger"):
         app.logger.info(f"[Permisos] Resolución id={id_sol} → resultado_enviado={ok}")
     return ok
@@ -808,7 +794,7 @@ def notificar_gh_resolucion_por_jefe(app, solicitud, empleado_nombre, tipo, apro
     if not control:
         return False
     tipo_norm = (tipo or "").strip().lower()
-    estado_label = "Aprobada" if aprobado else "Rechazada"
+    estado_label = "Aprobado" if aprobado else "Rechazado"
     badge_class = "aprobado" if aprobado else "rechazado"
     if tipo_norm == "vacaciones":
         subject = f"[Informativo] Vacaciones {estado_label} por jefe inmediato – {empleado_nombre}"

@@ -170,18 +170,9 @@ def _draw_section_band(c, x, y_top, w, text):
 
 
 def _resolver_firma(firma_image_path):
-    """Usa la ruta recibida o busca 'firma digital cindy.png' en raíz, static o carpeta superior."""
+    """Sin firma digital automática; solo si se pasa una ruta explícita válida."""
     if firma_image_path and os.path.isfile(firma_image_path):
         return firma_image_path
-    root = os.path.dirname(os.path.abspath(__file__))
-    parent = os.path.dirname(root)
-    for candidate in (
-        os.path.join(root, "firma digital cindy.png"),
-        os.path.join(root, "static", "firma digital cindy.png"),
-        os.path.join(parent, "firma digital cindy.png"),
-    ):
-        if os.path.isfile(candidate):
-            return candidate
     return None
 
 
@@ -197,8 +188,7 @@ def _resolver_logo():
 
 def generar_informe_permiso_pdf(solicitud, empleado_nombre, output_path, firma_image_path=None):
     """
-    Genera el informe PDF tal cual el formulario: datos diligenciados y firma digital cindy.png
-    en la celda Firma Recibido Gestión Humana. Se envía por correo al aprobar.
+    Genera el informe PDF tal cual el formulario: datos diligenciados (sin imagen de firma digital).
     """
     if canvas is None:
         return False
@@ -381,7 +371,7 @@ def generar_informe_permiso_pdf(solicitud, empleado_nombre, output_path, firma_i
         c.drawString(x_gh + pad, y_celda + alto_celda - 25, "GESTION HUMANA")
         c.setFillColor(VERDE_NOTA)
         c.setFont("Helvetica", 7)
-        c.drawString(x_gh + pad, y_celda + alto_celda - 38, "Se firma digitalmente")
+        c.drawString(x_gh + pad, y_celda + alto_celda - 38, "Coordinación Gestión Humana")
 
         if firma_image_path and os.path.isfile(firma_image_path) and Image is not None:
             try:
