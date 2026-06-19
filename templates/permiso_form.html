@@ -138,16 +138,28 @@
                     </div>
                 </div>
 
-                <!-- Permiso remunerado / No remunerado -->
-                <div class="gh-formato-fila dos" style="margin-bottom:16px">
+                <!-- Tipo de permiso -->
+                <div class="gh-formato-fila una" style="margin-bottom:16px">
                     <div class="form-group">
-                        <label class="gh-formato-label">Permiso remunerado / Permiso No Remunerado <span class="required">*</span></label>
-                        <select name="permiso_remunerado" id="permisoRemunerado" class="gh-formato-input" required>
-                            <option value="">— Seleccionar —</option>
-                            <option value="1">Remunerado</option>
-                            <option value="0">No Remunerado</option>
+                        <label class="gh-formato-label">Tipo de permiso <span class="required">*</span></label>
+                        <select name="tipo" id="tipoPermiso" class="gh-formato-input" required style="max-width:280px">
+                            <option value="Cita médica">Cita médica</option>
+                            <option value="Calamidad doméstica">Calamidad doméstica</option>
+                            <option value="Ejercer derecho al voto">Ejercer derecho al voto</option>
+                            <option value="Jurado de votación">Jurado de votación</option>
+                            <option value="Diligencias personales">Diligencias personales</option>
+                            <option value="Exámenes médicos">Exámenes médicos</option>
+                            <option value="Reuniones escolares">Reuniones escolares</option>
+                            <option value="Otros">Otros</option>
                         </select>
-                        <p class="gh-formato-label" id="hintEvidencia" style="margin-top:6px;font-weight:400;font-size:12px">Si es no remunerado, o permiso por votación/jurado de votación, debe adjuntar soporte (PDF o imagen).</p>
+                    </div>
+                </div>
+
+                <!-- Motivo -->
+                <div class="gh-formato-fila una" style="margin-bottom:16px">
+                    <div class="form-group">
+                        <label class="gh-formato-label">Motivo <span class="required">*</span></label>
+                        <textarea name="motivo" class="gh-formato-input gh-formato-motivo" rows="3" required placeholder="Describa el motivo del permiso o licencia"></textarea>
                     </div>
                 </div>
 
@@ -163,39 +175,6 @@
                     </div>
                 </div>
                 <p class="gh-formato-label" id="hintHorarioVoto" style="display:none;margin:-4px 0 16px;font-weight:400;font-size:12px;color:#92400e"></p>
-
-                <!-- Motivo (tipo de permiso) -->
-                <div class="gh-formato-fila una" style="margin-bottom:8px">
-                    <div class="form-group">
-                        <label class="gh-formato-label">Motivo <span class="required">*</span></label>
-                        <select name="tipo" id="tipoPermiso" class="gh-formato-input" required style="max-width:220px">
-                            <option value="Cita médica">Cita médica</option>
-                            <option value="Calamidad doméstica">Calamidad doméstica</option>
-                            <option value="Ejercer derecho al voto">Ejercer derecho al voto</option>
-                            <option value="Jurado de votación">Jurado de votación</option>
-                            <option value="Diligencias personales">Diligencias personales</option>
-                            <option value="Exámenes médicos">Exámenes médicos</option>
-                            <option value="Reuniones escolares">Reuniones escolares</option>
-                            <option value="Otros">Otros</option>
-                        </select>
-                    </div>
-                </div>
-
-                <!-- Soporte / evidencia (no remunerado o votación/jurado) -->
-                <div class="gh-formato-fila una permiso-evidencia-row" id="rowEvidencia" style="display:none; margin-bottom:16px">
-                    <div class="form-group">
-                        <label class="gh-formato-label" id="labelEvidencia">Adjuntar soporte <span class="required">*</span> <span style="font-size:12px;color:#6b7280">(PDF, JPG, PNG – máx. 5 MB)</span></label>
-                        <input type="file" name="evidencia" id="evidencia" class="gh-formato-input" accept=".pdf,.jpg,.jpeg,.png,.webp">
-                    </div>
-                </div>
-
-                <!-- Descripcion -->
-                <div class="gh-formato-fila una" style="margin-bottom:8px">
-                    <div class="form-group">
-                        <label class="gh-formato-label">Descripcion <span class="required">*</span></label>
-                        <textarea name="motivo" class="gh-formato-input gh-formato-motivo" rows="3" required placeholder="Describa el permiso o licencia"></textarea>
-                    </div>
-                </div>
 
                 <div class="gh-formato-divider"></div>
 
@@ -265,36 +244,7 @@
         sel.addEventListener('change', actualizarNombre);
         actualizarNombre();
     }
-    var remunerado = document.getElementById('permisoRemunerado');
     var tipoPermiso = document.getElementById('tipoPermiso');
-    var rowEvidencia = document.getElementById('rowEvidencia');
-    var evidenciaInput = document.getElementById('evidencia');
-    var labelEvidencia = document.getElementById('labelEvidencia');
-    var tiposConSoporte = ['Ejercer derecho al voto', 'Jurado de votación'];
-    function toggleEvidencia() {
-        var esNoRemunerado = remunerado && remunerado.value === '0';
-        var tipo = tipoPermiso ? tipoPermiso.value : '';
-        var esVoto = tiposConSoporte.indexOf(tipo) !== -1;
-        var requiere = esNoRemunerado || esVoto;
-        if (rowEvidencia) rowEvidencia.style.display = requiere ? '' : 'none';
-        if (labelEvidencia) {
-            labelEvidencia.innerHTML = esVoto && !esNoRemunerado
-                ? 'Adjuntar soporte de votación / jurado <span class="required">*</span> <span style="font-size:12px;color:#6b7280">(PDF, JPG, PNG – máx. 5 MB)</span>'
-                : 'Adjuntar soporte <span class="required">*</span> <span style="font-size:12px;color:#6b7280">(PDF, JPG, PNG – máx. 5 MB)</span>';
-        }
-        if (evidenciaInput) {
-            evidenciaInput.required = requiere;
-            if (!requiere) evidenciaInput.value = '';
-        }
-    }
-    if (remunerado) {
-        remunerado.addEventListener('change', toggleEvidencia);
-    }
-    if (tipoPermiso) {
-        tipoPermiso.addEventListener('change', toggleEvidencia);
-    }
-    toggleEvidencia();
-
     var TIPO_VOTO = 'Ejercer derecho al voto';
     var TIPO_JURADO = 'Jurado de votación';
     var horaInicio = document.getElementById('horaInicio');

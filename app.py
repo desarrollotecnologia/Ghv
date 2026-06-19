@@ -2448,11 +2448,19 @@ def _normalizar_tipo_permiso(tipo):
     return TIPOS_PERMISO_LEGACY.get(tipo, tipo)
 
 
-def _permiso_requiere_evidencia(tipo, permiso_remunerado):
-    """No remunerado o permiso de voto/jurado de votación requieren soporte adjunto."""
-    if permiso_remunerado == 0:
-        return True
-    return _normalizar_tipo_permiso(tipo) in TIPOS_PERMISO_REQUIEREN_SOPORTE
+def _permiso_requiere_evidencia(tipo, permiso_remunerado=None):
+    """El solicitante no adjunta soporte; el jefe define remunerado al aprobar."""
+    return False
+
+
+def _parse_permiso_remunerado_jefe(form):
+    """Remunerado / no remunerado lo define el jefe al aprobar."""
+    pr = (form.get("permiso_remunerado") if form is not None else None) or ""
+    pr = str(pr).strip()
+    if pr not in ("0", "1"):
+        return None, None, "Indique si el permiso es remunerado o no remunerado."
+    remunerado = int(pr)
+    return remunerado, 0 if remunerado == 1 else 1, None
 
 
 HORAS_PERMISO_VOTO = 4
@@ -3027,19 +3035,13 @@ def permiso_solicitar():
         fecha_hasta = request.form.get("fecha_hasta")
         motivo = (request.form.get("motivo") or "").strip()
         area = (request.form.get("area") or "").strip() or None
-        pr = request.form.get("permiso_remunerado")
-        permiso_remunerado = int(pr) if pr in ("0", "1") else None
-        permiso_no_remunerado = 0 if permiso_remunerado == 1 else (1 if permiso_remunerado == 0 else None)
         hora_inicio = (request.form.get("hora_inicio") or "").strip() or None
         hora_fin = (request.form.get("hora_fin") or "").strip() or None
         if not id_cedula or not fecha_desde or not fecha_hasta:
             flash("Complete empleado, fecha desde y fecha hasta.", "error")
             return redirect(url_for("permiso_solicitar"))
         if not motivo:
-            flash("La descripcion es obligatoria.", "error")
-            return redirect(url_for("permiso_solicitar"))
-        if permiso_remunerado is None:
-            flash("Indique si el permiso es remunerado o no.", "error")
+            flash("El motivo es obligatorio.", "error")
             return redirect(url_for("permiso_solicitar"))
         try:
             d_desde = datetime.strptime(fecha_desde, "%Y-%m-%d").date()
@@ -3054,12 +3056,6 @@ def permiso_solicitar():
         if err_horario:
             flash(err_horario, "error")
             return redirect(url_for("permiso_solicitar"))
-        requiere_evidencia = _permiso_requiere_evidencia(tipo, permiso_remunerado)
-        if requiere_evidencia:
-            evidencia_file = request.files.get("evidencia")
-            if not evidencia_file or not evidencia_file.filename:
-                flash("Debe adjuntar soporte (PDF o imagen) para este permiso.", "error")
-                return redirect(url_for("permiso_solicitar"))
         emp = query("SELECT id_cedula, apellidos_nombre, direccion_email, area FROM empleado WHERE id_cedula = %s AND estado = 'ACTIVO'", (id_cedula,), one=True)
         if not emp:
             flash("No se encontró un empleado activo con esa cédula.", "error")
@@ -3071,37 +3067,19 @@ def permiso_solicitar():
             area = emp["area"]
 
         evidencia_ruta = None
-        evidencia_file = request.files.get("evidencia")
-        if evidencia_file and evidencia_file.filename:
-            ext = os.path.splitext(secure_filename(evidencia_file.filename))[1].lower()
-            if ext not in (".pdf", ".jpg", ".jpeg", ".png"):
-                flash("La evidencia debe ser PDF o imagen (JPG, PNG).", "error")
-                return redirect(url_for("permiso_solicitar"))
-            evidencia_file.seek(0, 2)
-            size = evidencia_file.tell()
-            evidencia_file.seek(0)
-            if size > 5 * 1024 * 1024:
-                flash("La evidencia no debe superar 5 MB.", "error")
-                return redirect(url_for("permiso_solicitar"))
-            upload_dir = os.path.join(current_app.instance_path, "uploads", "permisos")
-            os.makedirs(upload_dir, exist_ok=True)
-            nombre_safe = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{id_cedula}{ext}"
-            evidencia_ruta = os.path.join("permisos", nombre_safe)
-            evidencia_full_path = os.path.join(upload_dir, nombre_safe)
-            evidencia_file.save(evidencia_full_path)
 
         try:
             execute(
                 "INSERT INTO solicitud_permiso (id_cedula, tipo, fecha_desde, fecha_hasta, motivo, solicitante_email, area, permiso_remunerado, permiso_no_remunerado, hora_inicio, hora_fin, evidencia) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (id_cedula, tipo, fecha_desde, fecha_hasta, motivo, get_current_user() and get_current_user().get("email"), area, permiso_remunerado, permiso_no_remunerado, hora_inicio, hora_fin, evidencia_ruta),
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,NULL,NULL,%s,%s,%s)",
+                (id_cedula, tipo, fecha_desde, fecha_hasta, motivo, get_current_user() and get_current_user().get("email"), area, hora_inicio, hora_fin, evidencia_ruta),
             )
         except Exception as e:
             if "Unknown column" in str(e):
                 execute(
-                    "INSERT INTO solicitud_permiso (id_cedula, tipo, fecha_desde, fecha_hasta, motivo, solicitante_email, area, permiso_remunerado, permiso_no_remunerado, hora_inicio, hora_fin) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                    (id_cedula, tipo, fecha_desde, fecha_hasta, motivo, get_current_user() and get_current_user().get("email"), area, permiso_remunerado, permiso_no_remunerado, hora_inicio, hora_fin),
+                    "INSERT INTO solicitud_permiso (id_cedula, tipo, fecha_desde, fecha_hasta, motivo, solicitante_email, area, hora_inicio, hora_fin) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (id_cedula, tipo, fecha_desde, fecha_hasta, motivo, get_current_user() and get_current_user().get("email"), area, hora_inicio, hora_fin),
                 )
             else:
                 raise
@@ -3212,9 +3190,6 @@ def permiso_editar(id):
         motivo = (request.form.get("motivo") or "").strip()
         motivo_cambio = (request.form.get("motivo_cambio") or "").strip()
         area = (request.form.get("area") or "").strip() or (solicitud.get("area_empleado") or solicitud.get("area") or None)
-        pr = request.form.get("permiso_remunerado")
-        permiso_remunerado = int(pr) if pr in ("0", "1") else None
-        permiso_no_remunerado = 0 if permiso_remunerado == 1 else (1 if permiso_remunerado == 0 else None)
         hora_inicio = (request.form.get("hora_inicio") or "").strip() or None
         hora_fin = (request.form.get("hora_fin") or "").strip() or None
 
@@ -3226,9 +3201,6 @@ def permiso_editar(id):
             return redirect(url_for("permiso_editar", id=id))
         if not motivo_cambio:
             flash("Debes indicar el motivo del cambio para reenviar la solicitud.", "error")
-            return redirect(url_for("permiso_editar", id=id))
-        if permiso_remunerado is None:
-            flash("Indique si el permiso es remunerado o no.", "error")
             return redirect(url_for("permiso_editar", id=id))
 
         try:
@@ -3246,40 +3218,16 @@ def permiso_editar(id):
             return redirect(url_for("permiso_editar", id=id))
 
         evidencia_ruta = solicitud.get("evidencia")
-        evidencia_file = request.files.get("evidencia")
-        if evidencia_file and evidencia_file.filename:
-            ext = os.path.splitext(secure_filename(evidencia_file.filename))[1].lower()
-            if ext not in (".pdf", ".jpg", ".jpeg", ".png"):
-                flash("La evidencia debe ser PDF o imagen (JPG, PNG).", "error")
-                return redirect(url_for("permiso_editar", id=id))
-            evidencia_file.seek(0, 2)
-            size = evidencia_file.tell()
-            evidencia_file.seek(0)
-            if size > 5 * 1024 * 1024:
-                flash("La evidencia no debe superar 5 MB.", "error")
-                return redirect(url_for("permiso_editar", id=id))
-            upload_dir = os.path.join(current_app.instance_path, "uploads", "permisos")
-            os.makedirs(upload_dir, exist_ok=True)
-            nombre_safe = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{user_cedula}{ext}"
-            evidencia_ruta = os.path.join("permisos", nombre_safe)
-            evidencia_full_path = os.path.join(upload_dir, nombre_safe)
-            evidencia_file.save(evidencia_full_path)
-        requiere_evidencia = _permiso_requiere_evidencia(tipo, permiso_remunerado)
-        if requiere_evidencia and not evidencia_ruta:
-            flash("Debe adjuntar soporte (PDF o imagen) para este permiso.", "error")
-            return redirect(url_for("permiso_editar", id=id))
-        if permiso_remunerado == 1 and _normalizar_tipo_permiso(tipo) not in TIPOS_PERMISO_REQUIEREN_SOPORTE:
-            evidencia_ruta = None
 
         try:
             execute(
                 "UPDATE solicitud_permiso SET tipo=%s, fecha_desde=%s, fecha_hasta=%s, motivo=%s, area=%s, "
-                "permiso_remunerado=%s, permiso_no_remunerado=%s, hora_inicio=%s, hora_fin=%s, evidencia=%s, "
+                "permiso_remunerado=NULL, permiso_no_remunerado=NULL, hora_inicio=%s, hora_fin=%s, evidencia=%s, "
                 "motivo_cambio_empleado=%s, estado='PENDIENTE', observaciones=NULL, resuelto_por=NULL, fecha_resolucion=NULL, "
                 "correo_resolucion_enviado=NULL, correo_resolucion_at=NULL, fecha_solicitud=NOW() "
                 "WHERE id=%s AND id_cedula=%s",
                 (
-                    tipo, fecha_desde, fecha_hasta, motivo, area, permiso_remunerado, permiso_no_remunerado,
+                    tipo, fecha_desde, fecha_hasta, motivo, area,
                     hora_inicio, hora_fin, evidencia_ruta, motivo_cambio, id, user_cedula,
                 ),
             )
@@ -3287,12 +3235,12 @@ def permiso_editar(id):
             if "Unknown column 'motivo_cambio_empleado'" in str(e):
                 execute(
                     "UPDATE solicitud_permiso SET tipo=%s, fecha_desde=%s, fecha_hasta=%s, motivo=%s, area=%s, "
-                    "permiso_remunerado=%s, permiso_no_remunerado=%s, hora_inicio=%s, hora_fin=%s, evidencia=%s, "
+                    "permiso_remunerado=NULL, permiso_no_remunerado=NULL, hora_inicio=%s, hora_fin=%s, evidencia=%s, "
                     "estado='PENDIENTE', observaciones=NULL, resuelto_por=NULL, fecha_resolucion=NULL, "
                     "correo_resolucion_enviado=NULL, correo_resolucion_at=NULL, fecha_solicitud=NOW() "
                     "WHERE id=%s AND id_cedula=%s",
                     (
-                        tipo, fecha_desde, fecha_hasta, motivo, area, permiso_remunerado, permiso_no_remunerado,
+                        tipo, fecha_desde, fecha_hasta, motivo, area,
                         hora_inicio, hora_fin, evidencia_ruta, id, user_cedula,
                     ),
                 )
@@ -4613,6 +4561,7 @@ def permiso_aprobar(id):
             return jsonify(ok=False, error="Sesión expirada."), 401
         return redirect(url_for("login"))
     observaciones = (request.form.get("observaciones") or "").strip()
+    permiso_remunerado, permiso_no_remunerado, err_rem = _parse_permiso_remunerado_jefe(request.form)
     solicitud = query("SELECT * FROM solicitud_permiso WHERE id = %s", (id,), one=True)
     if solicitud and not _puede_resolver_solicitud(solicitud):
         flash("No tiene permiso para aprobar esta solicitud (no es el encargado asignado).", "error")
@@ -4638,10 +4587,18 @@ def permiso_aprobar(id):
             r = query("SELECT COUNT(*) as c FROM solicitud_permiso WHERE estado = 'RECHAZADO'", one=True)["c"]
             return jsonify(ok=True, ya_resuelta=True, pendientes=p, aprobadas=a, rechazadas=r)
         return redirect(url_for("permisos_index"))
+    if err_rem:
+        flash(err_rem, "error")
+        if _is_api_request() or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify(ok=False, error=err_rem), 400
+        return redirect(url_for("permisos_index"))
     execute(
-        "UPDATE solicitud_permiso SET estado = 'APROBADO', observaciones = %s, resuelto_por = %s, fecha_resolucion = NOW() WHERE id = %s",
-        (observaciones, cur_user["id_user"], id),
+        "UPDATE solicitud_permiso SET estado = 'APROBADO', observaciones = %s, resuelto_por = %s, "
+        "permiso_remunerado = %s, permiso_no_remunerado = %s, fecha_resolucion = NOW() WHERE id = %s",
+        (observaciones, cur_user["id_user"], permiso_remunerado, permiso_no_remunerado, id),
     )
+    solicitud["permiso_remunerado"] = permiso_remunerado
+    solicitud["permiso_no_remunerado"] = permiso_no_remunerado
     registrar_audit("Solicitud aprobada", "permisos", f"id={id} cédula={solicitud.get('id_cedula')}")
     emp = query("SELECT apellidos_nombre, direccion_email FROM empleado WHERE id_cedula = %s", (solicitud["id_cedula"],), one=True)
     attachments = []
@@ -4832,6 +4789,22 @@ def permiso_email_action_confirm():
             actor_email=payload.get("by") or "",
         )
 
+    permiso_remunerado = None
+    permiso_no_remunerado = None
+    if payload["action"] == "aprobar":
+        permiso_remunerado, permiso_no_remunerado, err_rem = _parse_permiso_remunerado_jefe(request.form)
+        if err_rem:
+            return render_template(
+                "permiso_email_action.html",
+                estado="confirmar",
+                mensaje="Confirme la acción para resolver la solicitud.",
+                solicitud=solicitud,
+                token=token,
+                accion=payload["action"],
+                actor_email=payload.get("by") or "",
+                error_remunerado=err_rem,
+            ), 400
+
     cur_user = get_current_user()
     resolver_id = "EMAIL-LINK"
     if payload.get("by"):
@@ -4842,10 +4815,17 @@ def permiso_email_action_confirm():
 
     nuevo_estado = "APROBADO" if payload["action"] == "aprobar" else "RECHAZADO"
     try:
-        execute(
-            "UPDATE solicitud_permiso SET estado = %s, observaciones = %s, resuelto_por = %s, fecha_resolucion = NOW() WHERE id = %s",
-            (nuevo_estado, observaciones or None, resolver_id_db, payload["sid"]),
-        )
+        if nuevo_estado == "APROBADO":
+            execute(
+                "UPDATE solicitud_permiso SET estado = %s, observaciones = %s, resuelto_por = %s, "
+                "permiso_remunerado = %s, permiso_no_remunerado = %s, fecha_resolucion = NOW() WHERE id = %s",
+                (nuevo_estado, observaciones or None, resolver_id_db, permiso_remunerado, permiso_no_remunerado, payload["sid"]),
+            )
+        else:
+            execute(
+                "UPDATE solicitud_permiso SET estado = %s, observaciones = %s, resuelto_por = %s, fecha_resolucion = NOW() WHERE id = %s",
+                (nuevo_estado, observaciones or None, resolver_id_db, payload["sid"]),
+            )
     except Exception:
         return render_template(
             "permiso_email_action.html",
@@ -4858,6 +4838,9 @@ def permiso_email_action_confirm():
         ), 500
     solicitud["estado"] = nuevo_estado
     solicitud["observaciones"] = observaciones or None
+    if nuevo_estado == "APROBADO":
+        solicitud["permiso_remunerado"] = permiso_remunerado
+        solicitud["permiso_no_remunerado"] = permiso_no_remunerado
 
     emp = query("SELECT apellidos_nombre FROM empleado WHERE id_cedula = %s", (solicitud["id_cedula"],), one=True)
     email_empleado = _resolver_email_empleado(solicitud["id_cedula"])

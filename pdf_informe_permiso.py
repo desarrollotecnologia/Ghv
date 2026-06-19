@@ -319,7 +319,7 @@ def generar_informe_permiso_pdf(solicitud, empleado_nombre, output_path, firma_i
         _draw_box_value(c, x_cont + 16, y - ALTO_CAMPO, 220, ALTO_CAMPO, remunerado_txt)
         c.setFillColor(GRIS_LABEL)
         c.setFont("Helvetica", 8.5)
-        c.drawString(x_cont + 16, y - ALTO_CAMPO - 12, "Si es no remunerado debe adjuntar evidencia (PDF o imagen).")
+        c.drawString(x_cont + 16, y - ALTO_CAMPO - 12, "Lo define el jefe inmediato al aprobar la solicitud.")
         y -= ALTO_CAMPO + 28
 
         mid_w = (w_cont - 32 - sep) / 2

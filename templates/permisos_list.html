@@ -118,7 +118,7 @@
                 </div>
                 <div class="permiso-card-details">
                     <div class="permiso-detail-row">
-                        <span class="permiso-detail-label">Motivo</span>
+                        <span class="permiso-detail-label">Tipo</span>
                         <span class="permiso-detail-value">{{ s.tipo }}</span>
                     </div>
                     <div class="permiso-detail-row">
@@ -142,7 +142,7 @@
                     </div>
                     {% endif %}
                     <div class="permiso-detail-row permiso-motivo">
-                        <span class="permiso-detail-label">Descripcion</span>
+                        <span class="permiso-detail-label">Motivo</span>
                         <span class="permiso-detail-value permiso-motivo-text">{{ s.motivo or '—' }}</span>
                     </div>
                     {% if s.motivo_cambio_empleado %}
@@ -243,8 +243,16 @@
             <h2>¿Aprobar esta solicitud?</h2>
             <button type="button" class="btn-icon" data-close-modal data-modal="modalAprobar"><span class="material-symbols-outlined">close</span></button>
         </div>
-        <p class="modal-intro">El empleado recibirá un correo informando que la solicitud fue <strong>aprobada</strong>. Puede agregar observaciones opcionales (ej. un recordatorio) que se incluirán en el correo.</p>
+        <p class="modal-intro">El empleado recibirá un correo informando que la solicitud fue <strong>aprobada</strong>. Indique si el permiso es remunerado o no remunerado y, si lo desea, agregue observaciones.</p>
         <form method="POST" id="formAprobar">
+            <div class="form-group">
+                <label class="form-label">Permiso remunerado / no remunerado <span style="color:#dc2626">*</span></label>
+                <select name="permiso_remunerado" class="form-input" required>
+                    <option value="">— Seleccionar —</option>
+                    <option value="1">Remunerado</option>
+                    <option value="0">No remunerado</option>
+                </select>
+            </div>
             <div class="form-group">
                 <label class="form-label">Observaciones (opcional)</label>
                 <textarea name="observaciones" class="form-input" rows="2" placeholder="Ej: Recuerde enviar soporte, Aprobado para las fechas indicadas..."></textarea>
@@ -470,6 +478,8 @@ document.addEventListener('DOMContentLoaded', function() {
             formAprobar.action = actionBaseAprobar.replace('/0/', '/' + currentSolicitudId + '/');
             var ta = formAprobar.querySelector('textarea[name="observaciones"]');
             if (ta) ta.value = '';
+            var selRem = formAprobar.querySelector('select[name="permiso_remunerado"]');
+            if (selRem) selRem.value = '';
             modalAprobar.classList.add('active');
             return;
         }

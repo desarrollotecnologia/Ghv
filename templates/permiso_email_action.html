@@ -11,7 +11,7 @@
     <div class="detail-grid" style="margin-bottom:16px">
         <div class="detail-field"><label>Empleado</label><span>{{ solicitud.apellidos_nombre or '—' }}</span></div>
         <div class="detail-field"><label>Cédula</label><span>{{ solicitud.id_cedula or '—' }}</span></div>
-        <div class="detail-field"><label>Motivo</label><span>{{ solicitud.tipo or 'Permiso' }}</span></div>
+        <div class="detail-field"><label>Tipo</label><span>{{ solicitud.tipo or 'Permiso' }}</span></div>
         <div class="detail-field"><label>Fechas</label><span>{{ solicitud.fecha_desde|fecha_display }} → {{ solicitud.fecha_hasta|fecha_display }}</span></div>
         <div class="detail-field">
             <label>Horas</label>
@@ -22,7 +22,7 @@
             </span>
         </div>
         <div class="detail-field">
-            <label>Descripcion</label>
+            <label>Motivo</label>
             <span>{{ solicitud.motivo or '—' }}</span>
         </div>
         <div class="detail-field" style="grid-column: 1 / -1;">
@@ -39,8 +39,21 @@
 
     {% if estado == 'confirmar' %}
     <p style="margin-bottom:14px">{{ mensaje }}</p>
+    {% if error_remunerado %}
+    <p style="margin-bottom:12px;color:#b91c1c;font-size:14px">{{ error_remunerado }}</p>
+    {% endif %}
     <form method="POST" action="{{ url_for('permiso_email_action_confirm') }}">
         <input type="hidden" name="token" value="{{ token }}">
+        {% if accion == 'aprobar' %}
+        <div class="form-group">
+            <label class="form-label">Permiso remunerado / no remunerado <span style="color:#dc2626">*</span></label>
+            <select name="permiso_remunerado" class="form-input" required>
+                <option value="">— Seleccionar —</option>
+                <option value="1">Remunerado</option>
+                <option value="0">No remunerado</option>
+            </select>
+        </div>
+        {% endif %}
         <div class="form-group">
             <label class="form-label">Observaciones (opcional)</label>
             <textarea name="observaciones" class="form-input" rows="3" placeholder="Ej: Aprobado para las fechas indicadas..."></textarea>
