@@ -8229,6 +8229,7 @@ def usuarios():
         "SELECT id_user, email, nombre, rol, estado, acciones FROM usuario ORDER BY id_user"
     )
     activos = sum(1 for r in rows if r.get("estado"))
+    inactivos = len(rows) - activos
     roles_con_desc = [{"nombre": r["nombre"], "desc": _ROLE_DESCRIPTIONS.get(r["nombre"], "")} for r in roles]
     roles_crear = [r for r in roles_con_desc if r["nombre"] != "ADMIN"]
     admin_email = current_app.config.get("ADMIN_EMAIL", "tecnologia@colbeef.com").strip().lower()
@@ -8247,8 +8248,9 @@ def usuarios():
         {"key": "acciones", "label": "Acciones"},
     ]
     stats = [
-        {"value": len(rows), "label": "Total Usuarios",  "icon": "manage_accounts", "color": "green"},
-        {"value": activos,   "label": "Activos",         "icon": "verified_user",   "color": "blue"},
+        {"value": activos,   "label": "Usuarios activos",   "icon": "verified_user",     "color": "green"},
+        {"value": inactivos, "label": "Inactivos",          "icon": "person_off",        "color": "orange"},
+        {"value": len(rows), "label": "Total registrados",  "icon": "manage_accounts",   "color": "blue"},
     ]
     return render_template(
         "users.html", active_page="User",
