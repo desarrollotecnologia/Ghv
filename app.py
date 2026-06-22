@@ -95,6 +95,23 @@ def enforce_session_timeout():
 
 
 @app.before_request
+def enforce_active_employee_access():
+    """Solo empleados ACTIVOS (y usuarios sin ficha inactiva) pueden usar el sistema."""
+    if request.endpoint in {"login", "logout", "register", "static"}:
+        return None
+    if "user_id" not in session:
+        return None
+    user = get_current_user()
+    if user and not _usuario_puede_acceder(user):
+        _clear_user_session(preserve_flash=True)
+        flash("Su acceso no está disponible porque no figura como empleado activo. Contacte a Gestión Humana.", "error")
+        if _is_api_request():
+            return jsonify({"error": "Usuario inactivo"}), 403
+        return redirect(url_for("login"))
+    return None
+
+
+@app.before_request
 def _bloquear_modulos_desactivados():
     """Bloquea solicitud de incapacidad (/incapacidades) y certificados si el flag está apagado."""
     path = (request.path or "").rstrip("/") or "/"
@@ -227,6 +244,40 @@ def get_current_user():
             (session["user_id"],), one=True,
         )
     return g._user
+
+
+def _empleado_estado_por_cedula(id_cedula):
+    id_cedula = str(id_cedula or "").strip()
+    if not id_cedula:
+        return None
+    row = query("SELECT estado FROM empleado WHERE id_cedula = %s", (id_cedula,), one=True)
+    if not row:
+        return None
+    return (row.get("estado") or "").strip().upper()
+
+
+def _usuario_puede_acceder(user):
+    """Usuario activo en BD; si tiene cédula vinculada, el empleado debe estar ACTIVO."""
+    if not user:
+        return False
+    id_cedula = str(user.get("id_cedula") or "").strip()
+    if not id_cedula:
+        return True
+    estado_emp = _empleado_estado_por_cedula(id_cedula)
+    if estado_emp is None:
+        return True
+    return estado_emp == "ACTIVO"
+
+
+def _sincronizar_usuarios_empleado_por_estado(id_cedula, activo):
+    """Activa o desactiva las cuentas de portal vinculadas a una cédula."""
+    id_cedula = str(id_cedula or "").strip()
+    if not id_cedula:
+        return
+    execute(
+        "UPDATE usuario SET estado = %s WHERE id_cedula = %s OR id_user = %s",
+        (1 if activo else 0, id_cedula, "EMP-" + id_cedula),
+    )
 
 
 def _clear_user_session(preserve_flash=False):
@@ -976,6 +1027,9 @@ def login():
                 user = None
 
         if user and user.get("password_hash") and check_password_hash(user["password_hash"], password):
+            if not _usuario_puede_acceder(user):
+                flash("No tiene acceso. Su cuenta no está activa. Contacte a Gestión Humana.", "error")
+                return render_template("login.html", sesion_expirada=sesion_expirada)
             session.clear()
             session["user_id"] = user["id_user"]
             session.permanent = True
@@ -5747,6 +5801,10 @@ def api_empleado_update(id_cedula):
         return jsonify({"error": "Sin cambios"}), 400
     vals.append(id_cedula)
     execute(f"UPDATE empleado SET {', '.join(sets)} WHERE id_cedula = %s", tuple(vals))
+    if "estado" in data:
+        est = (data.get("estado") or "").strip().upper()
+        if est in ("ACTIVO", "INACTIVO"):
+            _sincronizar_usuarios_empleado_por_estado(id_cedula, est == "ACTIVO")
     return jsonify({"ok": True})
 
 
@@ -6337,6 +6395,9 @@ def editar_empleado(id):
                 _actualizar_foto_empleado_db(id, ruta_foto)
         except ValueError as e:
             flash(str(e), "warning")
+        nuevo_estado = (request.form.get("estado") or "").strip().upper()
+        if nuevo_estado in ("ACTIVO", "INACTIVO"):
+            _sincronizar_usuarios_empleado_por_estado(id, nuevo_estado == "ACTIVO")
         flash("Empleado actualizado exitosamente", "success")
         return redirect(url_for("detalle_empleado", id=id))
 
@@ -6411,6 +6472,7 @@ def retirar_empleado(id):
              tipo_retiro, motivo or None),
         )
         execute("UPDATE empleado SET estado = 'INACTIVO' WHERE id_cedula = %s", (id,))
+        _sincronizar_usuarios_empleado_por_estado(id, False)
         flash(f"Retiro registrado. Empleado {emp['apellidos_nombre']} marcado como INACTIVO", "success")
         return redirect(url_for("detalle_empleado", id=id))
 
@@ -7770,6 +7832,7 @@ def fondo_retirado_detail(fondo_name, cedula, retiro_id):
 @role_required("WRITE")
 def reactivar_empleado(id):
     execute("UPDATE empleado SET estado = 'ACTIVO' WHERE id_cedula = %s", (id,))
+    _sincronizar_usuarios_empleado_por_estado(id, True)
     flash("Empleado reactivado exitosamente", "success")
     return redirect(url_for("detalle_empleado", id=id))
 
