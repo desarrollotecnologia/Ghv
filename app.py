@@ -2478,6 +2478,8 @@ TIPOS_PERMISO_VALIDOS = (
     "Jurado de votación",
     "Diligencias personales",
     "Exámenes médicos",
+    "Permiso por grado",
+    "Permiso por matrimonio",
     "Reuniones escolares",
     "Otros",
 )

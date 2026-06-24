@@ -48,7 +48,7 @@
         <div class="permiso-edit-full">
           <label class="permiso-edit-label">Tipo de permiso</label>
           <select class="permiso-edit-input" name="tipo" id="permisoEditTipo" required>
-            {% for t in ['Cita médica','Calamidad doméstica','Ejercer derecho al voto','Jurado de votación','Diligencias personales','Exámenes médicos','Reuniones escolares','Otros'] %}
+            {% for t in ['Cita médica','Calamidad doméstica','Ejercer derecho al voto','Jurado de votación','Diligencias personales','Exámenes médicos','Permiso por grado','Permiso por matrimonio','Reuniones escolares','Otros'] %}
             <option value="{{ t }}" {{ 'selected' if solicitud.tipo == t else '' }}>{{ t }}</option>
             {% endfor %}
           </select>
