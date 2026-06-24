@@ -40,6 +40,18 @@ JEFE_CEDULA_VINCULOS: dict[str, str] = {
     "jefe.mercadeo@colbeef.com": "52822147",              # MUÑOZ BERNAL PAOLA ANDREA
 }
 
+# Override fijo de jefe inmediato por cédula del empleado (cédula → correo del superior).
+# Se aplica DESPUÉS de la asignación por área para que siempre gane.
+# Caso: los jefes/coordinadores del Dpto Admon y Financiero cuelgan del Director
+# Admin. Financiero (Diego), no de su propia área (que los apuntaría a sí mismos).
+ENCARGADO_OVERRIDE: dict[str, str] = {
+    "1098698851": "gerencia.financiera@colbeef.com",  # Jefe Compras (REYES NOREÑA BAIRON)
+    "43536705": "gerencia.financiera@colbeef.com",    # Jefe Contabilidad (OSORIO ESTRADA LILIANA)
+    "1098673651": "gerencia.financiera@colbeef.com",  # Jefe Tesoreria (PINEDA TRIANA VIVIANA)
+    "73579178": "gerencia.financiera@colbeef.com",    # Jefe TICs (LARA LUNA LEONARDO)
+    "1098661407": "gerencia.financiera@colbeef.com",  # Jefe Gestion Humana (VERA MORA CINDY)
+}
+
 # Nombres de área en empleado.area equivalentes al catálogo / Excel.
 AREA_ALIASES: dict[str, list[str]] = {
     "NEGOCIOS GANADEROS": ["NEGOCIOS GANADEROS", "FOMENTO GANADERO", "NEG. GANADEROS"],
@@ -363,11 +375,26 @@ def apply_directorio(
             }
         )
 
+    overrides_applied: list[dict[str, Any]] = []
+    for cedula, jefe_email in ENCARGADO_OVERRIDE.items():
+        uid = email_to_id.get(str(jefe_email).strip().lower())
+        if not uid:
+            errors.append(f"Override sin usuario para {jefe_email} (cédula {cedula})")
+            continue
+        overrides_applied.append({"cedula": cedula, "email": jefe_email})
+        if dry_run:
+            continue
+        execute_fn(
+            "UPDATE empleado SET id_user_encargado = %s WHERE id_cedula = %s",
+            (uid, cedula),
+        )
+
     return {
         "total_filas": len(rows),
         "usuarios_creados": users_created,
         "usuarios_actualizados": users_updated,
         "areas": areas_assigned,
+        "overrides": overrides_applied,
         "errors": errors,
         "directorio": rows,
     }
