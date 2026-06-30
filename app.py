@@ -2519,8 +2519,8 @@ def _guardar_evidencia_permiso(evidencia_file, id_cedula):
     evidencia_file.seek(0, 2)
     size = evidencia_file.tell()
     evidencia_file.seek(0)
-    if size > 5 * 1024 * 1024:
-        return None, "La prueba no debe superar 5 MB."
+    if size > 10 * 1024 * 1024:
+        return None, "La prueba no debe superar 10 MB."
     upload_dir = os.path.join(current_app.instance_path, "uploads", "permisos")
     os.makedirs(upload_dir, exist_ok=True)
     nombre_safe = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{id_cedula}{ext}"
