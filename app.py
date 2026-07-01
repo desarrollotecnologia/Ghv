@@ -8227,6 +8227,11 @@ _ROLE_DESCRIPTIONS = {
 @module_required("admin_usuarios")
 def usuarios():
     roles = query("SELECT nombre FROM rol ORDER BY nombre")
+    roles_nombres = {r["nombre"] for r in roles}
+    for nombre in _ROLE_DESCRIPTIONS:
+        if nombre not in roles_nombres:
+            roles.append({"nombre": nombre})
+    roles = sorted(roles, key=lambda r: r["nombre"])
     rows = query(
         "SELECT id_user, email, nombre, rol, estado, acciones FROM usuario ORDER BY id_user"
     )
