@@ -6920,7 +6920,7 @@ _AREA_CATALOG_ALIASES = {
     "TECNOLOGIA": ["TICS", "TIC", "TIC'S", "TIC´S", "TIC S", "DATA"],
     "DIRECCION DPTO CALIDAD": ["GERENCIA CALIDAD", "CONTROL DE PROCESOS"],
     "TESORERIA": ["PLANILLAJE Y FACTURACION", "PLANILLAJE", "CARTERA"],
-    "CONTROL INTERNO": ["DIRECCION CONTROLLER", "CONTROLLER"],
+    "CONTROL INTERNO": ["DIRECCION CONTROLLER"],
     "DIRECCION DPTO COMERCIAL": ["DIRECCION SURTIDORES", "SURTIDORES"],
     "PLANEACION": ["PLANEACION FINANCIERA", "PLANEACION Y PROYECTOS"],
     "ADMINISTRACION": ["SERVICIOS GENERALES", "VIGILANCIA"],
@@ -6932,6 +6932,7 @@ _AREA_CATALOG_ALIASES = {
 
 # Áreas que deben existir en catálogo aunque antes no estuvieran en area.nombre
 _CATALOG_AREAS_TO_ENSURE = {
+    "CONTROLLER": "CONTROLLER",
     "SST": "DPTO CALIDAD",
 }
 
@@ -6968,6 +6969,12 @@ def _ensure_catalog_areas():
             "SELECT id FROM departamento WHERE UPPER(TRIM(nombre)) = %s",
             (depto_name.upper(),), one=True,
         )
+        if not depto:
+            execute("INSERT INTO departamento (nombre) VALUES (%s)", (depto_name.upper(),))
+            depto = query(
+                "SELECT id FROM departamento WHERE UPPER(TRIM(nombre)) = %s",
+                (depto_name.upper(),), one=True,
+            )
         if not depto:
             continue
         execute(

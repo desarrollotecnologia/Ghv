@@ -52,6 +52,11 @@ ENCARGADO_OVERRIDE: dict[str, str] = {
     "1098661407": "gerencia.financiera@colbeef.com",  # Jefe Gestion Humana (VERA MORA CINDY)
 }
 
+# Override fijo de jefe inmediato por departamento.
+DEPARTAMENTO_ENCARGADO_OVERRIDE: dict[str, str] = {
+    "CONTROLLER": "gerencia.operaciones@colbeef.com",
+}
+
 # Nombres de área en empleado.area equivalentes al catálogo / Excel.
 AREA_ALIASES: dict[str, list[str]] = {
     "NEGOCIOS GANADEROS": ["NEGOCIOS GANADEROS", "FOMENTO GANADERO", "NEG. GANADEROS"],
@@ -62,7 +67,7 @@ AREA_ALIASES: dict[str, list[str]] = {
         "JURIDICO",
     ],
     "ACCIONISTAS": ["ACCIONISTAS"],
-    "CONTROL INTERNO": ["CONTROL INTERNO", "DIRECCION CONTROLLER", "CONTROLLER"],
+    "CONTROL INTERNO": ["CONTROL INTERNO", "DIRECCION CONTROLLER"],
     "L&D DESPOSTE": ["L&D DESPOSTE", "LYD DESPOSTE", "L Y D DESPOSTE"],
     "LIMPIEZA Y DESINFECCION": ["LIMPIEZA Y DESINFECCION", "LYD", "L Y D", "L&D"],
     "TECNOLOGIA": ["TECNOLOGIA", "TICS", "TIC", "TIC'S", "DATA"],
@@ -283,7 +288,7 @@ def apply_directorio(
         if em:
             email_to_id[em] = u["id_user"]
 
-    active_emps = fetch_all("SELECT id_cedula, area FROM empleado WHERE estado = 'ACTIVO'") or []
+    active_emps = fetch_all("SELECT id_cedula, departamento, area FROM empleado WHERE estado = 'ACTIVO'") or []
     emps_by_area_key: dict[str, list[str]] = {}
     for emp in active_emps:
         key = _normalize_key(emp.get("area"))
@@ -375,6 +380,29 @@ def apply_directorio(
             }
         )
 
+    department_overrides_applied: list[dict[str, Any]] = []
+    for departamento, jefe_email in DEPARTAMENTO_ENCARGADO_OVERRIDE.items():
+        uid = email_to_id.get(str(jefe_email).strip().lower())
+        if not uid:
+            errors.append(f"Override sin usuario para {jefe_email} (departamento {departamento})")
+            continue
+        cedulas = [
+            emp["id_cedula"]
+            for emp in active_emps
+            if _normalize_key(emp.get("departamento")) == _normalize_key(departamento)
+        ]
+        cedulas = list(dict.fromkeys(cedulas))
+        department_overrides_applied.append(
+            {"departamento": departamento, "email": jefe_email, "empleados": len(cedulas)}
+        )
+        if dry_run or not cedulas:
+            continue
+        placeholders = ", ".join(["%s"] * len(cedulas))
+        execute_fn(
+            f"UPDATE empleado SET id_user_encargado = %s WHERE id_cedula IN ({placeholders})",
+            (uid, *cedulas),
+        )
+
     overrides_applied: list[dict[str, Any]] = []
     for cedula, jefe_email in ENCARGADO_OVERRIDE.items():
         uid = email_to_id.get(str(jefe_email).strip().lower())
@@ -394,6 +422,7 @@ def apply_directorio(
         "usuarios_creados": users_created,
         "usuarios_actualizados": users_updated,
         "areas": areas_assigned,
+        "department_overrides": department_overrides_applied,
         "overrides": overrides_applied,
         "errors": errors,
         "directorio": rows,

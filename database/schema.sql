@@ -343,11 +343,13 @@ INSERT INTO departamento (nombre, presupuestados) VALUES
     ('DPTO COMERCIAL', NULL),
     ('DPTO DE OPERACIONES', 28),
     ('DPTO JURIDICO Y GESTION HUMANA', 12),
+    ('CONTROLLER', NULL),
     ('PLANEACION Y PROYECTOS', NULL);
 
 -- Áreas
 INSERT INTO area (departamento_id, nombre, presupuestados) VALUES
     ((SELECT id FROM departamento WHERE nombre='CORPORATIVOS'), 'GERENCIA', 2),
+    ((SELECT id FROM departamento WHERE nombre='CONTROLLER'), 'CONTROLLER', NULL),
     ((SELECT id FROM departamento WHERE nombre='DESPOSTE'), 'CALIDAD DESPOSTE', NULL),
     ((SELECT id FROM departamento WHERE nombre='DESPOSTE'), 'L&D DESPOSTE', NULL),
     ((SELECT id FROM departamento WHERE nombre='DESPOSTE'), 'LAVANDERIA DESPOSTE', 1),
