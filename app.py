@@ -3403,6 +3403,26 @@ def permiso_editar(id):
 
 # ── SOLICITUD DE VACACIONES ───────────────────────────────────
 
+def _calcular_dias_vacaciones(fecha_inicio, fecha_fin):
+    """Cuenta días de vacaciones entre dos fechas, excluyendo domingos."""
+    if not fecha_inicio or not fecha_fin:
+        return None
+    try:
+        inicio = datetime.strptime(str(fecha_inicio), "%Y-%m-%d").date()
+        fin = datetime.strptime(str(fecha_fin), "%Y-%m-%d").date()
+    except ValueError:
+        return None
+    if fin < inicio:
+        return None
+    dias = 0
+    cursor = inicio
+    while cursor <= fin:
+        if cursor.weekday() != 6:  # domingo
+            dias += 1
+        cursor += timedelta(days=1)
+    return dias
+
+
 @app.route("/vacaciones/solicitar", methods=["GET", "POST"])
 @login_required
 @module_required("permisos")
@@ -3445,6 +3465,11 @@ def vacaciones_solicitar():
         if not id_cedula or not fecha_solicitud or not fecha_inicio or not fecha_fin or not fecha_regreso:
             flash("Complete cédula, fecha de solicitud y fechas de inicio, fin y regreso.", "error")
             return redirect(url_for("vacaciones_solicitar"))
+        dias_calculados = _calcular_dias_vacaciones(fecha_inicio, fecha_fin)
+        if dias_calculados is None:
+            flash("Las fechas de vacaciones no son válidas. La fecha final debe ser igual o posterior a la inicial.", "error")
+            return redirect(url_for("vacaciones_solicitar"))
+        dias_en_tiempo = dias_calculados
         emp = query("SELECT id_cedula, apellidos_nombre, direccion_email FROM empleado WHERE id_cedula = %s AND estado = 'ACTIVO'", (id_cedula,), one=True)
         if not emp:
             flash("No se encontró un empleado activo con esa cédula.", "error")
