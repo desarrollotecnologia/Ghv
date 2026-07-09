@@ -112,7 +112,7 @@ DIRECTORIO_FALLBACK: list[dict[str, str]] = [
     {"departamento": "DPTO DE OPERACIONES", "area": "LOGISTICA", "jefe": "Lider Logistica", "email": "coordinacion.logistica@colbeef.com"},
     {"departamento": "DPTO DE OPERACIONES", "area": "MANTENIMIENTO", "jefe": "Directora Planta", "email": "gerencia.calidad@colbeef.com"},
     {"departamento": "ASUNTOS CORPORATIVOS", "area": "DIRECCION ASUNTOS CORPORATIVOS", "jefe": "Directora Asuntos corporativos", "email": "gerencia.juridica@colbeef.com"},
-    {"departamento": "DPTO ADMON Y FINANCIERO", "area": "GESTION HUMANA", "jefe": "Jefe Gestion Humana", "email": "coordinacion.gestionhumana@colbeef.com"},
+    {"departamento": "DPTO ADMON Y FINANCIERO", "area": "GESTION HUMANA", "jefe": "Director Admin. Financiero", "email": "gerencia.financiera@colbeef.com"},
     {"departamento": "ASUNTOS CORPORATIVOS", "area": "ACCIONISTAS", "jefe": "Directora Asuntos corporativos", "email": "gerencia.juridica@colbeef.com"},
     {"departamento": "DPTO ADMON Y FINANCIERO", "area": "TECNOLOGIA", "jefe": "Jefe TICs", "email": "coordinacion.tecnologia@colbeef.com"},
 ]
