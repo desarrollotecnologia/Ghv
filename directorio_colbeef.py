@@ -39,6 +39,7 @@ JEFE_CEDULA_VINCULOS: dict[str, str] = {
     "director.surtidores@colbeef.com": "1977852",         # RINCON SARMIENTO CARLOS ANDRES
     "gerencia.operaciones@colbeef.com": "1098725715",     # QUESADA ZORRILLA WILHELM ARLEY
     "jefe.mercadeo@colbeef.com": "52822147",              # MUÑOZ BERNAL PAOLA ANDREA
+    "direccion.proyectos@colbeef.com": "1098665901",      # RODRIGUEZ RUIZ ALEXANDER
 }
 
 # Override fijo de jefe inmediato por cédula del empleado (cédula → correo del superior).
@@ -51,6 +52,7 @@ ENCARGADO_OVERRIDE: dict[str, str] = {
     "1098673651": "gerencia.financiera@colbeef.com",  # Jefe Tesoreria (PINEDA TRIANA VIVIANA)
     "73579178": "gerencia.financiera@colbeef.com",    # Jefe TICs (LARA LUNA LEONARDO)
     "1098661407": "gerencia.financiera@colbeef.com",  # Jefe Gestion Humana (VERA MORA CINDY)
+    "1098665901": "gerencia.financiera@colbeef.com",  # Jefe Planeacion Financiera (RODRIGUEZ RUIZ ALEXANDER)
 }
 
 # Override fijo de jefe inmediato por departamento.
@@ -90,6 +92,7 @@ DIRECTORIO_FALLBACK: list[dict[str, str]] = [
     {"departamento": "DPTO ADMON Y FINANCIERO", "area": "COMPRAS", "jefe": "Jefe Compras", "email": "coordinacion.compras@colbeef.com"},
     {"departamento": "DPTO ADMON Y FINANCIERO", "area": "CONTABILIDAD", "jefe": "Jefe Contabilidad", "email": "contador@colbeef.com"},
     {"departamento": "DPTO ADMON Y FINANCIERO", "area": "TESORERIA", "jefe": "Jefe Tesoreria y Cartera", "email": "coordinacion.tesoreria@colbeef.com"},
+    {"departamento": "DPTO ADMON Y FINANCIERO", "area": "PLANEACION", "jefe": "Jefe de Planeacion Financiera", "email": "direccion.proyectos@colbeef.com"},
     {"departamento": "DPTO ADMON Y FINANCIERO", "area": "ADMINISTRACION", "jefe": "Director Admin. Financiero", "email": "gerencia.financiera@colbeef.com"},
     {"departamento": "DPTO ADMON Y FINANCIERO", "area": "DIRECCION ADMON Y FINANCIERA", "jefe": "Director Admin. Financiero", "email": "gerencia.financiera@colbeef.com"},
     {"departamento": "CONTROLLER", "area": "CONTROL INTERNO", "jefe": "Director Controller", "email": "gerencia.operaciones@colbeef.com"},
