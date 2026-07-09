@@ -2834,9 +2834,12 @@ def _puede_resolver_solicitud(solicitud):
     """Un usuario puede resolver (aprobar/rechazar) una solicitud si:
     - Es ADMIN o COORD. GH (visibilidad global), o
     - Es el encargado asignado al empleado de esa solicitud (empleado.id_user_encargado == user.id_user).
+    Nunca puede resolver una solicitud propia.
     """
     user = get_current_user()
     if not user or not solicitud:
+        return False
+    if _es_solicitud_propia_para_usuario(user, solicitud):
         return False
     if _es_admin_o_coord(user):
         return True
@@ -2857,6 +2860,38 @@ def _puede_resolver_solicitud(solicitud):
     if not emp:
         return False
     return (emp.get("id_user_encargado") or "") == (user.get("id_user") or "")
+
+
+def _es_solicitud_propia_para_usuario(user, solicitud):
+    if not user or not solicitud:
+        return False
+    cedula_user = str(user.get("id_cedula") or "").strip()
+    cedula_sol = str(solicitud.get("id_cedula") or "").strip()
+    return bool(cedula_user and cedula_sol and cedula_user == cedula_sol)
+
+
+def _actor_email_es_solicitante(actor_email, id_cedula):
+    email = _normalize_email(actor_email)
+    cedula = str(id_cedula or "").strip()
+    if not email or not cedula:
+        return False
+    try:
+        user = query(
+            "SELECT id_cedula FROM usuario WHERE LOWER(TRIM(email)) = %s LIMIT 1",
+            (email,), one=True,
+        )
+        if user and str(user.get("id_cedula") or "").strip() == cedula:
+            return True
+    except Exception:
+        pass
+    try:
+        emp = query(
+            "SELECT id_cedula FROM empleado WHERE id_cedula = %s AND LOWER(TRIM(COALESCE(direccion_email, ''))) = %s",
+            (cedula, email), one=True,
+        )
+        return bool(emp)
+    except Exception:
+        return False
 
 
 def _puede_ver_listado_solicitudes():
@@ -3012,9 +3047,9 @@ def permisos_index():
             s["fecha_solicitud_str"] = d.strftime("%d/%m/%Y %H:%M") if hasattr(d, "strftime") else str(d)
         else:
             s["fecha_solicitud_str"] = ""
-        s["_puede_resolver"] = es_admin_coord or (
-            (s.get("id_user_encargado") or "") == (cur_user.get("id_user") or "")
-        )
+        s["_puede_resolver"] = (
+            es_admin_coord or ((s.get("id_user_encargado") or "") == (cur_user.get("id_user") or ""))
+        ) and not _es_solicitud_propia_para_usuario(cur_user, s)
         s["_es_proximo"] = False
         if s.get("estado") == "PENDIENTE" and s.get("fecha_desde"):
             fd = s["fecha_desde"]
@@ -3571,9 +3606,9 @@ def vacaciones_index():
     cur_user = get_current_user() or {}
     es_admin_coord = _es_admin_o_coord(cur_user)
     for r in rows:
-        r["_puede_resolver"] = es_admin_coord or (
-            (r.get("id_user_encargado") or "") == (cur_user.get("id_user") or "")
-        )
+        r["_puede_resolver"] = (
+            es_admin_coord or ((r.get("id_user_encargado") or "") == (cur_user.get("id_user") or ""))
+        ) and not _es_solicitud_propia_para_usuario(cur_user, r)
     return render_template(
         "vacaciones_list.html",
         active_page="Vacaciones empleados",
@@ -3623,6 +3658,16 @@ def vacaciones_email_action():
             accion="",
             actor_email=payload.get("by") or "",
         )
+    if _actor_email_es_solicitante(payload.get("by"), solicitud.get("id_cedula")):
+        return render_template(
+            "vacaciones_email_action.html",
+            estado="error",
+            mensaje="No puedes resolver una solicitud propia. Debe aprobarla tu jefe inmediato asignado.",
+            solicitud=solicitud,
+            token="",
+            accion="",
+            actor_email=payload.get("by") or "",
+        ), 403
     return render_template(
         "vacaciones_email_action.html",
         estado="confirmar",
@@ -3670,6 +3715,16 @@ def vacaciones_email_action_confirm():
             accion="",
             actor_email=payload.get("by") or "",
         )
+    if _actor_email_es_solicitante(payload.get("by"), solicitud.get("id_cedula")):
+        return render_template(
+            "vacaciones_email_action.html",
+            estado="error",
+            mensaje="No puedes resolver una solicitud propia. Debe aprobarla tu jefe inmediato asignado.",
+            solicitud=solicitud,
+            token="",
+            accion="",
+            actor_email=payload.get("by") or "",
+        ), 403
 
     cur_user = get_current_user()
     resolver_id = payload.get("by") or ((cur_user or {}).get("id_user") if cur_user else None) or "EMAIL-LINK"
@@ -4113,7 +4168,9 @@ def incapacidad_index():
             raise
     es_admin_coord = _es_admin_o_coord(cur_user)
     for r in rows:
-        r["_puede_resolver"] = es_admin_coord or ((r.get("id_user_encargado") or "") == (cur_user.get("id_user") or ""))
+        r["_puede_resolver"] = (
+            es_admin_coord or ((r.get("id_user_encargado") or "") == (cur_user.get("id_user") or ""))
+        ) and not _es_solicitud_propia_para_usuario(cur_user, r)
     return render_template(
         "incapacidad_list.html",
         active_page="Incapacidades empleados",
@@ -4201,6 +4258,8 @@ def incapacidad_email_action():
         return render_template("incapacidad_email_action.html", estado="error", mensaje="La solicitud ya no existe o fue eliminada.", solicitud=None, token="", accion="", actor_email=payload.get("by") or ""), 404
     if solicitud.get("estado") != "PENDIENTE":
         return render_template("incapacidad_email_action.html", estado="resuelta", mensaje="Este enlace ya fue utilizado y la solicitud ya fue resuelta.", solicitud=solicitud, token="", accion="", actor_email=payload.get("by") or "")
+    if _actor_email_es_solicitante(payload.get("by"), solicitud.get("id_cedula")):
+        return render_template("incapacidad_email_action.html", estado="error", mensaje="No puedes resolver una solicitud propia. Debe aprobarla tu jefe inmediato asignado.", solicitud=solicitud, token="", accion="", actor_email=payload.get("by") or ""), 403
     evidencia_url = url_for("incapacidad_email_evidencia", token=token)
     return render_template(
         "incapacidad_email_action.html",
@@ -4290,6 +4349,8 @@ def incapacidad_email_action_confirm():
         return render_template("incapacidad_email_action.html", estado="error", mensaje="La solicitud no existe.", solicitud=None, token="", accion="", actor_email=payload.get("by") or ""), 404
     if solicitud.get("estado") != "PENDIENTE":
         return render_template("incapacidad_email_action.html", estado="resuelta", mensaje="Este enlace ya fue utilizado y la solicitud ya fue resuelta.", solicitud=solicitud, token="", accion="", actor_email=payload.get("by") or "")
+    if _actor_email_es_solicitante(payload.get("by"), solicitud.get("id_cedula")):
+        return render_template("incapacidad_email_action.html", estado="error", mensaje="No puedes resolver una solicitud propia. Debe aprobarla tu jefe inmediato asignado.", solicitud=solicitud, token="", accion="", actor_email=payload.get("by") or ""), 403
 
     cur_user = get_current_user()
     resolver_id = payload.get("by") or ((cur_user or {}).get("id_user") if cur_user else None) or "EMAIL-LINK"
@@ -4821,6 +4882,16 @@ def permiso_email_action():
             accion="",
             actor_email=payload.get("by") or "",
         )
+    if _actor_email_es_solicitante(payload.get("by"), solicitud.get("id_cedula")):
+        return render_template(
+            "permiso_email_action.html",
+            estado="error",
+            mensaje="No puedes resolver una solicitud propia. Debe aprobarla tu jefe inmediato asignado.",
+            solicitud=solicitud,
+            token="",
+            accion="",
+            actor_email=payload.get("by") or "",
+        ), 403
 
     return render_template(
         "permiso_email_action.html",
@@ -4871,6 +4942,16 @@ def permiso_email_action_confirm():
             accion="",
             actor_email=payload.get("by") or "",
         )
+    if _actor_email_es_solicitante(payload.get("by"), solicitud.get("id_cedula")):
+        return render_template(
+            "permiso_email_action.html",
+            estado="error",
+            mensaje="No puedes resolver una solicitud propia. Debe aprobarla tu jefe inmediato asignado.",
+            solicitud=solicitud,
+            token="",
+            accion="",
+            actor_email=payload.get("by") or "",
+        ), 403
 
     permiso_remunerado = None
     permiso_no_remunerado = None

@@ -28,6 +28,7 @@ EMAIL_CANONICAL = {
     "coordinacion.ambiental@colbeef.com": "coordinacion.ambiental@colbeef.com",
     "coordinacion.logistica@colbeef.com": "coordinacion.logistico@colbeef.com",
     "coordinacion.logistico@colbeef.com": "coordinacion.logistico@colbeef.com",
+    "coordinacion.contabilidad@colbeef.com": "contador@colbeef.com",
     "jefe.compras@colbeef.com": "coordinacion.compras@colbeef.com",
 }
 
@@ -87,7 +88,7 @@ DIRECTORIO_FALLBACK: list[dict[str, str]] = [
     {"departamento": "DESPOSTE", "area": "MTTO DESPOSTE", "jefe": "Directora Planta", "email": "gerencia.calidad@colbeef.com"},
     {"departamento": "DESPOSTE", "area": "LOGISTICA DESPOSTE", "jefe": "Lider Logistica", "email": "coordinacion.logistico@colbeef.com"},
     {"departamento": "DPTO ADMON Y FINANCIERO", "area": "COMPRAS", "jefe": "Jefe Compras", "email": "coordinacion.compras@colbeef.com"},
-    {"departamento": "DPTO ADMON Y FINANCIERO", "area": "CONTABILIDAD", "jefe": "Jefe Contabilidad", "email": "coordinacion.contabilidad@colbeef.com"},
+    {"departamento": "DPTO ADMON Y FINANCIERO", "area": "CONTABILIDAD", "jefe": "Jefe Contabilidad", "email": "contador@colbeef.com"},
     {"departamento": "DPTO ADMON Y FINANCIERO", "area": "TESORERIA", "jefe": "Jefe Tesoreria y Cartera", "email": "coordinacion.tesoreria@colbeef.com"},
     {"departamento": "DPTO ADMON Y FINANCIERO", "area": "ADMINISTRACION", "jefe": "Director Admin. Financiero", "email": "gerencia.financiera@colbeef.com"},
     {"departamento": "DPTO ADMON Y FINANCIERO", "area": "DIRECCION ADMON Y FINANCIERA", "jefe": "Director Admin. Financiero", "email": "gerencia.financiera@colbeef.com"},
