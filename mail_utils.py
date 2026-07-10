@@ -3,6 +3,9 @@
 import os
 import re
 import smtplib
+import ssl
+import threading
+import time
 from io import BytesIO
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -68,6 +71,34 @@ _MAIL_STYLE = """
   .informe-estado.aprobado { background: #d1fae5; color: #047857; }
 </style>
 """
+
+_SMTP_SEND_LOCK = threading.Lock()
+_SMTP_LAST_SEND_AT = 0.0
+
+
+def _smtp_send_with_mode(app, msg, recipients, host, port, use_ssl, use_starttls):
+    sender = app.config.get("MAIL_FROM") or app.config["MAIL_USER"]
+    if use_ssl:
+        with smtplib.SMTP_SSL(host, port) as s:
+            s.login(app.config["MAIL_USER"], app.config["MAIL_PASSWORD"])
+            s.sendmail(sender, recipients, msg.as_string())
+    else:
+        with smtplib.SMTP(host, port) as s:
+            if use_starttls:
+                s.starttls()
+            s.login(app.config["MAIL_USER"], app.config["MAIL_PASSWORD"])
+            s.sendmail(sender, recipients, msg.as_string())
+
+
+def _smtp_wait_turn(app):
+    """Evita abrir varias conexiones SMTP al tiempo; el servidor Colbeef las limita."""
+    global _SMTP_LAST_SEND_AT
+    delay = float(app.config.get("MAIL_SEND_DELAY_SECONDS", 1.5) or 0)
+    if delay <= 0:
+        return
+    elapsed = time.monotonic() - _SMTP_LAST_SEND_AT
+    if elapsed < delay:
+        time.sleep(delay - elapsed)
 
 
 def _fecha_display(val):
@@ -148,6 +179,7 @@ def send_mail(to_emails, subject, body_html, body_text=None, cc=None, app=None, 
     attachments: lista opcional de (nombre_archivo, ruta_archivo) para adjuntar al correo.
     inline_images: lista opcional de (cid, ruta_archivo) para imágenes que se muestran en el HTML con src="cid:xxx".
     """
+    global _SMTP_LAST_SEND_AT
     if app is None:
         return False
     if not app.config.get("MAIL_ENABLED"):
@@ -226,31 +258,28 @@ def send_mail(to_emails, subject, body_html, body_text=None, cc=None, app=None, 
         port = int(app.config.get("MAIL_PORT", 587) or 587)
         use_ssl = bool(app.config.get("MAIL_USE_SSL", False)) or port == 465
         use_starttls = bool(app.config.get("MAIL_USE_STARTTLS", not use_ssl))
-        try:
-            if use_ssl:
-                with smtplib.SMTP_SSL(host, port) as s:
-                    s.login(app.config["MAIL_USER"], app.config["MAIL_PASSWORD"])
-                    s.sendmail(app.config.get("MAIL_FROM") or app.config["MAIL_USER"], to_list + cc_list, msg.as_string())
-            else:
-                with smtplib.SMTP(host, port) as s:
-                    if use_starttls:
-                        s.starttls()
-                    s.login(app.config["MAIL_USER"], app.config["MAIL_PASSWORD"])
-                    s.sendmail(app.config.get("MAIL_FROM") or app.config["MAIL_USER"], to_list + cc_list, msg.as_string())
-        except Exception as first_err:
-            # Fallback automático para entornos donde el puerto/seguridad no coincide
-            # (ej. SSL en 465 vs STARTTLS en 587).
-            if app and hasattr(app, "logger"):
-                app.logger.warning(f"[Permisos] Primer intento SMTP falló ({first_err}). Reintentando con modo alterno.")
-            if use_ssl:
-                with smtplib.SMTP(host, 587) as s:
-                    s.starttls()
-                    s.login(app.config["MAIL_USER"], app.config["MAIL_PASSWORD"])
-                    s.sendmail(app.config.get("MAIL_FROM") or app.config["MAIL_USER"], to_list + cc_list, msg.as_string())
-            else:
-                with smtplib.SMTP_SSL(host, 465) as s:
-                    s.login(app.config["MAIL_USER"], app.config["MAIL_PASSWORD"])
-                    s.sendmail(app.config.get("MAIL_FROM") or app.config["MAIL_USER"], to_list + cc_list, msg.as_string())
+        recipients = to_list + cc_list
+        with _SMTP_SEND_LOCK:
+            _smtp_wait_turn(app)
+            try:
+                _smtp_send_with_mode(app, msg, recipients, host, port, use_ssl, use_starttls)
+            except ssl.SSLError as first_err:
+                # ponytail: solo reintenta cuando el modo TLS no coincide; otros errores
+                # como 421/rate limit no deben duplicar conexiones.
+                if "WRONG_VERSION_NUMBER" not in str(first_err):
+                    raise
+                if app and hasattr(app, "logger"):
+                    app.logger.warning(
+                        "[Permisos] Modo SMTP incompatible (%s). Reintentando con modo alterno.",
+                        first_err,
+                    )
+                _smtp_wait_turn(app)
+                if use_ssl:
+                    _smtp_send_with_mode(app, msg, recipients, host, 587, False, True)
+                else:
+                    _smtp_send_with_mode(app, msg, recipients, host, 465, True, False)
+            finally:
+                _SMTP_LAST_SEND_AT = time.monotonic()
         if app and hasattr(app, "logger"):
             app.logger.info(f"[Permisos] Correo enviado a {to_list}: {subject[:50]}...")
         return True
