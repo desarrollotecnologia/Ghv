@@ -7039,6 +7039,7 @@ _AREA_CATALOG_ALIASES = {
 # Áreas que deben existir en catálogo aunque antes no estuvieran en area.nombre
 _CATALOG_AREAS_TO_ENSURE = {
     "CONTROLLER": "CONTROLLER",
+    "JURIDICA": "DIRECCION DE ASUNTOS CORPORATIVOS",
     "SST": "DPTO CALIDAD",
 }
 

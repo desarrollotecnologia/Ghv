@@ -63,11 +63,12 @@ DEPARTAMENTO_ENCARGADO_OVERRIDE: dict[str, str] = {
 # Nombres de área en empleado.area equivalentes al catálogo / Excel.
 AREA_ALIASES: dict[str, list[str]] = {
     "NEGOCIOS GANADEROS": ["NEGOCIOS GANADEROS", "FOMENTO GANADERO", "NEG. GANADEROS"],
-    "DIRECCION ASUNTOS CORPORATIVOS": [
-        "DIRECCION ASUNTOS CORPORATIVOS",
-        "ASUNTOS CORPORATIVOS",
+    "JURIDICA": [
         "JURIDICA",
         "JURIDICO",
+        "DIRECCION ASUNTOS CORPORATIVOS",
+        "DIRECCION DE ASUNTOS CORPORATIVOS",
+        "DIRECCION DPTO JURIDICO Y GESTION HUMANA",
     ],
     "ACCIONISTAS": ["ACCIONISTAS"],
     "CONTROL INTERNO": ["CONTROL INTERNO", "DIRECCION CONTROLLER"],
@@ -115,7 +116,7 @@ DIRECTORIO_FALLBACK: list[dict[str, str]] = [
     {"departamento": "DPTO DE OPERACIONES", "area": "RECEPCION Y PESAJE", "jefe": "Lider Corrales", "email": "coordinacion.corrales@colbeef.com"},
     {"departamento": "DPTO DE OPERACIONES", "area": "LOGISTICA", "jefe": "Lider Logistica", "email": "coordinacion.logistica@colbeef.com"},
     {"departamento": "DPTO DE OPERACIONES", "area": "MANTENIMIENTO", "jefe": "Directora Planta", "email": "gerencia.calidad@colbeef.com"},
-    {"departamento": "ASUNTOS CORPORATIVOS", "area": "DIRECCION ASUNTOS CORPORATIVOS", "jefe": "Directora Asuntos corporativos", "email": "gerencia.juridica@colbeef.com"},
+    {"departamento": "DIRECCION DE ASUNTOS CORPORATIVOS", "area": "JURIDICA", "jefe": "Directora Asuntos corporativos", "email": "gerencia.juridica@colbeef.com"},
     {"departamento": "DPTO ADMON Y FINANCIERO", "area": "GESTION HUMANA", "jefe": "Director Admin. Financiero", "email": "gerencia.financiera@colbeef.com"},
     {"departamento": "ASUNTOS CORPORATIVOS", "area": "ACCIONISTAS", "jefe": "Directora Asuntos corporativos", "email": "gerencia.juridica@colbeef.com"},
     {"departamento": "DPTO ADMON Y FINANCIERO", "area": "TECNOLOGIA", "jefe": "Jefe TICs", "email": "coordinacion.tecnologia@colbeef.com"},
