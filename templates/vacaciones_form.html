@@ -26,7 +26,7 @@
                 <select name="id_cedula" class="form-input" required id="id_cedula">
                     <option value="">— Seleccionar empleado —</option>
                     {% for e in empleados or [] %}
-                    <option value="{{ e.id_cedula }}">{{ e.apellidos_nombre }} ({{ e.id_cedula }})</option>
+                    <option value="{{ e.id_cedula }}" data-excluye-sabado="{{ '1' if e.id_cedula|string in cedulas_vacaciones_sin_sabado|default([]) else '0' }}">{{ e.apellidos_nombre }} ({{ e.id_cedula }})</option>
                     {% endfor %}
                 </select>
                 {% endif %}
@@ -46,7 +46,7 @@
             <div class="form-group">
                 <label class="form-label">Días en tiempo</label>
                 <input type="number" name="dias_en_tiempo" id="diasEnTiempo" class="form-input" min="0" placeholder="Se calcula sin domingos" readonly>
-                <small class="form-hint">Se calcula automáticamente descontando domingos.</small>
+                <small class="form-hint" id="diasHint">Se calcula automáticamente descontando domingos.</small>
             </div>
             <div class="form-group">
                 <label class="form-label">Días compensados en dinero</label>
@@ -91,6 +91,15 @@
     var inicio = document.getElementById('fechaInicioVac');
     var fin = document.getElementById('fechaFinVac');
     var dias = document.getElementById('diasEnTiempo');
+    var empleado = document.getElementById('id_cedula');
+    var diasHint = document.getElementById('diasHint');
+    var excluyeSabadoFijo = {{ 'true' if vacaciones_excluye_sabado else 'false' }};
+
+    function excluyeSabado() {
+        if (excluyeSabadoFijo) return true;
+        if (!empleado || !empleado.selectedOptions || !empleado.selectedOptions.length) return false;
+        return empleado.selectedOptions[0].getAttribute('data-excluye-sabado') === '1';
+    }
 
     function parseLocalDate(value) {
         if (!value) return null;
@@ -108,15 +117,23 @@
         }
         var total = 0;
         var cursor = new Date(ini.getTime());
+        var sinSabado = excluyeSabado();
         while (cursor <= end) {
-            if (cursor.getDay() !== 0) total += 1; // domingo
+            var dia = cursor.getDay();
+            if (dia !== 0 && !(sinSabado && dia === 6)) total += 1;
             cursor.setDate(cursor.getDate() + 1);
         }
         if (dias) dias.value = total;
+        if (diasHint) {
+            diasHint.textContent = sinSabado
+                ? 'Se calcula automáticamente descontando sábados y domingos.'
+                : 'Se calcula automáticamente descontando domingos.';
+        }
     }
 
     if (inicio) inicio.addEventListener('change', calcularDias);
     if (fin) fin.addEventListener('change', calcularDias);
+    if (empleado) empleado.addEventListener('change', calcularDias);
     calcularDias();
 })();
 </script>

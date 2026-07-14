@@ -3438,8 +3438,17 @@ def permiso_editar(id):
 
 # ── SOLICITUD DE VACACIONES ───────────────────────────────────
 
-def _calcular_dias_vacaciones(fecha_inicio, fecha_fin):
-    """Cuenta días de vacaciones entre dos fechas, excluyendo domingos."""
+_CEDULAS_VACACIONES_SIN_SABADO = {
+    "1007579486",  # ALVAREZ SAAVEDRA YADIRA - jornada sin sabados.
+}
+
+
+def _vacaciones_excluye_sabado(id_cedula):
+    return str(id_cedula or "").strip() in _CEDULAS_VACACIONES_SIN_SABADO
+
+
+def _calcular_dias_vacaciones(fecha_inicio, fecha_fin, id_cedula=None):
+    """Cuenta días de vacaciones; domingos siempre se excluyen."""
     if not fecha_inicio or not fecha_fin:
         return None
     try:
@@ -3451,8 +3460,9 @@ def _calcular_dias_vacaciones(fecha_inicio, fecha_fin):
         return None
     dias = 0
     cursor = inicio
+    excluir_sabado = _vacaciones_excluye_sabado(id_cedula)
     while cursor <= fin:
-        if cursor.weekday() != 6:  # domingo
+        if cursor.weekday() != 6 and not (excluir_sabado and cursor.weekday() == 5):
             dias += 1
         cursor += timedelta(days=1)
     return dias
@@ -3500,7 +3510,7 @@ def vacaciones_solicitar():
         if not id_cedula or not fecha_solicitud or not fecha_inicio or not fecha_fin or not fecha_regreso:
             flash("Complete cédula, fecha de solicitud y fechas de inicio, fin y regreso.", "error")
             return redirect(url_for("vacaciones_solicitar"))
-        dias_calculados = _calcular_dias_vacaciones(fecha_inicio, fecha_fin)
+        dias_calculados = _calcular_dias_vacaciones(fecha_inicio, fecha_fin, id_cedula)
         if dias_calculados is None:
             flash("Las fechas de vacaciones no son válidas. La fecha final debe ser igual o posterior a la inicial.", "error")
             return redirect(url_for("vacaciones_solicitar"))
@@ -3562,6 +3572,8 @@ def vacaciones_solicitar():
                 empleados=None,
                 is_empleado=is_empleado,
                 empleado_actual=emp_actual,
+                vacaciones_excluye_sabado=_vacaciones_excluye_sabado(id_cedula_empleado),
+                cedulas_vacaciones_sin_sabado=sorted(_CEDULAS_VACACIONES_SIN_SABADO),
                 today=date.today().isoformat(),
             )
     empleados = query("SELECT id_cedula, apellidos_nombre FROM empleado WHERE estado = 'ACTIVO' ORDER BY apellidos_nombre")
@@ -3571,6 +3583,8 @@ def vacaciones_solicitar():
         empleados=empleados,
         is_empleado=False,
         empleado_actual=None,
+        vacaciones_excluye_sabado=False,
+        cedulas_vacaciones_sin_sabado=sorted(_CEDULAS_VACACIONES_SIN_SABADO),
         today=date.today().isoformat(),
     )
 
