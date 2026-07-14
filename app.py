@@ -313,7 +313,7 @@ def _find_employee_account(user):
         return None
 
 
-_SWITCH_ACCOUNT_ALLOWED_ROLES = {"ADMIN", "COORD. GH", "JEFE INMEDIATO"}
+_SWITCH_ACCOUNT_ALLOWED_ROLES = {"ADMIN", "COORD. GH", "JEFE INMEDIATO", "BIENESTAR SOCIAL"}
 _SWITCH_ACCOUNT_ALLOWED_EMAILS = {
     "coordinacion.gestionhumana@colbeef.com",  # Cindy
     "gestor.contratacion@colbeef.com",         # Magali
@@ -1083,7 +1083,7 @@ def cambiar_a_modo_empleado():
         flash("Ya estás en una cuenta de empleado.", "info")
         return redirect(url_for("empleado_portal"))
     if not _can_use_account_switch(user):
-        flash("Esta opción solo está habilitada para Coordinación GH, Magali y jefes inmediatos.", "error")
+        flash("Esta opción solo está habilitada para roles autorizados con cédula vinculada.", "error")
         return redirect(url_for("home"))
     if not str(user.get("id_cedula") or "").strip():
         flash("Tu cuenta principal no tiene cédula vinculada. Pide al administrador vincular id_cedula.", "warning")
@@ -1126,7 +1126,7 @@ def cambiar_cuenta():
         flash("No hay sesión activa.", "error")
         return redirect(url_for("login"))
     if not _can_use_account_switch(user):
-        flash("Esta opción solo está habilitada para Coordinación GH, Magali y jefes inmediatos.", "error")
+        flash("Esta opción solo está habilitada para roles autorizados con cédula vinculada.", "error")
         return redirect(url_for("home"))
     target_id = (request.form.get("target_user_id") or "").strip()
     if not target_id:
@@ -1165,7 +1165,7 @@ def activar_modo_empleado_vacaciones():
     """Activa modo empleado simplificado (solicitar permisos y vacaciones)."""
     user = get_current_user()
     if not _can_employee_vacation_mode(user):
-        flash("Esta opción solo está habilitada para jefes administrativos y administradores.", "error")
+        flash("Esta opción solo está habilitada para roles autorizados con cédula vinculada.", "error")
         return redirect(url_for("home"))
     if not str((user or {}).get("id_cedula") or "").strip():
         flash("Tu cuenta no tiene cédula vinculada.", "warning")
