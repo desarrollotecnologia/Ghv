@@ -307,6 +307,7 @@ def _tabla_detalle_solicitud(solicitud, empleado_nombre=None, incluir_empleado=T
     filas = []
     if incluir_empleado and empleado_nombre:
         filas.append(("<th>Empleado</th>", f"<td>{html_escape(empleado_nombre)}</td>"))
+    filas.append(("<th>Cedula</th>", f"<td>{html_escape(str(solicitud.get('id_cedula') or '—'))}</td>"))
     filas.append(("<th>Tipo de permiso</th>", f"<td>{tipo}</td>"))
     filas.append(("<th>Fecha desde</th>", f"<td>{desde}</td>"))
     filas.append(("<th>Fecha hasta</th>", f"<td>{hasta}</td>"))
@@ -631,6 +632,7 @@ def _tabla_detalle_vacaciones(solicitud, empleado_nombre=None, incluir_empleado=
     filas = []
     if incluir_empleado and empleado_nombre:
         filas.append(("<th>Empleado</th>", f"<td>{html_escape(empleado_nombre)}</td>"))
+    filas.append(("<th>Cedula</th>", f"<td>{html_escape(str(solicitud.get('id_cedula') or '—'))}</td>"))
     filas.append(("<th>Fecha solicitud</th>", f"<td>{html_escape(_fmt(solicitud.get('fecha_solicitud')))}</td>"))
     if solicitud.get("periodo_causado"):
         filas.append(("<th>Periodo causado</th>", f"<td>{html_escape(str(solicitud.get('periodo_causado')))}</td>"))
