@@ -3443,12 +3443,61 @@ _CEDULAS_VACACIONES_SIN_SABADO = {
 }
 
 
+def _siguiente_lunes(dia):
+    return dia + timedelta(days=(7 - dia.weekday()) % 7)
+
+
+def _pascua_gregoriana(year):
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    return date(year, month, day)
+
+
+def _festivos_colombia(year):
+    pascua = _pascua_gregoriana(year)
+    fijos = {
+        date(year, 1, 1),
+        date(year, 5, 1),
+        date(year, 7, 20),
+        date(year, 8, 7),
+        date(year, 12, 8),
+        date(year, 12, 25),
+        pascua - timedelta(days=3),  # Jueves Santo
+        pascua - timedelta(days=2),  # Viernes Santo
+    }
+    trasladables = [
+        date(year, 1, 6),
+        date(year, 3, 19),
+        date(year, 6, 29),
+        date(year, 8, 15),
+        date(year, 10, 12),
+        date(year, 11, 1),
+        date(year, 11, 11),
+        pascua + timedelta(days=39),  # Ascension
+        pascua + timedelta(days=60),  # Corpus Christi
+        pascua + timedelta(days=68),  # Sagrado Corazon
+    ]
+    return fijos | {_siguiente_lunes(dia) for dia in trasladables}
+
+
 def _vacaciones_excluye_sabado(id_cedula):
     return str(id_cedula or "").strip() in _CEDULAS_VACACIONES_SIN_SABADO
 
 
 def _calcular_dias_vacaciones(fecha_inicio, fecha_fin, id_cedula=None):
-    """Cuenta días de vacaciones; domingos siempre se excluyen."""
+    """Cuenta dias de vacaciones; domingos y festivos siempre se excluyen."""
     if not fecha_inicio or not fecha_fin:
         return None
     try:
@@ -3461,8 +3510,11 @@ def _calcular_dias_vacaciones(fecha_inicio, fecha_fin, id_cedula=None):
     dias = 0
     cursor = inicio
     excluir_sabado = _vacaciones_excluye_sabado(id_cedula)
+    festivos = set()
+    for year in range(inicio.year, fin.year + 1):
+        festivos.update(_festivos_colombia(year))
     while cursor <= fin:
-        if cursor.weekday() != 6 and not (excluir_sabado and cursor.weekday() == 5):
+        if cursor.weekday() != 6 and cursor not in festivos and not (excluir_sabado and cursor.weekday() == 5):
             dias += 1
         cursor += timedelta(days=1)
     return dias

@@ -45,8 +45,8 @@
         <div class="form-row">
             <div class="form-group">
                 <label class="form-label">Días en tiempo</label>
-                <input type="number" name="dias_en_tiempo" id="diasEnTiempo" class="form-input" min="0" placeholder="Se calcula sin domingos" readonly>
-                <small class="form-hint" id="diasHint">Se calcula automáticamente descontando domingos.</small>
+                <input type="number" name="dias_en_tiempo" id="diasEnTiempo" class="form-input" min="0" placeholder="Se calcula sin domingos ni festivos" readonly>
+                <small class="form-hint" id="diasHint">Se calcula automáticamente descontando domingos y festivos.</small>
             </div>
             <div class="form-group">
                 <label class="form-label">Días compensados en dinero</label>
@@ -101,6 +101,74 @@
         return empleado.selectedOptions[0].getAttribute('data-excluye-sabado') === '1';
     }
 
+    function siguienteLunes(dia) {
+        var out = new Date(dia.getTime());
+        var diff = (8 - out.getDay()) % 7;
+        out.setDate(out.getDate() + diff);
+        return out;
+    }
+
+    function pascua(year) {
+        var a = year % 19;
+        var b = Math.floor(year / 100);
+        var c = year % 100;
+        var d = Math.floor(b / 4);
+        var e = b % 4;
+        var f = Math.floor((b + 8) / 25);
+        var g = Math.floor((b - f + 1) / 3);
+        var h = (19 * a + b - d - g + 15) % 30;
+        var i = Math.floor(c / 4);
+        var k = c % 4;
+        var l = (32 + 2 * e + 2 * i - h - k) % 7;
+        var m = Math.floor((a + 11 * h + 22 * l) / 451);
+        var month = Math.floor((h + l - 7 * m + 114) / 31);
+        var day = ((h + l - 7 * m + 114) % 31) + 1;
+        return new Date(year, month - 1, day);
+    }
+
+    function keyFecha(dia) {
+        return [
+            dia.getFullYear(),
+            String(dia.getMonth() + 1).padStart(2, '0'),
+            String(dia.getDate()).padStart(2, '0')
+        ].join('-');
+    }
+
+    function addDias(dia, cantidad) {
+        var out = new Date(dia.getTime());
+        out.setDate(out.getDate() + cantidad);
+        return out;
+    }
+
+    function festivosColombia(year) {
+        var p = pascua(year);
+        var festivos = [
+            new Date(year, 0, 1),
+            new Date(year, 4, 1),
+            new Date(year, 6, 20),
+            new Date(year, 7, 7),
+            new Date(year, 11, 8),
+            new Date(year, 11, 25),
+            addDias(p, -3),
+            addDias(p, -2)
+        ];
+        [
+            new Date(year, 0, 6),
+            new Date(year, 2, 19),
+            new Date(year, 5, 29),
+            new Date(year, 7, 15),
+            new Date(year, 9, 12),
+            new Date(year, 10, 1),
+            new Date(year, 10, 11),
+            addDias(p, 39),
+            addDias(p, 60),
+            addDias(p, 68)
+        ].forEach(function(dia) {
+            festivos.push(siguienteLunes(dia));
+        });
+        return festivos.map(keyFecha);
+    }
+
     function parseLocalDate(value) {
         if (!value) return null;
         var parts = value.split('-').map(function(part) { return parseInt(part, 10); });
@@ -118,16 +186,20 @@
         var total = 0;
         var cursor = new Date(ini.getTime());
         var sinSabado = excluyeSabado();
+        var festivos = new Set();
+        for (var year = ini.getFullYear(); year <= end.getFullYear(); year += 1) {
+            festivosColombia(year).forEach(function(dia) { festivos.add(dia); });
+        }
         while (cursor <= end) {
             var dia = cursor.getDay();
-            if (dia !== 0 && !(sinSabado && dia === 6)) total += 1;
+            if (dia !== 0 && !festivos.has(keyFecha(cursor)) && !(sinSabado && dia === 6)) total += 1;
             cursor.setDate(cursor.getDate() + 1);
         }
         if (dias) dias.value = total;
         if (diasHint) {
             diasHint.textContent = sinSabado
-                ? 'Se calcula automáticamente descontando sábados y domingos.'
-                : 'Se calcula automáticamente descontando domingos.';
+                ? 'Se calcula automáticamente descontando sábados, domingos y festivos.'
+                : 'Se calcula automáticamente descontando domingos y festivos.';
         }
     }
 
