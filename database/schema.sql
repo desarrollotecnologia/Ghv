@@ -343,8 +343,7 @@ INSERT INTO departamento (nombre, presupuestados) VALUES
     ('DPTO COMERCIAL', NULL),
     ('DPTO DE OPERACIONES', 28),
     ('DPTO JURIDICO Y GESTION HUMANA', 12),
-    ('CONTROLLER', NULL),
-    ('PLANEACION Y PROYECTOS', NULL);
+    ('CONTROLLER', NULL);
 
 -- Áreas
 INSERT INTO area (departamento_id, nombre, presupuestados) VALUES
@@ -363,14 +362,14 @@ INSERT INTO area (departamento_id, nombre, presupuestados) VALUES
     ((SELECT id FROM departamento WHERE nombre='DPTO ADMON Y FINANCIERO'), 'CONTABILIDAD', NULL),
     ((SELECT id FROM departamento WHERE nombre='DPTO ADMON Y FINANCIERO'), 'DIRECCION ADMON Y FINANCIERA', 1),
     ((SELECT id FROM departamento WHERE nombre='DPTO ADMON Y FINANCIERO'), 'TESORERIA', 10),
-    ((SELECT id FROM departamento WHERE nombre='DPTO ADMON Y FINANCIERO'), 'CONTROL INTERNO', 1),
-    ((SELECT id FROM departamento WHERE nombre='DPTO CALIDAD'), 'AMBIENTAL', 3),
+    ((SELECT id FROM departamento WHERE nombre='DPTO ADMON Y FINANCIERO'), 'PLANEACION FINANCIERA', 3),
+    ((SELECT id FROM departamento WHERE nombre='DPTO DE OPERACIONES'), 'AMBIENTAL', 3),
     ((SELECT id FROM departamento WHERE nombre='DPTO CALIDAD'), 'DIRECCION DPTO CALIDAD', NULL),
     ((SELECT id FROM departamento WHERE nombre='DPTO CALIDAD'), 'INVIMA', 3),
     ((SELECT id FROM departamento WHERE nombre='DPTO CALIDAD'), 'LAVANDERIA', 1),
     ((SELECT id FROM departamento WHERE nombre='DPTO CALIDAD'), 'LIMPIEZA Y DESINFECCION', NULL),
-    ((SELECT id FROM departamento WHERE nombre='DPTO CALIDAD'), 'PTAP', 3),
-    ((SELECT id FROM departamento WHERE nombre='DPTO CALIDAD'), 'PTAR', 8),
+    ((SELECT id FROM departamento WHERE nombre='DPTO DE OPERACIONES'), 'PTAP', 3),
+    ((SELECT id FROM departamento WHERE nombre='DPTO DE OPERACIONES'), 'PTAR', 8),
     ((SELECT id FROM departamento WHERE nombre='DPTO CALIDAD'), 'JARDINERIA', 2),
     ((SELECT id FROM departamento WHERE nombre='DPTO COMERCIAL'), 'DIRECCION DPTO COMERCIAL', 1),
     ((SELECT id FROM departamento WHERE nombre='DPTO COMERCIAL'), 'FOMENTO GANADERO', 1),
@@ -384,8 +383,7 @@ INSERT INTO area (departamento_id, nombre, presupuestados) VALUES
     ((SELECT id FROM departamento WHERE nombre='DPTO JURIDICO Y GESTION HUMANA'), 'ACCIONISTAS', 1),
     ((SELECT id FROM departamento WHERE nombre='DPTO JURIDICO Y GESTION HUMANA'), 'DIRECCION DPTO JURIDICO Y GESTION HUMANA', 3),
     ((SELECT id FROM departamento WHERE nombre='DPTO JURIDICO Y GESTION HUMANA'), 'GESTION HUMANA', 12),
-    ((SELECT id FROM departamento WHERE nombre='DPTO JURIDICO Y GESTION HUMANA'), 'TECNOLOGIA', 4),
-    ((SELECT id FROM departamento WHERE nombre='PLANEACION Y PROYECTOS'), 'PLANEACION', 3);
+    ((SELECT id FROM departamento WHERE nombre='DPTO JURIDICO Y GESTION HUMANA'), 'TECNOLOGIA', 4);
 
 -- Menú
 INSERT INTO menu (id_menu, nombre, vista, imagen) VALUES
@@ -602,13 +600,13 @@ INSERT INTO perfil_ocupacional (id_perfil, area_id, perfil_ocupacional, presupue
     ('78', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='TECNOLOGIA' AND d.nombre='DPTO JURIDICO Y GESTION HUMANA'), 'APRENDIZ SENA - TIC', NULL),
     ('79', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='TECNOLOGIA' AND d.nombre='DPTO JURIDICO Y GESTION HUMANA'), 'AUXILIAR TIC', NULL),
     ('80', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='TECNOLOGIA' AND d.nombre='DPTO JURIDICO Y GESTION HUMANA'), 'JEFE TICS', NULL),
-    ('81', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='PLANEACION' AND d.nombre='PLANEACION Y PROYECTOS'), 'AUXILIAR DE PLANEACION Y PROYECTOS', NULL),
-    ('82', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='PLANEACION' AND d.nombre='PLANEACION Y PROYECTOS'), 'DIRECTOR DE PLANEACION Y PROYECTOS', NULL),
-    ('83', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='PLANEACION' AND d.nombre='PLANEACION Y PROYECTOS'), 'GESTOR DE PLANEACION Y PROYECTOS', NULL),
+    ('81', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='PLANEACION FINANCIERA' AND d.nombre='DPTO ADMON Y FINANCIERO'), 'AUXILIAR DE PLANEACION Y PROYECTOS', NULL),
+    ('82', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='PLANEACION FINANCIERA' AND d.nombre='DPTO ADMON Y FINANCIERO'), 'DIRECTOR DE PLANEACION Y PROYECTOS', NULL),
+    ('83', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='PLANEACION FINANCIERA' AND d.nombre='DPTO ADMON Y FINANCIERO'), 'GESTOR DE PLANEACION Y PROYECTOS', NULL),
     ('84', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='LOGISTICA' AND d.nombre='DPTO DE OPERACIONES'), 'GESTOR DE LOGISTICA', 1),
     ('87', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='GESTION HUMANA' AND d.nombre='DPTO JURIDICO Y GESTION HUMANA'), 'PENDIENTE POR ASIGNAR', NULL),
     ('240c11f2', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='GESTION HUMANA' AND d.nombre='DPTO JURIDICO Y GESTION HUMANA'), 'APRENDIZ SENA GH', 1),
-    ('d2012dd2', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='AMBIENTAL' AND d.nombre='DPTO CALIDAD'), 'APRENDIZ SENA AMBIENTAL', 1),
+    ('d2012dd2', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='AMBIENTAL' AND d.nombre='DPTO DE OPERACIONES'), 'APRENDIZ SENA AMBIENTAL', 1),
     ('9c6b9261', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='DIRECCION DPTO JURIDICO Y GESTION HUMANA' AND d.nombre='DPTO JURIDICO Y GESTION HUMANA'), 'APRENDIZ SENA JURIDICA', 1),
     ('83f47129', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='DIRECCION DPTO JURIDICO Y GESTION HUMANA' AND d.nombre='DPTO JURIDICO Y GESTION HUMANA'), 'APRENDIZ JURIDICO', 1),
     ('9ecf802b', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='GESTION HUMANA' AND d.nombre='DPTO JURIDICO Y GESTION HUMANA'), 'APRENDIZ GESTIÓN HUMANA', 1),
@@ -643,7 +641,7 @@ INSERT INTO perfil_ocupacional (id_perfil, area_id, perfil_ocupacional, presupue
     ('c3261768', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='DIRECCION DPTO COMERCIAL' AND d.nombre='DPTO COMERCIAL'), 'EJECUTIVO COMERCIAL BENEFICIO', 1),
     ('c246e08e', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='LOGISTICA' AND d.nombre='DPTO DE OPERACIONES'), 'APRENDIZ SENA', 1),
     ('452351d8', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='TESORERIA' AND d.nombre='DPTO ADMON Y FINANCIERO'), 'APRENDIZ SENA', 1),
-    ('d3e61e7c', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='CONTROL INTERNO' AND d.nombre='DPTO ADMON Y FINANCIERO'), 'PROFESIONAL CONTROL INTERNO', 1),
+    ('d3e61e7c', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='CONTROLLER' AND d.nombre='CONTROLLER'), 'PROFESIONAL CONTROL INTERNO', 1),
     ('702a408b', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='DIRECCION PRODUCCION' AND d.nombre='DPTO DE OPERACIONES'), 'LIDER DE PROYECTOS', 1),
     ('808d40f3', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='COMPRAS' AND d.nombre='DPTO ADMON Y FINANCIERO'), 'AUXILIAR DE MENSAJERIA', 1),
     ('25d60732', (SELECT a.id FROM area a JOIN departamento d ON a.departamento_id=d.id WHERE a.nombre='GERENCIA'), 'DIRECTOR DE SURTIDORES Y COMPRA DE GANADO', 1);

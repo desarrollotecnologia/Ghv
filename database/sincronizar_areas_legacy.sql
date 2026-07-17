@@ -61,9 +61,9 @@ WHERE UPPER(TRIM(area)) = 'CONTROL DE PROCESOS' AND area <> 'DIRECCION DPTO CALI
 UPDATE retirado SET area = 'DIRECCION DPTO CALIDAD'
 WHERE UPPER(TRIM(area)) = 'CONTROL DE PROCESOS' AND area <> 'DIRECCION DPTO CALIDAD';
 
--- SST: crear en catálogo si falta (DPTO CALIDAD)
+-- SST: crear en catálogo si falta (DPTO DE OPERACIONES)
 INSERT INTO area (departamento_id, nombre)
 SELECT d.id, 'SST'
 FROM departamento d
-WHERE UPPER(TRIM(d.nombre)) = 'DPTO CALIDAD'
+WHERE UPPER(TRIM(d.nombre)) = 'DPTO DE OPERACIONES'
   AND NOT EXISTS (SELECT 1 FROM area a WHERE UPPER(TRIM(a.nombre)) = 'SST');

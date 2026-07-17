@@ -181,7 +181,8 @@ SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='gerencia.comer
 WHERE estado='ACTIVO' AND area IN (
     'DIRECCION DPTO COMERCIAL',
     'MERCADEO',
-    'SURTIDORES'
+    'SURTIDORES',
+    'PLANILLAJE, CAJA Y PESAJE'
 );
 
 -- ---------- GRUPO 10: Gerencia General (engloba varias areas transversales) ----------
@@ -190,9 +191,9 @@ SET id_user_encargado = (SELECT id_user FROM usuario WHERE email='gerencia.gener
 WHERE estado='ACTIVO' AND area IN (
     'GERENCIA',
     'ACCIONISTAS',
-    'CONTROL INTERNO',
+    'CONTROLLER',
     'FOMENTO GANADERO',
-    'PLANEACION'
+    'PLANEACION FINANCIERA'
 );
 
 -- Excepcion puntual: RODRIGUEZ RUIZ ALEXANDER, jefe de Proyectos,

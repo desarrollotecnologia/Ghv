@@ -7092,9 +7092,9 @@ _AREA_CATALOG_ALIASES = {
     "TECNOLOGIA": ["TICS", "TIC", "TIC'S", "TIC´S", "TIC S", "DATA"],
     "DIRECCION DPTO CALIDAD": ["GERENCIA CALIDAD", "CONTROL DE PROCESOS"],
     "TESORERIA": ["PLANILLAJE Y FACTURACION", "PLANILLAJE", "CARTERA"],
-    "CONTROL INTERNO": ["DIRECCION CONTROLLER"],
+    "CONTROLLER": ["CONTROL INTERNO", "DIRECCION CONTROLLER"],
     "DIRECCION DPTO COMERCIAL": ["DIRECCION SURTIDORES", "SURTIDORES"],
-    "PLANEACION": ["PLANEACION FINANCIERA", "PLANEACION Y PROYECTOS"],
+    "PLANEACION FINANCIERA": ["PLANEACION", "PLANEACION Y PROYECTOS"],
     "ADMINISTRACION": ["SERVICIOS GENERALES", "VIGILANCIA"],
     "DIRECCION PRODUCCION": ["DIRECCION OPERACIONES", "DIRECCION DE OPERACIONES"],
     "DIRECCION ADMON Y FINANCIERA": ["DIRECCION ADMON", "DIRECCION ADMINISTRATIVA"],
@@ -7106,7 +7106,8 @@ _AREA_CATALOG_ALIASES = {
 _CATALOG_AREAS_TO_ENSURE = {
     "CONTROLLER": "CONTROLLER",
     "JURIDICA": "DIRECCION DE ASUNTOS CORPORATIVOS",
-    "SST": "DPTO CALIDAD",
+    "SST": "DPTO DE OPERACIONES",
+    "PLANILLAJE, CAJA Y PESAJE": "DPTO COMERCIAL",
 }
 
 
@@ -8706,9 +8707,24 @@ def admin_catalogos():
     niveles = query("SELECT id_nivel, nivel FROM nivel_educativo ORDER BY nivel")
     profesiones = query("SELECT id_profesion, profesion FROM profesion ORDER BY profesion")
     motivos = query("SELECT id, tipo_retiro FROM motivo_retiro ORDER BY tipo_retiro")
+    cargos = query(
+        "SELECT p.id_perfil, p.perfil_ocupacional, p.presupuestados, a.id AS area_id, "
+        "a.nombre AS area, d.nombre AS departamento "
+        "FROM perfil_ocupacional p "
+        "JOIN area a ON p.area_id = a.id "
+        "JOIN departamento d ON a.departamento_id = d.id "
+        "ORDER BY d.nombre, a.nombre, p.perfil_ocupacional"
+    )
+    areas_list = query(
+        "SELECT a.id, a.nombre, a.presupuestados, a.departamento_id, d.nombre AS departamento "
+        "FROM area a JOIN departamento d ON a.departamento_id = d.id "
+        "ORDER BY d.nombre, a.nombre"
+    )
+    departamentos_list = query("SELECT id, nombre FROM departamento ORDER BY nombre")
     return render_template(
         "catalogos.html", active_page="Catalogos",
         tipo_doc=tipo_doc, niveles=niveles, profesiones=profesiones, motivos=motivos,
+        cargos=cargos, areas_list=areas_list, departamentos_list=departamentos_list,
     )
 
 
@@ -8757,6 +8773,26 @@ def catalogos_profesion_add():
     if not nombre:
         flash("El nombre de la profesión es obligatorio", "error")
         return redirect(url_for("admin_catalogos"))
+    nombre = " ".join(nombre.upper().split())
+    # ponytail: normalización ligera de sinónimos femeninos a forma canónica masculina.
+    # Si en el futuro se requiere lenguaje inclusivo o catálogo por género, mover esto
+    # a una tabla de equivalencias administrable desde BD.
+    for src, dst in [
+        ("TECNOLOGA", "TECNOLOGO"),
+        ("TECNICA", "TECNICO"),
+        ("CONTADORA", "CONTADOR"),
+        ("ABOGADA", "ABOGADO"),
+        ("INGENIERA", "INGENIERO"),
+    ]:
+        nombre = nombre.replace(src, dst)
+    existing_name = query(
+        "SELECT id_profesion FROM profesion WHERE UPPER(TRIM(profesion)) = %s",
+        (nombre,),
+        one=True,
+    )
+    if existing_name:
+        flash(f"La profesión '{nombre}' ya existe en catálogo.", "error")
+        return redirect(url_for("admin_catalogos"))
     if not id_prof:
         import uuid
         id_prof = str(uuid.uuid4())[:8]
@@ -8783,6 +8819,110 @@ def catalogos_motivo_retiro_add():
         return redirect(url_for("admin_catalogos"))
     execute("INSERT INTO motivo_retiro (tipo_retiro) VALUES (%s)", (tipo_retiro,))
     flash(f"Motivo de retiro '{tipo_retiro}' agregado", "success")
+    return redirect(url_for("admin_catalogos"))
+
+
+@app.route("/admin/catalogos/cargo", methods=["POST"])
+@login_required
+@catalogos_required
+def catalogos_cargo_add():
+    import uuid
+
+    perfil = (request.form.get("perfil_ocupacional") or "").strip().upper()
+    area_id = (request.form.get("area_id") or "").strip()
+    presupuestados = (request.form.get("presupuestados") or "").strip()
+    if not perfil or not area_id:
+        flash("Cargo y área son obligatorios", "error")
+        return redirect(url_for("admin_catalogos"))
+    area = query("SELECT id FROM area WHERE id = %s", (area_id,), one=True)
+    if not area:
+        flash("El área seleccionada no existe", "error")
+        return redirect(url_for("admin_catalogos"))
+    existe = query(
+        "SELECT id_perfil FROM perfil_ocupacional "
+        "WHERE area_id = %s AND UPPER(TRIM(perfil_ocupacional)) = %s",
+        (int(area_id), perfil),
+        one=True,
+    )
+    if existe:
+        flash(f"El cargo '{perfil}' ya existe en esa área", "error")
+        return redirect(url_for("admin_catalogos"))
+    new_id = uuid.uuid4().hex[:8]
+    execute(
+        "INSERT INTO perfil_ocupacional (id_perfil, area_id, perfil_ocupacional, presupuestados) "
+        "VALUES (%s, %s, %s, %s)",
+        (new_id, int(area_id), perfil, int(presupuestados) if presupuestados else None),
+    )
+    flash(f"Cargo '{perfil}' agregado", "success")
+    return redirect(url_for("admin_catalogos"))
+
+
+@app.route("/admin/catalogos/cargo/<id_perfil>/eliminar", methods=["POST"])
+@login_required
+@catalogos_required
+def catalogos_cargo_delete(id_perfil):
+    id_perfil = (id_perfil or "").strip()
+    if not id_perfil:
+        flash("Cargo inválido", "error")
+        return redirect(url_for("admin_catalogos"))
+    cargo = query(
+        "SELECT id_perfil, perfil_ocupacional FROM perfil_ocupacional WHERE id_perfil = %s",
+        (id_perfil,),
+        one=True,
+    )
+    if not cargo:
+        flash("El cargo no existe o ya fue eliminado", "error")
+        return redirect(url_for("admin_catalogos"))
+    uso_activo = query(
+        "SELECT COUNT(*) AS total FROM empleado WHERE TRIM(COALESCE(id_perfil_ocupacional, '')) = %s",
+        (id_perfil,),
+        one=True,
+    )
+    uso_retirado = query(
+        "SELECT COUNT(*) AS total FROM retirado WHERE TRIM(COALESCE(id_perfil_ocupacional, '')) = %s",
+        (id_perfil,),
+        one=True,
+    )
+    total_uso = int((uso_activo or {}).get("total") or 0) + int((uso_retirado or {}).get("total") or 0)
+    if total_uso > 0:
+        flash(
+            f"No se puede eliminar '{cargo.get('perfil_ocupacional')}'. "
+            f"Tiene {total_uso} registro(s) asociado(s) en personal activo/retirado.",
+            "error",
+        )
+        return redirect(url_for("admin_catalogos"))
+    execute("DELETE FROM perfil_ocupacional WHERE id_perfil = %s", (id_perfil,))
+    flash(f"Cargo '{cargo.get('perfil_ocupacional')}' eliminado", "success")
+    return redirect(url_for("admin_catalogos"))
+
+
+@app.route("/admin/catalogos/area", methods=["POST"])
+@login_required
+@catalogos_required
+def catalogos_area_add():
+    departamento_id = (request.form.get("departamento_id") or "").strip()
+    area = " ".join((request.form.get("area") or "").strip().upper().split())
+    presupuestados = (request.form.get("presupuestados") or "").strip()
+    if not departamento_id or not area:
+        flash("Departamento y área son obligatorios", "error")
+        return redirect(url_for("admin_catalogos"))
+    depto = query("SELECT id FROM departamento WHERE id = %s", (departamento_id,), one=True)
+    if not depto:
+        flash("El departamento seleccionado no existe", "error")
+        return redirect(url_for("admin_catalogos"))
+    existe = query(
+        "SELECT id FROM area WHERE departamento_id = %s AND UPPER(TRIM(nombre)) = %s",
+        (int(departamento_id), area),
+        one=True,
+    )
+    if existe:
+        flash(f"El área '{area}' ya existe en ese departamento", "error")
+        return redirect(url_for("admin_catalogos"))
+    execute(
+        "INSERT INTO area (departamento_id, nombre, presupuestados) VALUES (%s, %s, %s)",
+        (int(departamento_id), area, int(presupuestados) if presupuestados else None),
+    )
+    flash(f"Área '{area}' agregada", "success")
     return redirect(url_for("admin_catalogos"))
 
 
