@@ -6294,9 +6294,11 @@ EMPLEADO_FIELDS = [
     {"key": "estado",               "label": "Estado", "type": "badge"},
 ]
 
-# Columnas export Excel personal (completo + perfil ocupacional)
+# Columnas legibles del Excel de personal. Los IDs técnicos se usan para
+# resolver catálogos, pero no se exponen en el archivo entregado a GH.
 _PERSONAL_EXPORT_COLS = [(f["key"], f["label"]) for f in EMPLEADO_FIELDS] + [
-    ("id_perfil_ocupacional", "ID perfil ocupacional"),
+    ("jefe_inmediato", "Jefe inmediato"),
+    ("jefe_inmediato_email", "Correo jefe inmediato"),
 ]
 
 
@@ -9108,13 +9110,21 @@ EXPORT_CONFIGS = {
 
 def _export_rows_personal_empleado(estado, depto=None, area=None):
     """SELECT completo de empleado por estado y filtros opcionales departamento/área."""
-    # perfil_ocupacional_nombre viene del JOIN; resolve_empleado_catalogos completa fallbacks.
-    _virtual_cols = {"perfil_ocupacional_nombre"}
+    # Campos resueltos por JOIN; resolve_empleado_catalogos completa cargos legacy.
+    _virtual_cols = {
+        "perfil_ocupacional_nombre",
+        "jefe_inmediato",
+        "jefe_inmediato_email",
+    }
     cols_sql = ", ".join(f"e.{k}" for k, _ in _PERSONAL_EXPORT_COLS if k not in _virtual_cols)
     sql = (
-        f"SELECT {cols_sql}, p.perfil_ocupacional AS perfil_ocupacional_nombre "
+        f"SELECT {cols_sql}, e.id_perfil_ocupacional, "
+        "p.perfil_ocupacional AS perfil_ocupacional_nombre, "
+        "COALESCE(NULLIF(TRIM(u.nombre), ''), NULLIF(TRIM(u.email), '')) AS jefe_inmediato, "
+        "u.email AS jefe_inmediato_email "
         "FROM empleado e "
         "LEFT JOIN perfil_ocupacional p ON TRIM(p.id_perfil) = TRIM(e.id_perfil_ocupacional) "
+        "LEFT JOIN usuario u ON u.id_user = e.id_user_encargado "
         "WHERE e.estado = %s"
     )
     params = [estado]

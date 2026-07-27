@@ -1,6 +1,6 @@
-"""Prueba mínima del jefe inmediato en el listado de Personal Activo."""
+"""Prueba del jefe inmediato en listado y exportación de Personal Activo."""
 
-from app import app, query
+from app import _PERSONAL_EXPORT_COLS, _export_rows_personal_empleado, app, query
 
 
 def run():
@@ -20,7 +20,17 @@ def run():
 
     assert response.status_code == 200
     assert "Jefe inmediato" in response.get_data(as_text=True)
-    print("OK: Personal Activo muestra la columna Jefe inmediato")
+
+    export_keys = [key for key, _label in _PERSONAL_EXPORT_COLS]
+    assert "id_perfil_ocupacional" not in export_keys
+    assert "perfil_ocupacional_nombre" in export_keys
+    assert "jefe_inmediato" in export_keys
+    assert "jefe_inmediato_email" in export_keys
+
+    rows = _export_rows_personal_empleado("ACTIVO")
+    assert rows
+    assert all("jefe_inmediato" in row for row in rows)
+    print("OK: listado y Excel muestran cargo y jefe inmediato legibles")
 
 
 if __name__ == "__main__":
