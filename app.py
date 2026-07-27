@@ -7373,19 +7373,9 @@ def areas():
     synced = _sync_legacy_area_names()
     if synced:
         flash(f"Se actualizaron {synced} registro(s) de área al catálogo vigente.", "info")
-    dir_result = _sync_directorio_jefes()
-    if dir_result and not dir_result.get("error"):
-        creados = dir_result.get("usuarios_creados") or []
-        asignados = sum(int(a.get("empleados") or 0) for a in (dir_result.get("areas") or []))
-        if creados or asignados:
-            msg = "Directorio de jefes sincronizado"
-            if creados:
-                msg += f": {len(creados)} usuario(s) creado(s)"
-            if asignados:
-                msg += f"{', ' if creados else ':'} {asignados} encargado(s) asignado(s) por área"
-            flash(msg + ".", "info")
-    elif dir_result and dir_result.get("error"):
-        flash(f"No se pudo sincronizar el directorio de jefes: {dir_result['error']}", "warning")
+    # La vista debe ser de solo lectura respecto a jefes inmediatos. Sincronizar
+    # aquí sobrescribía las asignaciones hechas manualmente al volver a /areas.
+    # El directorio solo se aplica mediante POST /directorio-jefes/aplicar.
     area_rows = _fetch_areas_live_stats()
     grouped, total_pres, total_ejec = _build_areas_grouped(area_rows)
     unmapped_areas = _fetch_unmapped_active_areas()

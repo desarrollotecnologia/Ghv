@@ -8,7 +8,8 @@
 <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:16px">
     <p style="margin:0;flex:1;color:var(--text-secondary);font-size:13px">
         Mapeo oficial área → jefe encargado (fuente: <strong>{{ xlsx_path }}</strong>).
-        Se sincroniza al abrir <a href="{{ url_for('areas') }}">Áreas</a>.
+        Es solo informativo: abrir <a href="{{ url_for('areas') }}">Áreas</a>
+        no modifica las asignaciones manuales.
     </p>
     <a href="{{ url_for('directorio_jefes_export') }}" class="btn btn-secondary" style="text-decoration:none">
         <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle">download</span>
