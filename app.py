@@ -7373,13 +7373,8 @@ def _sync_directorio_jefes():
 @login_required
 @module_required("organizacion")
 def areas():
-    _ensure_catalog_areas()
-    synced = _sync_legacy_area_names()
-    if synced:
-        flash(f"Se actualizaron {synced} registro(s) de área al catálogo vigente.", "info")
-    # La vista debe ser de solo lectura respecto a jefes inmediatos. Sincronizar
-    # aquí sobrescribía las asignaciones hechas manualmente al volver a /areas.
-    # El directorio solo se aplica mediante POST /directorio-jefes/aplicar.
+    # GET /areas es estrictamente de lectura. Las altas y migraciones de áreas,
+    # alias y jefes deben ejecutarse mediante acciones administrativas explícitas.
     area_rows = _fetch_areas_live_stats()
     grouped, total_pres, total_ejec = _build_areas_grouped(area_rows)
     unmapped_areas = _fetch_unmapped_active_areas()

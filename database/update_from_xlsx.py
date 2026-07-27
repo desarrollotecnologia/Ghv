@@ -395,7 +395,12 @@ def _resolve_xlsx_path(cli_xlsx_path=None):
     return path
 
 
-def main(xlsx_path=None):
+def main(xlsx_path=None, confirm_reset=False):
+    if not confirm_reset:
+        raise SystemExit(
+            "BLOQUEADO: este script elimina y reimporta empleados y catálogos. "
+            "Use --confirm-reset-all-data únicamente para un restablecimiento controlado con backup."
+        )
     path = _resolve_xlsx_path(xlsx_path)
     if not os.path.isfile(path):
         print(f"ERROR: No existe el Excel:\n  {path}")
@@ -448,5 +453,10 @@ def main(xlsx_path=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Actualiza la base de datos desde Excel maestro.")
     parser.add_argument("--xlsx", dest="xlsx_path", default=None, help="Ruta del archivo .xlsx a procesar")
+    parser.add_argument(
+        "--confirm-reset-all-data",
+        action="store_true",
+        help="Confirma el borrado y la reimportación completa de empleados y catálogos.",
+    )
     args = parser.parse_args()
-    main(args.xlsx_path)
+    main(args.xlsx_path, confirm_reset=args.confirm_reset_all_data)

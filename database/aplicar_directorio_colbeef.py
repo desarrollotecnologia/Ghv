@@ -9,6 +9,7 @@ Lee database/Directorio_Colbeef.xlsx (o respaldo embebido).
 Uso:
     python database/aplicar_directorio_colbeef.py
     python database/aplicar_directorio_colbeef.py --dry-run
+    python database/aplicar_directorio_colbeef.py --force
 """
 import os
 import sys
@@ -29,6 +30,7 @@ from directorio_colbeef import DEFAULT_XLSX, apply_directorio
 
 def main():
     dry_run = "--dry-run" in sys.argv
+    force = "--force" in sys.argv
     conn = mysql.connector.connect(
         host=Config.MYSQL_HOST,
         port=Config.MYSQL_PORT,
@@ -53,8 +55,16 @@ def main():
     print(f"Directorio: {DEFAULT_XLSX}")
     if dry_run:
         print("MODO dry-run (sin cambios en BD)\n")
+    if force:
+        print("MODO FORCE: se reemplazarán encargados ya asignados.\n")
 
-    result = apply_directorio(fetch_all, fetch_one, execute_fn, dry_run=dry_run)
+    result = apply_directorio(
+        fetch_all,
+        fetch_one,
+        execute_fn,
+        dry_run=dry_run,
+        overwrite_existing=force,
+    )
 
     if not dry_run:
         conn.commit()

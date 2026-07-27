@@ -273,9 +273,12 @@ def apply_directorio(
     execute_fn,
     xlsx_path: str | None = None,
     dry_run: bool = False,
+    overwrite_existing: bool = False,
 ) -> dict[str, Any]:
     """
-    Crea usuarios JEFE INMEDIATO faltantes y asigna id_user_encargado por área.
+    Crea usuarios JEFE INMEDIATO faltantes y completa encargados por área.
+    Por defecto preserva los jefes ya definidos desde la plataforma.
+    overwrite_existing=True vuelve a aplicar el directorio completo.
     Retorna resumen de la operación.
     """
     rows = load_directorio(xlsx_path)
@@ -286,6 +289,11 @@ def apply_directorio(
     users_updated: list[str] = []
     areas_assigned: list[dict[str, Any]] = []
     errors: list[str] = []
+    preserve_guard = (
+        ""
+        if overwrite_existing
+        else " AND (id_user_encargado IS NULL OR TRIM(id_user_encargado) = '')"
+    )
 
     email_to_id: dict[str, str] = {}
     all_users = fetch_all("SELECT id_user, email, nombre, rol FROM usuario") or []
@@ -294,13 +302,16 @@ def apply_directorio(
         if em:
             email_to_id[em] = u["id_user"]
 
-    active_emps = fetch_all("SELECT id_cedula, departamento, area FROM empleado WHERE estado = 'ACTIVO'") or []
-    emps_by_area_key: dict[str, list[str]] = {}
+    active_emps = fetch_all(
+        "SELECT id_cedula, departamento, area, id_user_encargado "
+        "FROM empleado WHERE estado = 'ACTIVO'"
+    ) or []
+    emps_by_area_key: dict[str, list[dict[str, Any]]] = {}
     for emp in active_emps:
         key = _normalize_key(emp.get("area"))
         if not key:
             continue
-        emps_by_area_key.setdefault(key, []).append(emp["id_cedula"])
+        emps_by_area_key.setdefault(key, []).append(emp)
 
     jefe_meta: dict[str, str] = {}
     for row in rows:
@@ -352,9 +363,13 @@ def apply_directorio(
             continue
         variants = set(area_variants(row["area"]))
         cedulas: list[str] = []
-        for area_key, ids in emps_by_area_key.items():
+        for area_key, emps in emps_by_area_key.items():
             if area_key in variants:
-                cedulas.extend(ids)
+                cedulas.extend(
+                    emp["id_cedula"]
+                    for emp in emps
+                    if overwrite_existing or not str(emp.get("id_user_encargado") or "").strip()
+                )
         cedulas = list(dict.fromkeys(cedulas))
 
         if dry_run:
@@ -373,7 +388,8 @@ def apply_directorio(
         if cedulas:
             placeholders = ", ".join(["%s"] * len(cedulas))
             updated = execute_fn(
-                f"UPDATE empleado SET id_user_encargado = %s WHERE id_cedula IN ({placeholders})",
+                f"UPDATE empleado SET id_user_encargado = %s "
+                f"WHERE id_cedula IN ({placeholders}){preserve_guard}",
                 (uid, *cedulas),
             )
         areas_assigned.append(
@@ -396,6 +412,7 @@ def apply_directorio(
             emp["id_cedula"]
             for emp in active_emps
             if _normalize_key(emp.get("departamento")) == _normalize_key(departamento)
+            and (overwrite_existing or not str(emp.get("id_user_encargado") or "").strip())
         ]
         cedulas = list(dict.fromkeys(cedulas))
         department_overrides_applied.append(
@@ -405,12 +422,16 @@ def apply_directorio(
             continue
         placeholders = ", ".join(["%s"] * len(cedulas))
         execute_fn(
-            f"UPDATE empleado SET id_user_encargado = %s WHERE id_cedula IN ({placeholders})",
+            f"UPDATE empleado SET id_user_encargado = %s "
+            f"WHERE id_cedula IN ({placeholders}){preserve_guard}",
             (uid, *cedulas),
         )
 
     overrides_applied: list[dict[str, Any]] = []
     for cedula, jefe_email in ENCARGADO_OVERRIDE.items():
+        emp = next((row for row in active_emps if str(row.get("id_cedula")) == str(cedula)), None)
+        if emp and not overwrite_existing and str(emp.get("id_user_encargado") or "").strip():
+            continue
         uid = email_to_id.get(str(jefe_email).strip().lower())
         if not uid:
             errors.append(f"Override sin usuario para {jefe_email} (cédula {cedula})")
@@ -419,7 +440,8 @@ def apply_directorio(
         if dry_run:
             continue
         execute_fn(
-            "UPDATE empleado SET id_user_encargado = %s WHERE id_cedula = %s",
+            "UPDATE empleado SET id_user_encargado = %s WHERE id_cedula = %s"
+            + preserve_guard,
             (uid, cedula),
         )
 
