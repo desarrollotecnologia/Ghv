@@ -6109,21 +6109,23 @@ def personal_activo():
     user = get_current_user()
     encargado_filtra_equipo = session.get("encargado_mode") and not _is_siso_colbeef_user(user)
 
-    where = ["estado = %s"]
+    where = ["e.estado = %s"]
     params = [estado]
     if encargado_filtra_equipo:
-        where.append("id_user_encargado = %s")
+        where.append("e.id_user_encargado = %s")
         params.append((user or {}).get("id_user"))
     if filtro_depto:
-        where.append("departamento = %s")
+        where.append("e.departamento = %s")
         params.append(filtro_depto)
     if filtro_area:
-        where.append("area = %s")
+        where.append("e.area = %s")
         params.append(filtro_area)
     sql = (
-        "SELECT id_cedula, apellidos_nombre, tipo_documento, departamento, "
-        "area, sexo, fecha_ingreso, celular, eps, estado "
-        "FROM empleado WHERE " + " AND ".join(where) + " ORDER BY apellidos_nombre"
+        "SELECT e.id_cedula, e.apellidos_nombre, e.tipo_documento, e.departamento, "
+        "e.area, COALESCE(NULLIF(TRIM(u.nombre), ''), NULLIF(TRIM(u.email), '')) AS jefe_inmediato, "
+        "e.sexo, e.fecha_ingreso, e.celular, e.eps, e.estado "
+        "FROM empleado e LEFT JOIN usuario u ON u.id_user = e.id_user_encargado "
+        "WHERE " + " AND ".join(where) + " ORDER BY e.apellidos_nombre"
     )
     rows = query(sql, tuple(params))
     _normalize_phone_fields_in_rows(rows)
@@ -6157,6 +6159,7 @@ def personal_activo():
         {"key": "tipo_documento",   "label": "Tipo Doc"},
         {"key": "departamento",     "label": "Departamento", "type": "dept"},
         {"key": "area",             "label": "Área"},
+        {"key": "jefe_inmediato",   "label": "Jefe inmediato"},
         {"key": "sexo",             "label": "Sexo", "type": "sex"},
         {"key": "fecha_ingreso",    "label": "Fecha Ingreso"},
         {"key": "celular",          "label": "Celular"},
@@ -6165,8 +6168,9 @@ def personal_activo():
     filter_columns = [
         {"index": 3, "label": "Departamento"},
         {"index": 4, "label": "Área"},
-        {"index": 5, "label": "Sexo"},
-        {"index": 8, "label": "EPS"},
+        {"index": 5, "label": "Jefe inmediato"},
+        {"index": 6, "label": "Sexo"},
+        {"index": 9, "label": "EPS"},
     ]
     deptos = len(set(r["departamento"] for r in rows if r.get("departamento")))
     n_activos = int(counts.get("activos") or 0)
