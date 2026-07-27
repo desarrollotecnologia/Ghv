@@ -1,0 +1,52 @@
+flowchart TD
+    LOGIN[Inicio de sesión] --> ACTIVO{Cuenta y empleado activos}
+    ACTIVO -- No --> DENEGADO[Acceso denegado]
+    ACTIVO -- Sí --> ROL[Resolver rol y módulos]
+    ROL --> PERSONAL[Gestión de personal]
+    ROL --> SOLICITUDES[Solicitudes]
+    ROL --> RETIRO[Retiro de personal]
+    ROL --> SST[SST]
+    ROL --> FACECOL[Asistencia FaceCol]
+
+    PERSONAL --> ORGANIZACION[Departamento, área y cargo]
+    ORGANIZACION --> JEFE[Asignar jefe inmediato]
+    PERSONAL --> FAMILIA[Registrar hijos]
+
+    SOLICITUDES --> TIPO{Tipo de solicitud}
+    TIPO -- Permiso --> PERMISO[Validar motivo, fechas y soporte]
+    TIPO -- Vacaciones --> VACACIONES[Calcular días hábiles]
+    TIPO -- Incapacidad --> INCAPACIDAD[Validar evidencia y diagnóstico]
+
+    VACACIONES --> FESTIVOS[Excluir domingos y festivos]
+    FESTIVOS --> SABADOS[Excluir sábados cuando aplique]
+    SABADOS --> PENDIENTE
+    PERMISO --> PENDIENTE[Guardar como PENDIENTE]
+    INCAPACIDAD --> PENDIENTE
+
+    PENDIENTE --> CORREO[Notificar al jefe inmediato]
+    CORREO --> PROPIA{Solicitud propia}
+    PROPIA -- Sí --> BLOQUEAR[Bloquear autoaprobación]
+    PROPIA -- No --> DECISION{Decisión del responsable}
+    DECISION -- Aprobar --> APROBADO[Estado APROBADO]
+    DECISION -- Rechazar --> RECHAZADO[Estado RECHAZADO]
+    APROBADO --> NOTIFICAR[Notificar empleado y GH]
+    RECHAZADO --> NOTIFICAR
+
+    RETIRO --> REGISTRO[Crear registro de retirado]
+    REGISTRO --> INACTIVAR[Inactivar empleado y cuentas]
+    INACTIVAR --> GENERAR{Generar Paz y Salvo}
+    GENERAR -- No --> FIN_RETIRO[Finalizar retiro]
+    GENERAR -- Sí --> PAZ[Crear Paz y Salvo]
+    PAZ --> RESPONSABLES[Crear detalles por responsable]
+    RESPONSABLES --> TOKENS[Enviar enlaces firmados por correo]
+    TOKENS --> RESPUESTAS[Registrar observaciones]
+    RESPUESTAS --> COMPLETO{Todos respondieron}
+    COMPLETO -- No --> RESPUESTAS
+    COMPLETO -- Sí --> CERRAR[Completar y notificar a GH]
+    PAZ --> CANCELAR{GH cancela}
+    CANCELAR -- Sí --> INVALIDAR[Invalidar enlaces y marcar CANCELADO]
+
+    SST --> INCIDENTES[Incidentes y accidentes de trabajo]
+    FACECOL --> CONFIG[Configuración del empleado]
+    FACECOL --> AJUSTES[Ajustes de asistencia]
+    FACECOL --> LIQUIDACION[Liquidación semanal de horas]

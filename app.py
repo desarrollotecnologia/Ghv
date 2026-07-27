@@ -3438,9 +3438,43 @@ def permiso_editar(id):
 
 # ── SOLICITUD DE VACACIONES ───────────────────────────────────
 
-_CEDULAS_VACACIONES_SIN_SABADO = {
-    "1007579486",  # ALVAREZ SAAVEDRA YADIRA - jornada sin sabados.
-}
+_JORNADA_VACACIONES_LUNES_VIERNES = "LUNES_VIERNES"
+_JORNADA_VACACIONES_LUNES_SABADO = "LUNES_SABADO"
+_JORNADA_VACACIONES_MIXTO = "MIXTO"
+
+# Fuente: WorkColbeef Vacaciones.xlsx entregado por GH el 27/07/2026.
+# ponytail: lunes-sabado es la regla general; solo registramos las excepciones.
+_CEDULAS_VACACIONES_LUNES_VIERNES = frozenset({
+    "13542263",
+    "1098673651",
+    "37747995",
+    "1098661407",
+    "43536705",
+    "1095700665",
+    "1098665901",
+    "1098767064",
+    "1095937341",
+    "1098151044",
+    "1098725715",
+    "1098743062",
+    "1095950268",
+    "1098722965",
+    "52822147",
+    "1098763171",
+    "1098752811",
+    "1007579486",
+    "1095838678",
+    "1098772749",
+})
+
+_CEDULAS_VACACIONES_MIXTO = frozenset({
+    "1095820357",
+    "1098640982",
+    "1063625262",
+    "1098824148",
+    "1095914778",
+    "1098698851",
+})
 
 
 def _siguiente_lunes(dia):
@@ -3492,12 +3526,22 @@ def _festivos_colombia(year):
     return fijos | {_siguiente_lunes(dia) for dia in trasladables}
 
 
+def _jornada_vacaciones(id_cedula):
+    cedula = str(id_cedula or "").strip()
+    if cedula in _CEDULAS_VACACIONES_LUNES_VIERNES:
+        return _JORNADA_VACACIONES_LUNES_VIERNES
+    if cedula in _CEDULAS_VACACIONES_MIXTO:
+        return _JORNADA_VACACIONES_MIXTO
+    return _JORNADA_VACACIONES_LUNES_SABADO
+
+
 def _vacaciones_excluye_sabado(id_cedula):
-    return str(id_cedula or "").strip() in _CEDULAS_VACACIONES_SIN_SABADO
+    """Compatibilidad: indica si la jornada nunca cuenta sábados."""
+    return _jornada_vacaciones(id_cedula) == _JORNADA_VACACIONES_LUNES_VIERNES
 
 
 def _calcular_dias_vacaciones(fecha_inicio, fecha_fin, id_cedula=None):
-    """Cuenta dias de vacaciones; domingos y festivos siempre se excluyen."""
+    """Cuenta días pagados según jornada; domingos y festivos nunca cuentan."""
     if not fecha_inicio or not fecha_fin:
         return None
     try:
@@ -3509,13 +3553,21 @@ def _calcular_dias_vacaciones(fecha_inicio, fecha_fin, id_cedula=None):
         return None
     dias = 0
     cursor = inicio
-    excluir_sabado = _vacaciones_excluye_sabado(id_cedula)
+    jornada = _jornada_vacaciones(id_cedula)
+    contar_sabado_mixto = True
     festivos = set()
     for year in range(inicio.year, fin.year + 1):
         festivos.update(_festivos_colombia(year))
     while cursor <= fin:
-        if cursor.weekday() != 6 and cursor not in festivos and not (excluir_sabado and cursor.weekday() == 5):
-            dias += 1
+        if cursor.weekday() != 6 and cursor not in festivos:
+            if cursor.weekday() != 5:
+                dias += 1
+            elif jornada == _JORNADA_VACACIONES_LUNES_SABADO:
+                dias += 1
+            elif jornada == _JORNADA_VACACIONES_MIXTO:
+                if contar_sabado_mixto:
+                    dias += 1
+                contar_sabado_mixto = not contar_sabado_mixto
         cursor += timedelta(days=1)
     return dias
 
@@ -3624,8 +3676,9 @@ def vacaciones_solicitar():
                 empleados=None,
                 is_empleado=is_empleado,
                 empleado_actual=emp_actual,
-                vacaciones_excluye_sabado=_vacaciones_excluye_sabado(id_cedula_empleado),
-                cedulas_vacaciones_sin_sabado=sorted(_CEDULAS_VACACIONES_SIN_SABADO),
+                vacaciones_jornada=_jornada_vacaciones(id_cedula_empleado),
+                cedulas_vacaciones_lunes_viernes=sorted(_CEDULAS_VACACIONES_LUNES_VIERNES),
+                cedulas_vacaciones_mixto=sorted(_CEDULAS_VACACIONES_MIXTO),
                 today=date.today().isoformat(),
             )
     empleados = query("SELECT id_cedula, apellidos_nombre FROM empleado WHERE estado = 'ACTIVO' ORDER BY apellidos_nombre")
@@ -3635,8 +3688,9 @@ def vacaciones_solicitar():
         empleados=empleados,
         is_empleado=False,
         empleado_actual=None,
-        vacaciones_excluye_sabado=False,
-        cedulas_vacaciones_sin_sabado=sorted(_CEDULAS_VACACIONES_SIN_SABADO),
+        vacaciones_jornada=_JORNADA_VACACIONES_LUNES_SABADO,
+        cedulas_vacaciones_lunes_viernes=sorted(_CEDULAS_VACACIONES_LUNES_VIERNES),
+        cedulas_vacaciones_mixto=sorted(_CEDULAS_VACACIONES_MIXTO),
         today=date.today().isoformat(),
     )
 

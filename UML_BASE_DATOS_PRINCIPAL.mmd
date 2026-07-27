@@ -1,0 +1,211 @@
+erDiagram
+    DEPARTAMENTO {
+        int id PK
+        string nombre
+        int presupuestados
+    }
+
+    AREA {
+        int id PK
+        int departamento_id FK
+        string nombre
+        int presupuestados
+    }
+
+    PERFIL_OCUPACIONAL {
+        string id_perfil PK
+        int area_id FK
+        string nombre
+        int presupuestados
+    }
+
+    EMPLEADO {
+        string id_cedula PK
+        string apellidos_nombre
+        string departamento
+        string area
+        string id_perfil_ocupacional
+        string fecha_ingreso
+        string estado
+        string id_user_encargado FK
+    }
+
+    USUARIO {
+        string id_user PK
+        string email
+        string nombre
+        string rol
+        boolean estado
+        string id_cedula
+        boolean debe_cambiar_clave
+    }
+
+    HIJO {
+        string id_hijo PK
+        string id_cedula
+        string apellidos_nombre
+        string fecha_nacimiento
+        string estado
+    }
+
+    ROL {
+        int id PK
+        string nombre
+    }
+
+    ROL_PERMISO {
+        string rol_nombre PK
+        string nivel
+    }
+
+    ROL_MODULO {
+        int id PK
+        string rol_nombre FK
+        string modulo_key
+        boolean visible
+    }
+
+    AUDIT_LOG {
+        int id PK
+        datetime fecha_hora
+        string id_user
+        string accion
+        string modulo
+        string detalle
+    }
+
+    SOLICITUD_PERMISO {
+        int id PK
+        string id_cedula FK
+        string tipo
+        date fecha_desde
+        date fecha_hasta
+        string motivo
+        string evidencia
+        string estado
+        string resuelto_por
+    }
+
+    SOLICITUD_VACACIONES {
+        int id PK
+        string id_cedula FK
+        date fecha_inicio
+        date fecha_fin
+        date fecha_regreso
+        int dias_en_tiempo
+        string estado
+        string resuelto_por
+    }
+
+    SOLICITUD_INCAPACIDAD {
+        int id PK
+        string id_cedula
+        date fecha_desde
+        date fecha_hasta
+        int dias_incapacidad
+        string evidencia
+        string cie11_codigo
+        string origen_atencion
+        string estado
+    }
+
+    RETIRADO {
+        string id_retiro PK
+        string id_cedula
+        string apellidos_nombre
+        string departamento
+        string area
+        string fecha_retiro
+        string tipo_retiro
+    }
+
+    PAZ_SALVO_RETIRO {
+        int id PK
+        string id_retiro
+        string id_cedula
+        boolean incluir_tecnologia
+        boolean incluir_fondo_empleados
+        string estado
+        datetime fecha_creacion
+    }
+
+    PAZ_SALVO_DETALLE {
+        int id PK
+        int paz_salvo_id
+        string area
+        string responsable_nombre
+        string responsable_email
+        string estado
+        string observacion
+        datetime fecha_respuesta
+    }
+
+    INCIDENCIA_AT {
+        int id PK
+        string cedula
+        date fecha_accidente
+        string tipo_evento
+        string cargo
+        string area_ocurrencia
+        int dias_incapacidad
+        string descripcion
+    }
+
+    FACECOL_EMPLOYEE_CONFIG {
+        string id_cedula PK
+        boolean turno_fijo
+        boolean uso_app
+        int dia_descanso
+        int tiempo_almuerzo_minutos
+    }
+
+    FACECOL_ATTENDANCE_ADJUSTMENT {
+        int id PK
+        string id_cedula
+        date work_date
+        time hora_inicio
+        time hora_fin
+        string justificacion
+    }
+
+    FACECOL_LIQUIDACION {
+        int id PK
+        date semana_inicio
+        date semana_fin
+        datetime fecha_generacion
+    }
+
+    FACECOL_LIQUIDACION_DETALLE {
+        int id PK
+        int liquidacion_id
+        string id_cedula
+        decimal horas_totales
+        decimal horas_extra
+        decimal horas_pagables
+    }
+
+    DEPARTAMENTO ||--o{ AREA : contiene
+    AREA ||--o{ PERFIL_OCUPACIONAL : define
+    PERFIL_OCUPACIONAL ||--o{ EMPLEADO : asigna
+    USUARIO ||--o{ EMPLEADO : supervisa
+    EMPLEADO ||--o| USUARIO : vincula
+    EMPLEADO ||--o{ HIJO : registra
+
+    ROL ||--|| ROL_PERMISO : autoriza
+    ROL ||--o{ ROL_MODULO : habilita
+    ROL ||--o{ USUARIO : clasifica
+    USUARIO ||--o{ AUDIT_LOG : genera
+
+    EMPLEADO ||--o{ SOLICITUD_PERMISO : solicita
+    EMPLEADO ||--o{ SOLICITUD_VACACIONES : solicita
+    EMPLEADO ||--o{ SOLICITUD_INCAPACIDAD : reporta
+
+    EMPLEADO ||--o{ RETIRADO : historial
+    RETIRADO ||--o| PAZ_SALVO_RETIRO : origina
+    PAZ_SALVO_RETIRO ||--|{ PAZ_SALVO_DETALLE : contiene
+
+    EMPLEADO ||--o{ INCIDENCIA_AT : presenta
+    EMPLEADO ||--o| FACECOL_EMPLOYEE_CONFIG : configura
+    EMPLEADO ||--o{ FACECOL_ATTENDANCE_ADJUSTMENT : ajusta
+    FACECOL_LIQUIDACION ||--|{ FACECOL_LIQUIDACION_DETALLE : detalla
+    EMPLEADO ||--o{ FACECOL_LIQUIDACION_DETALLE : liquida

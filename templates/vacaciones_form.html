@@ -26,7 +26,7 @@
                 <select name="id_cedula" class="form-input" required id="id_cedula">
                     <option value="">— Seleccionar empleado —</option>
                     {% for e in empleados or [] %}
-                    <option value="{{ e.id_cedula }}" data-excluye-sabado="{{ '1' if e.id_cedula|string in cedulas_vacaciones_sin_sabado|default([]) else '0' }}">{{ e.apellidos_nombre }} ({{ e.id_cedula }})</option>
+                    <option value="{{ e.id_cedula }}" data-jornada-vacaciones="{{ 'LUNES_VIERNES' if e.id_cedula|string in cedulas_vacaciones_lunes_viernes|default([]) else ('MIXTO' if e.id_cedula|string in cedulas_vacaciones_mixto|default([]) else 'LUNES_SABADO') }}">{{ e.apellidos_nombre }} ({{ e.id_cedula }})</option>
                     {% endfor %}
                 </select>
                 {% endif %}
@@ -45,8 +45,8 @@
         <div class="form-row">
             <div class="form-group">
                 <label class="form-label">Días en tiempo</label>
-                <input type="number" name="dias_en_tiempo" id="diasEnTiempo" class="form-input" min="0" placeholder="Se calcula sin domingos ni festivos" readonly>
-                <small class="form-hint" id="diasHint">Se calcula automáticamente descontando domingos y festivos.</small>
+                <input type="number" name="dias_en_tiempo" id="diasEnTiempo" class="form-input" min="0" placeholder="Se calcula según jornada y festivos" readonly>
+                <small class="form-hint" id="diasHint">Se calcula automáticamente según la jornada laboral, sin festivos.</small>
             </div>
             <div class="form-group">
                 <label class="form-label">Días compensados en dinero</label>
@@ -93,12 +93,11 @@
     var dias = document.getElementById('diasEnTiempo');
     var empleado = document.getElementById('id_cedula');
     var diasHint = document.getElementById('diasHint');
-    var excluyeSabadoFijo = {{ 'true' if vacaciones_excluye_sabado else 'false' }};
+    var jornadaFija = {{ vacaciones_jornada|default('LUNES_SABADO')|tojson }};
 
-    function excluyeSabado() {
-        if (excluyeSabadoFijo) return true;
-        if (!empleado || !empleado.selectedOptions || !empleado.selectedOptions.length) return false;
-        return empleado.selectedOptions[0].getAttribute('data-excluye-sabado') === '1';
+    function jornadaVacaciones() {
+        if (!empleado || !empleado.selectedOptions || !empleado.selectedOptions.length) return jornadaFija;
+        return empleado.selectedOptions[0].getAttribute('data-jornada-vacaciones') || 'LUNES_SABADO';
     }
 
     function siguienteLunes(dia) {
@@ -185,21 +184,33 @@
         }
         var total = 0;
         var cursor = new Date(ini.getTime());
-        var sinSabado = excluyeSabado();
+        var jornada = jornadaVacaciones();
+        var contarSabadoMixto = true;
         var festivos = new Set();
         for (var year = ini.getFullYear(); year <= end.getFullYear(); year += 1) {
             festivosColombia(year).forEach(function(dia) { festivos.add(dia); });
         }
         while (cursor <= end) {
             var dia = cursor.getDay();
-            if (dia !== 0 && !festivos.has(keyFecha(cursor)) && !(sinSabado && dia === 6)) total += 1;
+            if (dia !== 0 && !festivos.has(keyFecha(cursor))) {
+                if (dia !== 6 || jornada === 'LUNES_SABADO') {
+                    total += 1;
+                } else if (jornada === 'MIXTO') {
+                    if (contarSabadoMixto) total += 1;
+                    contarSabadoMixto = !contarSabadoMixto;
+                }
+            }
             cursor.setDate(cursor.getDate() + 1);
         }
         if (dias) dias.value = total;
         if (diasHint) {
-            diasHint.textContent = sinSabado
-                ? 'Se calcula automáticamente descontando sábados, domingos y festivos.'
-                : 'Se calcula automáticamente descontando domingos y festivos.';
+            if (jornada === 'LUNES_VIERNES') {
+                diasHint.textContent = 'Jornada lunes a viernes: se descuentan sábados, domingos y festivos.';
+            } else if (jornada === 'MIXTO') {
+                diasHint.textContent = 'Jornada mixta: se cuenta un sábado no festivo sí y el siguiente no.';
+            } else {
+                diasHint.textContent = 'Jornada lunes a sábado: se descuentan domingos y festivos.';
+            }
         }
     }
 
