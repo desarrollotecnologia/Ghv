@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card" style="max-width:960px">
+    <h2 style="margin-bottom:.3rem">{{ 'Nuevo caso' if emp is none else 'Editar caso' }} · Control de estado</h2>
+    <p class="text-muted" style="margin-bottom:1.25rem">
+        Los datos personales se toman de la base de Gestión Humana. Completa el seguimiento médico-laboral.
+    </p>
+
+    {% if emp %}
+    <div class="ce-emp">
+        <div><span class="ce-emp-lbl">Nombre</span><span class="ce-emp-val">{{ emp.apellidos_nombre }}</span></div>
+        <div><span class="ce-emp-lbl">Cédula</span><span class="ce-emp-val">{{ emp.id_cedula }}</span></div>
+        <div><span class="ce-emp-lbl">Edad</span><span class="ce-emp-val">{{ emp.edad if emp.edad is not none else '—' }} años</span></div>
+        <div><span class="ce-emp-lbl">Antigüedad</span><span class="ce-emp-val">{{ emp.antiguedad if emp.antiguedad is not none else '—' }} años</span></div>
+        <div><span class="ce-emp-lbl">Cargo</span><span class="ce-emp-val">{{ emp.cargo or '—' }}</span></div>
+        <div><span class="ce-emp-lbl">Área</span><span class="ce-emp-val">{{ emp.area or '—' }}</span></div>
+    </div>
+    {% endif %}
+
+    <form method="post"
+          action="{{ url_for('control_estado_nuevo') if emp is none else url_for('control_estado_editar', id_cedula=emp.id_cedula) }}">
+
+        {% if emp is none %}
+        <div class="ce-panel">
+            <h3 class="ce-panel-title">Colaborador</h3>
+            <div class="ce-field">
+                <label class="ce-label">Selecciona el colaborador (activos e inactivos sin caso)</label>
+                <select name="id_cedula" class="ce-input" required>
+                    <option value="">— Selecciona —</option>
+                    {% for e in empleados %}
+                    <option value="{{ e.id_cedula }}">{{ e.apellidos_nombre }} · {{ e.id_cedula }}{{ ' · INACTIVO' if e.estado and e.estado != 'ACTIVO' else '' }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="ce-panel">
+            <h3 class="ce-panel-title">Estado</h3>
+            <div class="ce-grid">
+                <div class="ce-field">
+                    <label class="ce-label">Estado</label>
+                    <select name="estado" class="ce-input" id="ceEstadoSel">
+                        <option value="">—</option>
+                        {% for e in estados %}
+                        <option value="{{ e }}" {{ 'selected' if row and row.estado == e else '' }}>{{ e|capitalize }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="ce-field" id="ceFechaEstadoWrap">
+                    <label class="ce-label">Fecha a tener en cuenta (incapacidad)</label>
+                    <input type="date" name="fecha_estado" class="ce-input"
+                           value="{{ row.fecha_estado.strftime('%Y-%m-%d') if row and row.fecha_estado else '' }}">
+                </div>
+                <div class="ce-field">
+                    <label class="ce-label">Contingencia</label>
+                    <select name="contingencia" class="ce-input">
+                        <option value="">—</option>
+                        {% for c in contingencias %}
+                        <option value="{{ c }}" {{ 'selected' if row and row.contingencia == c else '' }}>{{ c }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="ce-field">
+                    <label class="ce-label">Estado de la recomendación</label>
+                    <select name="estado_recomendacion" class="ce-input">
+                        <option value="">—</option>
+                        {% for er in estado_rec %}
+                        <option value="{{ er }}" {{ 'selected' if row and row.estado_recomendacion == er else '' }}>{{ er|capitalize }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="ce-panel">
+            <h3 class="ce-panel-title">Diagnóstico (CIE-10)</h3>
+            <div class="ce-grid">
+                <div class="ce-field ce-col2">
+                    <label class="ce-label">DX: diagnóstico</label>
+                    <textarea name="dx" class="ce-input" rows="2" placeholder="Descripción del diagnóstico">{{ row.dx if row and row.dx else '' }}</textarea>
+                </div>
+                <div class="ce-field">
+                    <label class="ce-label">Código CIE-10 <span class="ce-hint">(autocompleta)</span></label>
+                    <div class="ce-code-row">
+                        <input type="text" name="cie10_codigo" id="ceCodigo" class="ce-input" placeholder="Ej. S82.2"
+                               value="{{ row.cie10_codigo if row and row.cie10_codigo else '' }}">
+                        <button type="button" id="ceBuscar" class="btn btn-outline btn-sm">Buscar</button>
+                    </div>
+                </div>
+                <div class="ce-field ce-col2">
+                    <label class="ce-label">Clasificación DX-C10</label>
+                    <input type="text" name="clasificacion" id="ceClasif" class="ce-input"
+                           value="{{ row.clasificacion if row and row.clasificacion else '' }}">
+                </div>
+                <div class="ce-field">
+                    <label class="ce-label">Agrupado</label>
+                    <input type="text" name="agrupados" id="ceAgrup" class="ce-input"
+                           value="{{ row.agrupados if row and row.agrupados else '' }}">
+                </div>
+            </div>
+        </div>
+
+        <div class="ce-panel">
+            <h3 class="ce-panel-title">Recomendaciones y reubicación</h3>
+            <div class="ce-grid">
+                <div class="ce-field">
+                    <label class="ce-label">Fecha inicio de recomendaciones</label>
+                    <input type="date" name="fecha_inicio_rec" class="ce-input"
+                           value="{{ row.fecha_inicio_rec.strftime('%Y-%m-%d') if row and row.fecha_inicio_rec else '' }}">
+                </div>
+                <div class="ce-field">
+                    <label class="ce-label">Temporalidad</label>
+                    <input type="text" name="temporalidad" class="ce-input" placeholder="Ej. 3 MESES / INDEFINIDA"
+                           value="{{ row.temporalidad if row and row.temporalidad else '' }}">
+                </div>
+                <div class="ce-field">
+                    <label class="ce-label">Complejidad</label>
+                    <select name="complejidad" class="ce-input">
+                        <option value="">—</option>
+                        {% for c in complejidades %}
+                        <option value="{{ c }}" {{ 'selected' if row and row.complejidad == c else '' }}>{{ c|capitalize }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="ce-field ce-col3">
+                    <label class="ce-label">Descripción de las recomendaciones</label>
+                    <textarea name="descripcion_rec" class="ce-input" rows="3">{{ row.descripcion_rec if row and row.descripcion_rec else '' }}</textarea>
+                </div>
+                <div class="ce-field ce-col3">
+                    <label class="ce-label">Seguimiento productivo</label>
+                    <textarea name="seguimiento_productivo" class="ce-input" rows="2">{{ row.seguimiento_productivo if row and row.seguimiento_productivo else '' }}</textarea>
+                </div>
+                <div class="ce-field">
+                    <label class="ce-label">Área reubicado</label>
+                    <input type="text" name="area_reubicado" class="ce-input"
+                           value="{{ row.area_reubicado if row and row.area_reubicado else '' }}">
+                </div>
+                <div class="ce-field">
+                    <label class="ce-label">PCL</label>
+                    <input type="text" name="pcl" class="ce-input" placeholder="Pérdida de capacidad laboral"
+                           value="{{ row.pcl if row and row.pcl else '' }}">
+                </div>
+                <div class="ce-field">
+                    <label class="ce-label">%</label>
+                    <input type="text" name="porcentaje" class="ce-input" placeholder="Ej. 15%"
+                           value="{{ row.porcentaje if row and row.porcentaje else '' }}">
+                </div>
+                <div class="ce-field">
+                    <label class="ce-label">Sindicalizado</label>
+                    <select name="sindicalizado" class="ce-input">
+                        <option value="">—</option>
+                        {% for s in si_no %}
+                        <option value="{{ s }}" {{ 'selected' if row and row.sindicalizado == s else '' }}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="ce-panel">
+            <h3 class="ce-panel-title">Cierre</h3>
+            <div class="ce-grid">
+                <div class="ce-field">
+                    <label class="ce-label">Fecha de cierre</label>
+                    <input type="date" name="fecha_cierre" class="ce-input"
+                           value="{{ row.fecha_cierre.strftime('%Y-%m-%d') if row and row.fecha_cierre else '' }}">
+                </div>
+                <div class="ce-field">
+                    <label class="ce-label">Cierre probable</label>
+                    <select name="cierre_probable" class="ce-input">
+                        <option value="">—</option>
+                        {% for s in si_no %}
+                        <option value="{{ s }}" {{ 'selected' if row and row.cierre_probable == s else '' }}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="ce-field ce-col3">
+                    <label class="ce-label">Motivo de cierre</label>
+                    <textarea name="motivo_cierre" class="ce-input" rows="2">{{ row.motivo_cierre if row and row.motivo_cierre else '' }}</textarea>
+                </div>
+                <div class="ce-field ce-col3">
+                    <label class="ce-label">Mesa laboral</label>
+                    <textarea name="mesa_laboral" class="ce-input" rows="2">{{ row.mesa_laboral if row and row.mesa_laboral else '' }}</textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="ce-actions">
+            <button type="submit" class="btn btn-primary"><span class="material-symbols-outlined">save</span> Guardar</button>
+            <a href="{{ url_for('control_estado_index') }}" class="btn btn-outline">Cancelar</a>
+            {% if emp %}
+            <button type="submit" form="ceDeleteForm" class="btn btn-outline ce-del"
+                    onclick="return confirm('¿Eliminar definitivamente este caso?');">
+                <span class="material-symbols-outlined">delete</span> Eliminar caso
+            </button>
+            {% endif %}
+        </div>
+    </form>
+
+    {% if emp %}
+    <form id="ceDeleteForm" method="post"
+          action="{{ url_for('control_estado_eliminar', id_cedula=emp.id_cedula) }}"></form>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.ce-emp { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.7rem 1.4rem;
+          padding:1rem 1.1rem; margin-bottom:1.25rem; background:#f8fafc; border:1px solid #eef2f6; border-radius:12px; }
+.ce-emp-lbl { display:block; font-size:.7rem; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:.03em; }
+.ce-emp-val { display:block; font-size:.92rem; font-weight:600; color:#0f172a; }
+.ce-panel { border:1px solid #e5e7eb; border-radius:14px; padding:1.1rem 1.25rem; margin-bottom:1.1rem; background:#fff; }
+.ce-panel-title { margin:0 0 1rem; font-size:.95rem; font-weight:700; color:#15803d; padding-bottom:.55rem; border-bottom:1px solid #eef2f6; }
+.ce-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:1rem 1.2rem; }
+@media (max-width:720px) { .ce-grid { grid-template-columns:1fr; } }
+.ce-col2 { grid-column:span 2; } .ce-col3 { grid-column:1 / -1; }
+@media (max-width:720px) { .ce-col2, .ce-col3 { grid-column:auto; } }
+.ce-field { display:flex; flex-direction:column; gap:.35rem; }
+.ce-label { font-size:.72rem; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.03em; }
+.ce-hint { text-transform:none; color:#94a3b8; font-weight:500; }
+.ce-input { width:100%; padding:.55rem .7rem; border:1px solid #d9dee5; border-radius:10px; font-size:.9rem;
+            color:#0f172a; background:#fff; box-sizing:border-box; }
+.ce-input:focus { outline:0; border-color:#2D9E3F; box-shadow:0 0 0 3px rgba(45,158,63,.12); }
+textarea.ce-input { resize:vertical; }
+.ce-code-row { display:flex; gap:.4rem; }
+.ce-code-row .ce-input { flex:1; }
+.ce-actions { display:flex; gap:.6rem; margin-top:.5rem; align-items:center; }
+.ce-del { color:#b91c1c; border-color:#fecaca; margin-left:auto; }
+.ce-del:hover { background:#fef2f2; }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var codigo = document.getElementById('ceCodigo');
+    var clasif = document.getElementById('ceClasif');
+    var agrup = document.getElementById('ceAgrup');
+    var btn = document.getElementById('ceBuscar');
+
+    function lookup() {
+        var v = (codigo.value || '').trim();
+        if (!v) return;
+        fetch('{{ url_for("control_estado_cie10") }}?codigo=' + encodeURIComponent(v))
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (!d || !d.codigo) return;
+                codigo.value = d.codigo;
+                if (d.clasificacion) clasif.value = d.clasificacion;
+                if (d.agrupado) agrup.value = d.agrupado;
+            }).catch(function () {});
+    }
+    if (btn) btn.addEventListener('click', lookup);
+    if (codigo) codigo.addEventListener('blur', lookup);
+
+    // Resaltar la fecha de incapacidad cuando el estado es INCAPACITADO
+    var sel = document.getElementById('ceEstadoSel');
+    var wrap = document.getElementById('ceFechaEstadoWrap');
+    function toggle() { if (wrap) wrap.style.opacity = (sel && sel.value === 'INCAPACITADO') ? '1' : '.55'; }
+    if (sel) { sel.addEventListener('change', toggle); toggle(); }
+});
+</script>
+{% endblock %}

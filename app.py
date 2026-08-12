@@ -23,6 +23,7 @@ from config import Config
 from directorio_colbeef import DEFAULT_XLSX, apply_directorio, load_directorio, area_variants, _normalize_key
 from mail_utils import (
     send_mail,
+    _wrap_html,
     notificar_nueva_solicitud_permiso,
     notificar_resolucion_permiso,
     notificar_resolucion_vacaciones,
@@ -33,6 +34,7 @@ from mail_utils import (
 )
 import tempfile
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+from cie10_data import cie10_lookup
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -422,8 +424,14 @@ def _can_show_switch_to_employee(user):
 
 
 def _is_api_request():
-    """True si la petición espera JSON (rutas /api/ o Accept: application/json)."""
-    return request.path.startswith("/api/") or "application/json" in request.accept_mimetypes
+    """True solo si la petición realmente espera JSON.
+    Ojo: los navegadores mandan Accept con */*, que werkzeug interpreta como que
+    'acepta json'. Por eso exigimos que prefiera JSON y NO acepte HTML, para que
+    una navegación normal reciba el redirect al login y no un JSON de error."""
+    if request.path.startswith("/api/"):
+        return True
+    accept = request.accept_mimetypes
+    return accept.accept_json and not accept.accept_html
 
 
 def _build_email_action_serializer():
@@ -602,6 +610,10 @@ _ROLE_MODULES = {
         "admin_usuarios": True,
         "permisos":     True,   # Solicitud permiso/licencia
         "incapacitados": True,  # Métricas de incapacidades
+        "cursos_alturas": True,
+        "extintores":   True,
+        "emo":          True,
+        "control_estado": True,
     },
     "COORD. GH": {
         "organizacion": True,
@@ -690,6 +702,10 @@ _ROLE_MODULES = {
         "admin":        False,
         "catalogos":    False,
         "permisos":     False,  # GESTOR SST no ve Permisos (solo Incidencias SISO si aplica)
+        "cursos_alturas": True, # Control de cursos de trabajo en alturas
+        "extintores":   True,   # Inventario de extintores / equipos de emergencia
+        "emo":          True,   # Exámenes médicos ocupacionales
+        "control_estado": True, # Seguimiento de casos médico-laborales
     },
     "EMPLEADO": {
         "organizacion": False,
@@ -707,6 +723,10 @@ _ROLE_MODULES = {
     "SISO": {
         "incidencias": True,   # Registro y análisis INATEL (incidentes, accidentes, enfermedades laborales)
         "incidencias_dashboard": True,
+        "cursos_alturas": True,
+        "extintores": True,
+        "emo": True,
+        "control_estado": True,
     },
 }
 
@@ -721,7 +741,7 @@ _DEFAULT_MODULES = {k: False for k in [
     "familia", "eventos", "eps", "fondos",
     "reportes", "dashboard", "total_hijos", "admin", "catalogos", "admin_usuarios", "permisos",
     "incidencias", "incidencias_dashboard", "incapacitados", "suite_principal",
-    "locker",
+    "locker", "cursos_alturas", "extintores", "emo", "control_estado",
 ]}
 
 
@@ -755,6 +775,7 @@ def _normalize_email(s):
 # Módulos del rol exclusivo SISO (siso@colbeef.com). Se suman al rol en BD (p. ej. JEFE INMEDIATO).
 _SISO_COLBEEF_EXTRA_MODULES = (
     "incidencias", "incidencias_dashboard", "personal", "personal_inactivo", "incapacitados",
+    "cursos_alturas", "extintores", "emo", "control_estado",
 )
 
 
@@ -5588,6 +5609,971 @@ def incidencias_eliminar(id):
     execute("DELETE FROM incidencia_at WHERE id = %s", (id,))
     flash("Incidencia eliminada.", "success")
     return redirect(url_for("incidencias_index"))
+
+
+# ── CURSOS DE ALTURAS Y ESPACIOS CONFINADOS – Solo rol SISO ──────────────────
+
+_CURSO_ALTURA_DIAS_AVISO = 15  # <= 15 días para vencer => "POR VENCER" + aviso al jefe SISO
+_CURSO_ALTURA_VIGENCIA_MESES = 18  # el curso vence 18 meses después de la fecha de inicio
+_CURSO_ALTURA_NIVELES = ("REENTRENAMIENTO", "TRABAJADOR AUTORIZADO", "COORDINADOR DE ALTURAS")
+_CURSO_ALTURA_NOVEDADES = ("APTO", "PENDIENTE DE EXAMEN", "NO APTO")
+
+
+def _sumar_meses(d, meses):
+    """Suma 'meses' meses a una fecha, ajustando el día al último válido del mes destino."""
+    import calendar
+    m = d.month - 1 + meses
+    y = d.year + m // 12
+    m = m % 12 + 1
+    return d.replace(year=y, month=m, day=min(d.day, calendar.monthrange(y, m)[1]))
+
+
+def _ensure_curso_altura_table():
+    """Crea la tabla curso_altura si no existe (patrón de _ensure_audit_log_table)."""
+    execute(
+        "CREATE TABLE IF NOT EXISTS curso_altura ("
+        "id INT AUTO_INCREMENT PRIMARY KEY, "
+        "id_cedula VARCHAR(50) NOT NULL, "
+        "operario VARCHAR(200) NOT NULL, "
+        "area VARCHAR(150) NULL, "
+        "fecha_inicio DATE NULL, "
+        "fecha_fin DATE NULL, "
+        "nivel_curso VARCHAR(60) NULL, "
+        "novedad VARCHAR(40) NULL, "
+        "curso VARCHAR(200) NULL, "
+        "notificado_en DATE NULL, "
+        "creado_por VARCHAR(120) NULL, "
+        "creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+        "INDEX idx_curso_altura_cedula (id_cedula), "
+        "INDEX idx_curso_altura_fecha_fin (fecha_fin)"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    )
+
+
+def _curso_altura_estado(fecha_fin, hoy=None, dias_aviso=_CURSO_ALTURA_DIAS_AVISO):
+    """Devuelve (estado, dias_restantes) según la fecha fin.
+    dias_restantes < 0 => VENCIDO; 0..dias_aviso => POR VENCER; > dias_aviso => VIGENTE."""
+    from datetime import date
+    if not fecha_fin:
+        return ("SIN FECHA", None)
+    hoy = hoy or date.today()
+    dias = (fecha_fin - hoy).days
+    if dias < 0:
+        return ("VENCIDO", dias)
+    if dias <= dias_aviso:
+        return ("POR VENCER", dias)
+    return ("VIGENTE", dias)
+
+
+def _curso_altura_empleados_activos():
+    """Empleados activos disponibles para asignar un curso (excluye retirados)."""
+    return query(
+        "SELECT id_cedula, apellidos_nombre, area FROM empleado "
+        "WHERE estado = 'ACTIVO' ORDER BY apellidos_nombre"
+    ) or []
+
+
+def _curso_altura_purgar_retirados():
+    """Elimina cursos de personas que ya NO están activas en WorkColbeef (requisito SISO).
+    Se basa en empleado.estado='ACTIVO' (no en el histórico 'retirado', porque una
+    cédula puede figurar allí y estar hoy activa por recontratación).
+    ponytail: se ejecuta al abrir el listado; guarda contra borrado total si no hay activos."""
+    try:
+        activos = query("SELECT COUNT(*) c FROM empleado WHERE estado = 'ACTIVO'", one=True)
+        if not activos or not activos.get("c"):
+            return
+        execute(
+            "DELETE FROM curso_altura WHERE id_cedula NOT IN "
+            "(SELECT id_cedula FROM empleado WHERE estado = 'ACTIVO')"
+        )
+    except Exception:
+        pass
+
+
+def _curso_altura_email_jefe_siso():
+    return app.config.get("MAIL_SISO") or "siso@colbeef.com"
+
+
+def _email_dias_badge(dias):
+    """Píldora de días restantes con color según urgencia (inline styles para Gmail)."""
+    from html import escape as _e
+    try:
+        d = int(dias)
+    except (TypeError, ValueError):
+        d = None
+    if d is not None and d <= 7:
+        bg, fg = "#fee2e2", "#b91c1c"
+    elif d is not None and d <= 15:
+        bg, fg = "#fef3c7", "#b45309"
+    else:
+        bg, fg = "#e0f2fe", "#0369a1"
+    txt = _e(str(dias)) if dias is not None else "—"
+    return (f'<span style="display:inline-block;min-width:26px;padding:3px 10px;border-radius:999px;'
+            f'background:{bg};color:{fg};font-weight:700;font-size:12px;text-align:center">{txt}</span>')
+
+
+def _email_tabla_aviso(headers, filas):
+    """Tabla HTML con estilos en línea (robusta ante clientes que quitan <style>).
+    headers: [(label, align)]; filas: [[(html, align), ...], ...]."""
+    from html import escape as _e
+    th = "".join(
+        f'<th style="background:#0b3518;color:#eafff0;padding:10px 14px;text-align:{a};'
+        f'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px">{_e(l)}</th>'
+        for (l, a) in headers
+    )
+    trs = []
+    for i, fila in enumerate(filas):
+        bg = "#ffffff" if i % 2 == 0 else "#f6faf6"
+        tds = "".join(
+            f'<td style="padding:10px 14px;border-top:1px solid #e5e7eb;font-size:14px;'
+            f'color:#374151;text-align:{a}">{v}</td>'
+            for (v, a) in fila
+        )
+        trs.append(f'<tr style="background:{bg}">{tds}</tr>')
+    return (
+        '<table role="presentation" cellpadding="0" cellspacing="0" '
+        'style="width:100%;border-collapse:collapse;margin:16px 0 6px;border:1px solid #e5e7eb;'
+        'border-radius:10px;overflow:hidden">'
+        f'<thead><tr>{th}</tr></thead><tbody>{"".join(trs)}</tbody></table>'
+    )
+
+
+def _email_banner(n, texto):
+    """Franja de resumen con acento ámbar (n = cantidad de ítems por vencer)."""
+    return (
+        '<div style="padding:14px 16px;background:#fff7ed;border:1px solid #fed7aa;'
+        'border-left:4px solid #f59e0b;border-radius:8px;margin:0 0 6px;color:#7c2d12;font-size:14px">'
+        f'<span style="font-size:20px;font-weight:800;color:#b45309">{n}</span> {texto}</div>'
+    )
+
+
+def _notificar_cursos_por_vencer(rows_por_vencer):
+    """Envía un único correo al jefe SISO con los cursos por vencer no avisados hoy.
+    Marca notificado_en = hoy para no reenviar el mismo día.
+    ponytail: se dispara al abrir el listado (no hay scheduler); mejora futura: cron diario."""
+    from datetime import date
+    hoy = date.today()
+    pendientes = [r for r in rows_por_vencer if r.get("notificado_en") != hoy]
+    if not pendientes:
+        return False
+    from html import escape as _e
+    pendientes = sorted(pendientes, key=lambda r: (r.get("dias_restantes") is None, r.get("dias_restantes")))
+    headers = [("Operario", "left"), ("Cédula", "left"), ("Área", "left"),
+               ("Vence", "left"), ("Días", "center")]
+    filas = [
+        [
+            (f'<strong style="color:#111827">{_e(str(r.get("operario") or "—"))}</strong>', "left"),
+            (_e(str(r.get("id_cedula") or "—")), "left"),
+            (_e(str(r.get("area") or "—")), "left"),
+            (r["fecha_fin"].strftime("%d/%m/%Y") if r.get("fecha_fin") else "—", "left"),
+            (_email_dias_badge(r.get("dias_restantes")), "center"),
+        ]
+        for r in pendientes
+    ]
+    n = len(pendientes)
+    plural = "curso" if n == 1 else "cursos"
+    body = (
+        "<p>Hola,</p>"
+        + _email_banner(n, f"{plural} de trabajo en alturas próximo(s) a vencer "
+                           f"(faltan {_CURSO_ALTURA_DIAS_AVISO} días o menos).")
+        + "<p>Por favor programar el <strong>reentrenamiento</strong> del personal listado:</p>"
+        + _email_tabla_aviso(headers, filas)
+        + '<p style="color:#6b7280;font-size:13px">Este aviso se genera automáticamente cuando un curso '
+          "queda a 15 días o menos de su vencimiento.</p>"
+    )
+    ok = send_mail(
+        [_curso_altura_email_jefe_siso()],
+        "Cursos de alturas próximos a vencer",
+        _wrap_html(body, "Cursos de alturas próximos a vencer", "Control · Trabajo en alturas"),
+        app=app,
+    )
+    if ok:
+        ids = tuple(r["id"] for r in pendientes)
+        placeholders = ",".join(["%s"] * len(ids))
+        execute(
+            f"UPDATE curso_altura SET notificado_en = %s WHERE id IN ({placeholders})",
+            (hoy,) + ids,
+        )
+    return ok
+
+
+def _curso_altura_revisar_y_notificar():
+    """Detecta cursos a <= 15 días de vencer y avisa al jefe SISO por sí solo.
+    Idempotente por día (usa notificado_en). No depende de que nadie abra el módulo."""
+    from datetime import date
+    try:
+        _ensure_curso_altura_table()
+        hoy = date.today()
+        rows = query(
+            "SELECT id, operario, id_cedula, area, fecha_fin, notificado_en FROM curso_altura"
+        ) or []
+        por_vencer = []
+        for r in rows:
+            estado, dias = _curso_altura_estado(r.get("fecha_fin"), hoy)
+            if estado == "POR VENCER":
+                r["dias_restantes"] = dias
+                por_vencer.append(r)
+        if por_vencer:
+            _notificar_cursos_por_vencer(por_vencer)
+    except Exception:
+        pass
+
+
+_curso_altura_scheduler_started = False
+
+
+def iniciar_scheduler_cursos_alturas(intervalo_horas=12):
+    """Arranca un hilo en segundo plano que revisa vencimientos de cursos de alturas.
+    Se llama desde run.py al iniciar el servidor (no al importar app en scripts).
+    ponytail: scheduler en memoria de un solo proceso; si el servidor está apagado no revisa.
+    Mejora futura: Programador de tareas de Windows / cron llamando a esta función 1 vez/día."""
+    global _curso_altura_scheduler_started
+    if _curso_altura_scheduler_started:
+        return
+    _curso_altura_scheduler_started = True
+    import threading
+    import time
+
+    def _loop():
+        time.sleep(20)  # esperar a que el servidor termine de arrancar
+        while True:
+            _curso_altura_revisar_y_notificar()
+            _extintor_revisar_y_notificar()
+            time.sleep(max(1, intervalo_horas) * 3600)
+
+    threading.Thread(target=_loop, name="cursos-alturas-scheduler", daemon=True).start()
+    if hasattr(app, "logger"):
+        app.logger.info("[Cursos Alturas] Scheduler de vencimientos iniciado (cada %sh).", intervalo_horas)
+
+
+@app.route("/cursos-alturas")
+@login_required
+@module_required("cursos_alturas")
+def cursos_alturas_index():
+    """Listado/semaforización de cursos de alturas. Solo SISO."""
+    from datetime import date
+    _ensure_curso_altura_table()
+    _curso_altura_purgar_retirados()
+    hoy = date.today()
+    rows = query("SELECT * FROM curso_altura ORDER BY fecha_fin IS NULL, fecha_fin ASC, operario ASC") or []
+    conteo = {"VIGENTE": 0, "POR VENCER": 0, "VENCIDO": 0, "SIN FECHA": 0}
+    for r in rows:
+        estado, dias = _curso_altura_estado(r.get("fecha_fin"), hoy)
+        r["estado"] = estado
+        r["dias_restantes"] = dias
+        conteo[estado] = conteo.get(estado, 0) + 1
+    # El aviso de "por vencer" NO se dispara aquí: lo detecta y envía el
+    # scheduler en segundo plano (iniciar_scheduler_cursos_alturas), aunque
+    # nadie abra este módulo.
+    return render_template(
+        "cursos_alturas_list.html",
+        rows=rows,
+        conteo=conteo,
+        dias_aviso=_CURSO_ALTURA_DIAS_AVISO,
+        active_page="Cursos de Alturas",
+    )
+
+
+def _curso_altura_from_form():
+    def _d(k, default=None):
+        v = (request.form.get(k) or "").strip()
+        return v if v else default
+
+    def _date(k):
+        v = _d(k)
+        if not v:
+            return None
+        try:
+            from datetime import datetime
+            return datetime.strptime(v[:10], "%Y-%m-%d").date()
+        except Exception:
+            return None
+
+    fecha_inicio = _date("fecha_inicio")
+    return {
+        "id_cedula": _d("id_cedula"),
+        "operario": _d("operario"),
+        "area": _d("area"),
+        "fecha_inicio": fecha_inicio,
+        # El curso de alturas vence 18 meses después de la fecha de inicio (se calcula solo).
+        "fecha_fin": _sumar_meses(fecha_inicio, _CURSO_ALTURA_VIGENCIA_MESES) if fecha_inicio else None,
+        "nivel_curso": _d("nivel_curso"),
+        "novedad": _d("novedad"),
+        "curso": _d("curso"),
+    }
+
+
+@app.route("/cursos-alturas/nueva", methods=["GET", "POST"])
+@login_required
+@module_required("cursos_alturas")
+def cursos_alturas_nueva():
+    """Alta de curso de alturas. SISO selecciona a la persona (solo activos)."""
+    _ensure_curso_altura_table()
+    if request.method == "POST":
+        data = _curso_altura_from_form()
+        if not data["id_cedula"] or not data["operario"]:
+            flash("Debe seleccionar el operario.", "error")
+            return redirect(url_for("cursos_alturas_nueva"))
+        user = get_current_user()
+        execute(
+            "INSERT INTO curso_altura "
+            "(id_cedula, operario, area, fecha_inicio, fecha_fin, nivel_curso, novedad, curso, creado_por) "
+            "VALUES (%(id_cedula)s, %(operario)s, %(area)s, %(fecha_inicio)s, %(fecha_fin)s, "
+            "%(nivel_curso)s, %(novedad)s, %(curso)s, %(creado_por)s)",
+            {**data, "creado_por": (user or {}).get("email") or (user or {}).get("id_user")},
+        )
+        flash("Curso de alturas registrado.", "success")
+        return redirect(url_for("cursos_alturas_index"))
+    return render_template(
+        "cursos_alturas_form.html",
+        curso=None,
+        empleados=_curso_altura_empleados_activos(),
+        niveles=_CURSO_ALTURA_NIVELES,
+        novedades=_CURSO_ALTURA_NOVEDADES,
+        active_page="Nuevo curso de alturas",
+    )
+
+
+@app.route("/cursos-alturas/<int:id>/editar", methods=["GET", "POST"])
+@login_required
+@module_required("cursos_alturas")
+def cursos_alturas_editar(id):
+    _ensure_curso_altura_table()
+    curso = query("SELECT * FROM curso_altura WHERE id = %s", (id,), one=True)
+    if not curso:
+        flash("Curso no encontrado.", "error")
+        return redirect(url_for("cursos_alturas_index"))
+    if request.method == "POST":
+        data = _curso_altura_from_form()
+        if not data["id_cedula"] or not data["operario"]:
+            flash("Debe seleccionar el operario.", "error")
+            return redirect(url_for("cursos_alturas_editar", id=id))
+        execute(
+            "UPDATE curso_altura SET id_cedula=%(id_cedula)s, operario=%(operario)s, area=%(area)s, "
+            "fecha_inicio=%(fecha_inicio)s, fecha_fin=%(fecha_fin)s, nivel_curso=%(nivel_curso)s, "
+            "novedad=%(novedad)s, curso=%(curso)s, notificado_en=NULL WHERE id=%(id)s",
+            {**data, "id": id},
+        )
+        flash("Curso de alturas actualizado.", "success")
+        return redirect(url_for("cursos_alturas_index"))
+    return render_template(
+        "cursos_alturas_form.html",
+        curso=curso,
+        empleados=_curso_altura_empleados_activos(),
+        niveles=_CURSO_ALTURA_NIVELES,
+        novedades=_CURSO_ALTURA_NOVEDADES,
+        active_page="Editar curso de alturas",
+    )
+
+
+@app.route("/cursos-alturas/<int:id>/eliminar", methods=["POST"])
+@login_required
+@module_required("cursos_alturas")
+def cursos_alturas_eliminar(id):
+    execute("DELETE FROM curso_altura WHERE id = %s", (id,))
+    flash("Curso de alturas eliminado.", "success")
+    return redirect(url_for("cursos_alturas_index"))
+
+
+# ── INVENTARIO DE EXTINTORES / EQUIPOS DE EMERGENCIA – Solo rol SISO ──────────
+
+_EXTINTOR_CLASES = ("MULTIPROPOSITO", "AGUA A PRESION", "SOLKAFLAM", "CO2")
+_EXTINTOR_DIAS_AVISO = 30  # avisar 1 mes antes de vencer
+_MESES_ES = ("ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+             "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE")
+
+
+def _venc_mes_anio(fecha):
+    """Formatea una fecha como 'MES AÑO' (ej. SEPTIEMBRE 2026), como en el Excel."""
+    if not fecha:
+        return None
+    return f"{_MESES_ES[fecha.month - 1]} {fecha.year}"
+
+
+def _ensure_extintor_table():
+    """Crea la tabla extintor_inventario si no existe (misma collation que el resto)."""
+    execute(
+        "CREATE TABLE IF NOT EXISTS extintor_inventario ("
+        "id INT AUTO_INCREMENT PRIMARY KEY, "
+        "clase VARCHAR(40) NULL, "
+        "capacidad VARCHAR(60) NULL, "
+        "fecha_vencimiento DATE NULL, "
+        "centro_costo VARCHAR(120) NULL, "         # se toma de las áreas de GH
+        "area_ubicacion VARCHAR(200) NULL, "       # texto libre (lo escribe SISO)
+        "observaciones VARCHAR(400) NULL, "        # texto libre
+        "notificado_en DATE NULL, "
+        "creado_por VARCHAR(120) NULL, "
+        "creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+        "INDEX idx_extintor_fecha (fecha_vencimiento)"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    )
+
+
+def _extintor_centros_costo():
+    """Opciones de centro de costo tomadas de las áreas registradas en GH."""
+    rows = query(
+        "SELECT DISTINCT area FROM empleado WHERE area IS NOT NULL AND TRIM(area) <> '' ORDER BY area"
+    ) or []
+    return [r["area"] for r in rows]
+
+
+def _notificar_extintores_por_vencer(rows_por_vencer):
+    """Aviso al jefe SISO de extintores próximos a vencer (indica centro de costo y área)."""
+    from datetime import date
+    hoy = date.today()
+    pendientes = [r for r in rows_por_vencer if r.get("notificado_en") != hoy]
+    if not pendientes:
+        return False
+    from html import escape as _e
+    pendientes = sorted(pendientes, key=lambda r: (r.get("dias_restantes") is None, r.get("dias_restantes")))
+    headers = [("Clase", "left"), ("Capacidad", "left"), ("Centro de costo", "left"),
+               ("Área / Ubicación", "left"), ("Vence", "left"), ("Días", "center")]
+    filas = [
+        [
+            (f'<strong style="color:#111827">{_e(str(r.get("clase") or "—"))}</strong>', "left"),
+            (_e(str(r.get("capacidad") or "—")), "left"),
+            (_e(str(r.get("centro_costo") or "—")), "left"),
+            (_e(str(r.get("area_ubicacion") or "—")), "left"),
+            (_e(_venc_mes_anio(r.get("fecha_vencimiento")) or "—"), "left"),
+            (_email_dias_badge(r.get("dias_restantes")), "center"),
+        ]
+        for r in pendientes
+    ]
+    n = len(pendientes)
+    plural = "extintor" if n == 1 else "extintores"
+    body = (
+        "<p>Hola,</p>"
+        + _email_banner(n, f"{plural} próximo(s) a vencer "
+                           f"(faltan {_EXTINTOR_DIAS_AVISO} días o menos).")
+        + "<p>Por favor programar la <strong>recarga / mantenimiento</strong> de los equipos listados:</p>"
+        + _email_tabla_aviso(headers, filas)
+        + '<p style="color:#6b7280;font-size:13px">Este aviso se genera automáticamente un mes antes '
+          "del vencimiento de cada extintor.</p>"
+    )
+    ok = send_mail(
+        [_curso_altura_email_jefe_siso()],
+        "Extintores próximos a vencer",
+        _wrap_html(body, "Extintores próximos a vencer", "Control · Equipos de emergencia"),
+        app=app,
+    )
+    if ok:
+        ids = tuple(r["id"] for r in pendientes)
+        placeholders = ",".join(["%s"] * len(ids))
+        execute(
+            f"UPDATE extintor_inventario SET notificado_en = %s WHERE id IN ({placeholders})",
+            (hoy,) + ids,
+        )
+    return ok
+
+
+def _extintor_revisar_y_notificar():
+    """Detecta extintores a <= 15 días de vencer y avisa al jefe SISO por sí solo."""
+    from datetime import date
+    try:
+        _ensure_extintor_table()
+        hoy = date.today()
+        rows = query(
+            "SELECT id, clase, capacidad, centro_costo, area_ubicacion, fecha_vencimiento, notificado_en "
+            "FROM extintor_inventario"
+        ) or []
+        por_vencer = []
+        for r in rows:
+            estado, dias = _curso_altura_estado(r.get("fecha_vencimiento"), hoy, _EXTINTOR_DIAS_AVISO)
+            if estado == "POR VENCER":
+                r["dias_restantes"] = dias
+                por_vencer.append(r)
+        if por_vencer:
+            _notificar_extintores_por_vencer(por_vencer)
+    except Exception:
+        pass
+
+
+@app.route("/extintores")
+@login_required
+@module_required("extintores")
+def extintores_index():
+    """Inventario/semaforización de extintores. Solo SISO."""
+    from datetime import date
+    _ensure_extintor_table()
+    hoy = date.today()
+    rows = query(
+        "SELECT * FROM extintor_inventario ORDER BY fecha_vencimiento IS NULL, fecha_vencimiento ASC, id ASC"
+    ) or []
+    conteo = {"VIGENTE": 0, "POR VENCER": 0, "VENCIDO": 0, "SIN FECHA": 0}
+    for r in rows:
+        estado, dias = _curso_altura_estado(r.get("fecha_vencimiento"), hoy, _EXTINTOR_DIAS_AVISO)
+        r["estado"] = estado
+        r["dias_restantes"] = dias
+        r["venc_txt"] = _venc_mes_anio(r.get("fecha_vencimiento"))
+        conteo[estado] = conteo.get(estado, 0) + 1
+    # El aviso de "por vencer" lo detecta y envía el scheduler en segundo plano.
+    return render_template(
+        "extintores_list.html",
+        rows=rows,
+        conteo=conteo,
+        dias_aviso=_EXTINTOR_DIAS_AVISO,
+        active_page="Inventario extintores",
+    )
+
+
+def _extintor_from_form():
+    def _d(k, default=None):
+        v = (request.form.get(k) or "").strip()
+        return v if v else default
+
+    def _mes_anio(k):
+        """El vencimiento se maneja por mes/año (input type=month => 'YYYY-MM').
+        Se guarda el último día de ese mes para calcular la semaforización."""
+        v = _d(k)
+        if not v:
+            return None
+        try:
+            import calendar
+            from datetime import date
+            partes = v.split("-")
+            y, m = int(partes[0]), int(partes[1])
+            return date(y, m, calendar.monthrange(y, m)[1])
+        except Exception:
+            return None
+
+    return {
+        "clase": _d("clase"),
+        "capacidad": _d("capacidad"),
+        "fecha_vencimiento": _mes_anio("fecha_vencimiento"),
+        "centro_costo": _d("centro_costo"),
+        "area_ubicacion": _d("area_ubicacion"),
+        "observaciones": _d("observaciones"),
+    }
+
+
+@app.route("/extintores/nuevo", methods=["GET", "POST"])
+@login_required
+@module_required("extintores")
+def extintores_nuevo():
+    _ensure_extintor_table()
+    if request.method == "POST":
+        data = _extintor_from_form()
+        user = get_current_user()
+        execute(
+            "INSERT INTO extintor_inventario "
+            "(clase, capacidad, fecha_vencimiento, centro_costo, area_ubicacion, observaciones, creado_por) "
+            "VALUES (%(clase)s,%(capacidad)s,%(fecha_vencimiento)s,%(centro_costo)s,"
+            "%(area_ubicacion)s,%(observaciones)s,%(creado_por)s)",
+            {**data, "creado_por": (user or {}).get("email") or (user or {}).get("id_user")},
+        )
+        flash("Extintor registrado.", "success")
+        return redirect(url_for("extintores_index"))
+    return render_template(
+        "extintores_form.html",
+        extintor=None,
+        clases=_EXTINTOR_CLASES,
+        centros_costo=_extintor_centros_costo(),
+        active_page="Nuevo extintor",
+    )
+
+
+@app.route("/extintores/<int:id>/editar", methods=["GET", "POST"])
+@login_required
+@module_required("extintores")
+def extintores_editar(id):
+    _ensure_extintor_table()
+    extintor = query("SELECT * FROM extintor_inventario WHERE id = %s", (id,), one=True)
+    if not extintor:
+        flash("Extintor no encontrado.", "error")
+        return redirect(url_for("extintores_index"))
+    if request.method == "POST":
+        data = _extintor_from_form()
+        execute(
+            "UPDATE extintor_inventario SET clase=%(clase)s, capacidad=%(capacidad)s, "
+            "fecha_vencimiento=%(fecha_vencimiento)s, centro_costo=%(centro_costo)s, "
+            "area_ubicacion=%(area_ubicacion)s, observaciones=%(observaciones)s, notificado_en=NULL "
+            "WHERE id=%(id)s",
+            {**data, "id": id},
+        )
+        flash("Extintor actualizado.", "success")
+        return redirect(url_for("extintores_index"))
+    return render_template(
+        "extintores_form.html",
+        extintor=extintor,
+        clases=_EXTINTOR_CLASES,
+        centros_costo=_extintor_centros_costo(),
+        active_page="Editar extintor",
+    )
+
+
+@app.route("/extintores/<int:id>/eliminar", methods=["POST"])
+@login_required
+@module_required("extintores")
+def extintores_eliminar(id):
+    execute("DELETE FROM extintor_inventario WHERE id = %s", (id,))
+    flash("Extintor eliminado.", "success")
+    return redirect(url_for("extintores_index"))
+
+
+# ── EMO – Exámenes Médicos Ocupacionales (control por empleado activo) – SISO ──
+
+_EMO_VIGENCIA_DIAS = 365  # el EMO vence 1 año después del último control
+
+
+def _ensure_emo_table():
+    """Control EMO por empleado (una fila por cédula). Collation igual que empleado."""
+    execute(
+        "CREATE TABLE IF NOT EXISTS emo_control ("
+        "id_cedula VARCHAR(50) PRIMARY KEY, "
+        "fecha_ultimo_control DATE NULL, "
+        "conforme TINYINT(1) NOT NULL DEFAULT 0, "   # OK: recibido y firmado, todo conforme
+        "observaciones VARCHAR(400) NULL, "
+        "actualizado_por VARCHAR(120) NULL, "
+        "actualizado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    )
+
+
+def _emo_estado(fecha_ultimo, hoy=None):
+    """Calcula (estado, fecha_vencimiento, dias_faltantes) desde el último control.
+    Dos estados: VIGENTE / VENCIDA (SIN DATO si no hay fecha)."""
+    from datetime import date, timedelta
+    if not fecha_ultimo:
+        return ("SIN DATO", None, None)
+    hoy = hoy or date.today()
+    venc = fecha_ultimo + timedelta(days=_EMO_VIGENCIA_DIAS)
+    dias = (venc - hoy).days
+    return (("VENCIDA" if dias < 0 else "VIGENTE"), venc, dias)
+
+
+@app.route("/emo")
+@login_required
+@module_required("emo")
+def emo_index():
+    """Control de EMO: lista TODOS los empleados activos (los inactivos no aparecen)."""
+    from datetime import date
+    _ensure_emo_table()
+    hoy = date.today()
+    rows = query(
+        "SELECT e.id_cedula, e.apellidos_nombre, e.area AS proceso, "
+        "p.perfil_ocupacional AS cargo, "
+        "c.fecha_ultimo_control, c.conforme, c.observaciones "
+        "FROM empleado e "
+        "LEFT JOIN perfil_ocupacional p ON p.id_perfil = e.id_perfil_ocupacional "
+        "LEFT JOIN emo_control c ON c.id_cedula = e.id_cedula "
+        "WHERE e.estado = 'ACTIVO' ORDER BY e.apellidos_nombre"
+    ) or []
+    conteo = {"VIGENTE": 0, "VENCIDA": 0, "SIN DATO": 0}
+    for r in rows:
+        estado, venc, dias = _emo_estado(r.get("fecha_ultimo_control"), hoy)
+        r["estado"] = estado
+        r["fecha_vencimiento"] = venc
+        r["dias_faltantes"] = dias
+        conteo[estado] = conteo.get(estado, 0) + 1
+    return render_template("emo_list.html", rows=rows, conteo=conteo, active_page="EMO")
+
+
+@app.route("/emo/<path:id_cedula>/editar", methods=["GET", "POST"])
+@login_required
+@module_required("emo")
+def emo_editar(id_cedula):
+    from datetime import date
+    _ensure_emo_table()
+    emp = query(
+        "SELECT e.id_cedula, e.apellidos_nombre, e.area AS proceso, e.direccion_email, "
+        "p.perfil_ocupacional AS cargo "
+        "FROM empleado e LEFT JOIN perfil_ocupacional p ON p.id_perfil = e.id_perfil_ocupacional "
+        "WHERE e.id_cedula = %s AND e.estado = 'ACTIVO'",
+        (id_cedula,), one=True,
+    )
+    if not emp:
+        flash("Empleado activo no encontrado.", "error")
+        return redirect(url_for("emo_index"))
+    control = query("SELECT * FROM emo_control WHERE id_cedula = %s", (id_cedula,), one=True)
+    if request.method == "POST":
+        def _d(k):
+            v = (request.form.get(k) or "").strip()
+            return v or None
+        fecha = None
+        fv = _d("fecha_ultimo_control")
+        if fv:
+            try:
+                from datetime import datetime
+                fecha = datetime.strptime(fv[:10], "%Y-%m-%d").date()
+            except Exception:
+                fecha = None
+        conforme = 1 if request.form.get("conforme") else 0
+        observaciones = _d("observaciones")
+        user = get_current_user()
+        execute(
+            "INSERT INTO emo_control (id_cedula, fecha_ultimo_control, conforme, observaciones, actualizado_por) "
+            "VALUES (%s,%s,%s,%s,%s) "
+            "ON DUPLICATE KEY UPDATE fecha_ultimo_control=VALUES(fecha_ultimo_control), "
+            "conforme=VALUES(conforme), observaciones=VALUES(observaciones), actualizado_por=VALUES(actualizado_por)",
+            (id_cedula, fecha, conforme, observaciones, (user or {}).get("email") or (user or {}).get("id_user")),
+        )
+        flash("Control EMO actualizado.", "success")
+        return redirect(url_for("emo_index"))
+    estado, venc, dias = _emo_estado((control or {}).get("fecha_ultimo_control"))
+    return render_template(
+        "emo_form.html",
+        emp=emp, control=control, estado=estado, fecha_vencimiento=venc, dias=dias,
+        active_page="EMO",
+    )
+
+
+# ── Control de estado – seguimiento de casos médico-laborales (SISO) ──
+
+_CE_ESTADOS = ("ACTIVO", "CERRADA", "INCAPACITADO")
+_CE_ESTADO_REC = ("ABIERTAS", "CERRADAS")  # estado de la recomendación (lo cambia SISO)
+_CE_CONTINGENCIAS = ("EG", "EL", "AT", "AT/EL")
+_CE_COMPLEJIDADES = ("BAJA", "MEDIA", "ALTA")
+_CE_SI_NO = ("SI", "NO")
+
+
+def _ce_parse_fecha(v):
+    from datetime import date, datetime
+    if v is None or v == "":
+        return None
+    if isinstance(v, datetime):
+        return v.date()
+    if isinstance(v, date):
+        return v
+    s = str(v).strip()
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(s[:10], fmt).date()
+        except ValueError:
+            pass
+    return None
+
+
+def _ce_anios(fecha):
+    """Años cumplidos entre la fecha y hoy (edad / antigüedad)."""
+    from datetime import date
+    d = _ce_parse_fecha(fecha)
+    if not d:
+        return None
+    t = date.today()
+    return t.year - d.year - ((t.month, t.day) < (d.month, d.day))
+
+
+def _ensure_control_estado_table():
+    execute(
+        "CREATE TABLE IF NOT EXISTS control_estado ("
+        "id_cedula VARCHAR(50) PRIMARY KEY, "
+        "estado VARCHAR(20) NULL, "
+        "fecha_estado DATE NULL, "
+        "fecha_inicio_rec DATE NULL, "
+        "dx VARCHAR(500) NULL, "
+        "cie10_codigo VARCHAR(20) NULL, "
+        "clasificacion VARCHAR(300) NULL, "
+        "agrupados VARCHAR(300) NULL, "
+        "contingencia VARCHAR(20) NULL, "
+        "estado_recomendacion VARCHAR(20) NULL, "
+        "fecha_cierre DATE NULL, "
+        "motivo_cierre VARCHAR(500) NULL, "
+        "temporalidad VARCHAR(200) NULL, "
+        "descripcion_rec TEXT NULL, "
+        "seguimiento_productivo TEXT NULL, "
+        "area_reubicado VARCHAR(150) NULL, "
+        "pcl VARCHAR(50) NULL, "
+        "porcentaje VARCHAR(50) NULL, "
+        "complejidad VARCHAR(10) NULL, "
+        "sindicalizado VARCHAR(3) NULL, "
+        "cierre_probable VARCHAR(3) NULL, "
+        "mesa_laboral TEXT NULL, "
+        "actualizado_por VARCHAR(120) NULL, "
+        "actualizado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    )
+    # Migración para tablas ya creadas: agregar columnas nuevas si faltan
+    cols = [c["Field"] for c in (query("SHOW COLUMNS FROM control_estado") or [])]
+    if "porcentaje" not in cols:
+        execute("ALTER TABLE control_estado ADD COLUMN porcentaje VARCHAR(50) NULL AFTER pcl")
+    if "estado_recomendacion" not in cols:
+        execute("ALTER TABLE control_estado ADD COLUMN estado_recomendacion VARCHAR(20) NULL AFTER contingencia")
+
+
+def _ce_parse_temporalidad(texto):
+    """Extrae (unidad, cantidad) de una temporalidad tipo '3 MESES', '20 DÍAS', '2 SEMANAS'.
+    Devuelve None si es indefinida o no tiene una duración clara (p.ej. 'HASTA CONCEPTO...')."""
+    import re
+    if not texto:
+        return None
+    m = re.search(r"(\d+)\s*(MES|SEMAN|D[IÍ]A)", str(texto).upper())
+    if not m:
+        return None
+    n = int(m.group(1))
+    u = m.group(2)
+    if u.startswith("MES"):
+        return ("meses", n)
+    if u.startswith("SEMAN"):
+        return ("semanas", n)
+    return ("dias", n)
+
+
+def _ce_temporalidad_estado(inicio_rec, temporalidad, hoy=None):
+    """Calcula (inician, terminan, dias_restantes, estado) a partir de la fecha de inicio
+    de recomendaciones + la temporalidad. Estado: VIGENTE / VENCIDO (INDEFINIDA si no aplica)."""
+    from datetime import date, timedelta
+    inician = _ce_parse_fecha(inicio_rec)
+    if not inician:
+        return (None, None, None, None)
+    dur = _ce_parse_temporalidad(temporalidad)
+    if not dur:
+        return (inician, None, None, "INDEFINIDA")
+    unidad, n = dur
+    if unidad == "meses":
+        terminan = _sumar_meses(inician, n)
+    elif unidad == "semanas":
+        terminan = inician + timedelta(days=7 * n)
+    else:
+        terminan = inician + timedelta(days=n)
+    hoy = hoy or date.today()
+    dias = (terminan - hoy).days
+    return (inician, terminan, dias, ("VENCIDO" if dias < 0 else "VIGENTE"))
+
+
+def _ce_enriquecer(r):
+    r["edad"] = _ce_anios(r.get("fecha_nacimiento"))
+    r["antiguedad"] = _ce_anios(r.get("fecha_ingreso"))
+    ini, ter, dias, est = _ce_temporalidad_estado(r.get("fecha_inicio_rec"), r.get("temporalidad"))
+    r["temp_inician"] = ini
+    r["temp_terminan"] = ter
+    r["temp_dias"] = dias
+    r["temp_estado"] = est
+    return r
+
+
+@app.route("/control-estado")
+@login_required
+@module_required("control_estado")
+def control_estado_index():
+    _ensure_control_estado_table()
+    rows = query(
+        "SELECT c.*, e.apellidos_nombre, e.fecha_nacimiento, e.fecha_ingreso, "
+        "e.area, e.estado AS estado_empleado, p.perfil_ocupacional AS cargo "
+        "FROM control_estado c "
+        "LEFT JOIN empleado e ON e.id_cedula = c.id_cedula "
+        "LEFT JOIN perfil_ocupacional p ON p.id_perfil = e.id_perfil_ocupacional "
+        "ORDER BY (c.estado='CERRADA'), e.apellidos_nombre"
+    ) or []
+    conteo = {"ACTIVO": 0, "CERRADA": 0, "INCAPACITADO": 0}
+    for r in rows:
+        _ce_enriquecer(r)
+        conteo[r.get("estado")] = conteo.get(r.get("estado"), 0) + 1
+    return render_template("control_estado_list.html", rows=rows, conteo=conteo,
+                           total=len(rows), active_page="Control de estado")
+
+
+@app.route("/control-estado/cie10")
+@login_required
+@module_required("control_estado")
+def control_estado_cie10():
+    """Autocompletado CIE-10: devuelve descripción + agrupado para un código."""
+    res = cie10_lookup(request.args.get("codigo", ""))
+    return jsonify(res or {})
+
+
+def _ce_from_form(form):
+    def _s(k):
+        v = (form.get(k) or "").strip()
+        return v or None
+    codigo = _s("cie10_codigo")
+    look = cie10_lookup(codigo) if codigo else None
+    clasificacion = _s("clasificacion") or (look or {}).get("clasificacion")
+    agrupados = _s("agrupados") or (look or {}).get("agrupado")
+    return {
+        "estado": _s("estado"),
+        "fecha_estado": _ce_parse_fecha(_s("fecha_estado")),
+        "fecha_inicio_rec": _ce_parse_fecha(_s("fecha_inicio_rec")),
+        "dx": _s("dx"),
+        "cie10_codigo": (look or {}).get("codigo") if look else codigo,
+        "clasificacion": clasificacion,
+        "agrupados": agrupados,
+        "contingencia": _s("contingencia"),
+        "estado_recomendacion": _s("estado_recomendacion"),
+        "fecha_cierre": _ce_parse_fecha(_s("fecha_cierre")),
+        "motivo_cierre": _s("motivo_cierre"),
+        "temporalidad": _s("temporalidad"),
+        "descripcion_rec": _s("descripcion_rec"),
+        "seguimiento_productivo": _s("seguimiento_productivo"),
+        "area_reubicado": _s("area_reubicado"),
+        "pcl": _s("pcl"),
+        "porcentaje": _s("porcentaje"),
+        "complejidad": _s("complejidad"),
+        "sindicalizado": _s("sindicalizado"),
+        "cierre_probable": _s("cierre_probable"),
+        "mesa_laboral": _s("mesa_laboral"),
+    }
+
+
+def _ce_upsert(id_cedula, datos):
+    user = get_current_user()
+    datos = dict(datos)
+    datos["id_cedula"] = id_cedula
+    datos["actualizado_por"] = (user or {}).get("email") or (user or {}).get("id_user")
+    cols = list(datos.keys())
+    placeholders = ",".join(["%s"] * len(cols))
+    updates = ",".join(f"{c}=VALUES({c})" for c in cols if c != "id_cedula")
+    execute(
+        f"INSERT INTO control_estado ({','.join(cols)}) VALUES ({placeholders}) "
+        f"ON DUPLICATE KEY UPDATE {updates}",
+        tuple(datos[c] for c in cols),
+    )
+
+
+@app.route("/control-estado/nuevo", methods=["GET", "POST"])
+@login_required
+@module_required("control_estado")
+def control_estado_nuevo():
+    _ensure_control_estado_table()
+    if request.method == "POST":
+        id_cedula = (request.form.get("id_cedula") or "").strip()
+        if not id_cedula:
+            flash("Selecciona un colaborador.", "error")
+            return redirect(url_for("control_estado_nuevo"))
+        _ce_upsert(id_cedula, _ce_from_form(request.form))
+        flash("Caso registrado.", "success")
+        return redirect(url_for("control_estado_index"))
+    empleados = query(
+        "SELECT e.id_cedula, e.apellidos_nombre, e.estado FROM empleado e "
+        "WHERE e.id_cedula NOT IN (SELECT id_cedula FROM control_estado) "
+        "ORDER BY (e.estado <> 'ACTIVO'), e.apellidos_nombre"
+    ) or []
+    return render_template("control_estado_form.html", emp=None, row=None, empleados=empleados,
+                           estados=_CE_ESTADOS, estado_rec=_CE_ESTADO_REC, contingencias=_CE_CONTINGENCIAS,
+                           complejidades=_CE_COMPLEJIDADES, si_no=_CE_SI_NO,
+                           active_page="Control de estado")
+
+
+@app.route("/control-estado/<path:id_cedula>/editar", methods=["GET", "POST"])
+@login_required
+@module_required("control_estado")
+def control_estado_editar(id_cedula):
+    _ensure_control_estado_table()
+    if request.method == "POST":
+        _ce_upsert(id_cedula, _ce_from_form(request.form))
+        flash("Caso actualizado.", "success")
+        return redirect(url_for("control_estado_index"))
+    row = query("SELECT * FROM control_estado WHERE id_cedula = %s", (id_cedula,), one=True)
+    emp = query(
+        "SELECT e.id_cedula, e.apellidos_nombre, e.fecha_nacimiento, e.fecha_ingreso, "
+        "e.area, p.perfil_ocupacional AS cargo "
+        "FROM empleado e LEFT JOIN perfil_ocupacional p ON p.id_perfil = e.id_perfil_ocupacional "
+        "WHERE e.id_cedula = %s", (id_cedula,), one=True,
+    )
+    if emp:
+        _ce_enriquecer(emp)
+    return render_template("control_estado_form.html", emp=emp, row=row, empleados=None,
+                           estados=_CE_ESTADOS, estado_rec=_CE_ESTADO_REC, contingencias=_CE_CONTINGENCIAS,
+                           complejidades=_CE_COMPLEJIDADES, si_no=_CE_SI_NO,
+                           active_page="Control de estado")
+
+
+@app.route("/control-estado/<path:id_cedula>/eliminar", methods=["POST"])
+@login_required
+@module_required("control_estado")
+def control_estado_eliminar(id_cedula):
+    execute("DELETE FROM control_estado WHERE id_cedula = %s", (id_cedula,))
+    flash("Caso eliminado.", "success")
+    return redirect(url_for("control_estado_index"))
 
 
 PERMISOS_EXPORT_COLUMNS = [

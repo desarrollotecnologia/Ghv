@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+
+{% macro estado_badge(e) %}
+    {% if e == 'ACTIVO' %}<span class="ce-badge ce-b-green">Activo</span>
+    {% elif e == 'INCAPACITADO' %}<span class="ce-badge ce-b-amber">Incapacitado</span>
+    {% elif e == 'CERRADA' %}<span class="ce-badge ce-b-gray">Cerrada</span>
+    {% else %}<span class="ce-badge ce-b-gray">—</span>{% endif %}
+{% endmacro %}
+
+{% block content %}
+<div class="card">
+    <div class="ce-head">
+        <p class="text-muted" style="margin:0">
+            Seguimiento de <strong>casos médico-laborales</strong>. SISO registra estado, diagnóstico (CIE-10),
+            contingencia, recomendaciones y cierre de cada colaborador.
+        </p>
+        <a href="{{ url_for('control_estado_nuevo') }}" class="btn btn-primary">
+            <span class="material-symbols-outlined">add</span> Nuevo caso
+        </a>
+    </div>
+
+    <div class="ce-summary">
+        <div class="ce-card" data-estado-filter=""><span class="ce-num">{{ total }}</span><span class="ce-lbl">Casos</span></div>
+        <div class="ce-card ce-c-green" data-estado-filter="ACTIVO"><span class="ce-num">{{ conteo['ACTIVO'] }}</span><span class="ce-lbl">Activos</span></div>
+        <div class="ce-card ce-c-amber" data-estado-filter="INCAPACITADO"><span class="ce-num">{{ conteo['INCAPACITADO'] }}</span><span class="ce-lbl">Incapacitados</span></div>
+        <div class="ce-card ce-c-gray" data-estado-filter="CERRADA"><span class="ce-num">{{ conteo['CERRADA'] }}</span><span class="ce-lbl">Cerradas</span></div>
+    </div>
+
+    {% set areas = rows|map(attribute='area')|select|unique|list|sort %}
+    <div class="ce-toolbar">
+        <div class="ce-search">
+            <span class="material-symbols-outlined">search</span>
+            <input type="text" id="ceFilter" placeholder="Buscar nombre, cédula, diagnóstico..." autocomplete="off">
+        </div>
+        <div class="ce-filter">
+            <span class="material-symbols-outlined">flag</span>
+            <select id="ceEstado">
+                <option value="">Estado: todos</option>
+                <option value="ACTIVO">Activo</option>
+                <option value="INCAPACITADO">Incapacitado</option>
+                <option value="CERRADA">Cerrada</option>
+            </select>
+        </div>
+        <div class="ce-filter">
+            <span class="material-symbols-outlined">medical_information</span>
+            <select id="ceConting">
+                <option value="">Contingencia: todas</option>
+                <option value="EG">EG</option>
+                <option value="EL">EL</option>
+                <option value="AT">AT</option>
+                <option value="AT/EL">AT/EL</option>
+            </select>
+        </div>
+        <div class="ce-filter">
+            <span class="material-symbols-outlined">speed</span>
+            <select id="ceComplej">
+                <option value="">Complejidad: todas</option>
+                <option value="BAJA">Baja</option>
+                <option value="MEDIA">Media</option>
+                <option value="ALTA">Alta</option>
+            </select>
+        </div>
+        <button type="button" id="ceClear" class="btn btn-outline btn-sm">
+            <span class="material-symbols-outlined">filter_alt_off</span> Limpiar
+        </button>
+        <span class="ce-info" id="ceInfo">{{ total }} casos</span>
+    </div>
+
+    <div class="table-wrapper" style="overflow-x:auto">
+        <table class="data-table ce-table" id="ceTable">
+            <thead>
+                <tr>
+                    <th class="ce-sticky">Estado</th>
+                    <th>Cédula</th>
+                    <th>Nombre completo</th>
+                    <th>Nacimiento</th>
+                    <th style="text-align:center">Edad</th>
+                    <th>Ingreso</th>
+                    <th style="text-align:center">Antig.</th>
+                    <th>Cargo</th>
+                    <th>Área</th>
+                    <th>Inicio rec.</th>
+                    <th>DX: Diagnóstico</th>
+                    <th>Clasificación DX-C10</th>
+                    <th>Agrupado</th>
+                    <th>Contingencia</th>
+                    <th>Recomendación</th>
+                    <th>Fecha cierre</th>
+                    <th>Motivo cierre</th>
+                    <th>Temporalidad</th>
+                    <th>Terminan</th>
+                    <th style="text-align:center">Días rest.</th>
+                    <th>Estado temporalidad</th>
+                    <th>Descripción recomendaciones</th>
+                    <th>Seguimiento productivo</th>
+                    <th>Área reubicado</th>
+                    <th>PCL</th>
+                    <th>%</th>
+                    <th>Complejidad</th>
+                    <th>Sindicalizado</th>
+                    <th>Cierre probable</th>
+                    <th>Mesa laboral</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr class="ce-row" data-href="{{ url_for('control_estado_editar', id_cedula=r.id_cedula) }}"
+                    data-estado="{{ r.estado or '' }}" data-conting="{{ r.contingencia or '' }}"
+                    data-complej="{{ r.complejidad or '' }}">
+                    <td class="ce-sticky">{{ estado_badge(r.estado) }}
+                        {% if r.estado == 'INCAPACITADO' and r.fecha_estado %}
+                        <div class="ce-mini">desde {{ r.fecha_estado.strftime('%d/%m/%Y') }}</div>{% endif %}
+                    </td>
+                    <td>{{ r.id_cedula }}</td>
+                    <td class="ce-nowrap">{{ r.apellidos_nombre or '—' }}
+                        {% if r.estado_empleado and r.estado_empleado != 'ACTIVO' %}
+                        <div class="ce-mini ce-inactivo">inactivo en Colbeef</div>{% endif %}
+                    </td>
+                    <td>{{ r.fecha_nacimiento or '—' }}</td>
+                    <td style="text-align:center">{{ r.edad if r.edad is not none else '—' }}</td>
+                    <td>{{ r.fecha_ingreso or '—' }}</td>
+                    <td style="text-align:center">{{ r.antiguedad if r.antiguedad is not none else '—' }}</td>
+                    <td class="ce-nowrap">{{ r.cargo or '—' }}</td>
+                    <td class="ce-nowrap">{{ r.area or '—' }}</td>
+                    <td>{{ r.fecha_inicio_rec.strftime('%d/%m/%Y') if r.fecha_inicio_rec else '—' }}</td>
+                    <td class="ce-clip" title="{{ r.dx or '' }}">{{ r.dx or '—' }}</td>
+                    <td class="ce-clip" title="{{ r.clasificacion or '' }}">{{ r.clasificacion or '—' }}</td>
+                    <td class="ce-clip" title="{{ r.agrupados or '' }}">{{ r.agrupados or '—' }}</td>
+                    <td>{% if r.contingencia %}<span class="ce-badge ce-cont">{{ r.contingencia }}</span>{% else %}—{% endif %}</td>
+                    <td>
+                        {% if r.estado_recomendacion == 'ABIERTAS' %}<span class="ce-badge ce-b-amber">Abiertas</span>
+                        {% elif r.estado_recomendacion == 'CERRADAS' %}<span class="ce-badge ce-b-gray">Cerradas</span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>{{ r.fecha_cierre.strftime('%d/%m/%Y') if r.fecha_cierre else '—' }}</td>
+                    <td class="ce-clip" title="{{ r.motivo_cierre or '' }}">{{ r.motivo_cierre or '—' }}</td>
+                    <td class="ce-nowrap">{{ r.temporalidad or '—' }}</td>
+                    <td>{{ r.temp_terminan.strftime('%d/%m/%Y') if r.temp_terminan else '—' }}</td>
+                    <td style="text-align:center">{{ r.temp_dias if r.temp_dias is not none else '—' }}</td>
+                    <td>
+                        {% if r.temp_estado == 'VIGENTE' %}<span class="ce-badge ce-b-green">Vigente</span>
+                        {% elif r.temp_estado == 'VENCIDO' %}<span class="ce-badge ce-b-red">Vencido</span>
+                        {% elif r.temp_estado == 'INDEFINIDA' %}<span class="ce-badge ce-b-gray">Indefinida</span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td class="ce-clip" title="{{ r.descripcion_rec or '' }}">{{ r.descripcion_rec or '—' }}</td>
+                    <td class="ce-clip" title="{{ r.seguimiento_productivo or '' }}">{{ r.seguimiento_productivo or '—' }}</td>
+                    <td class="ce-nowrap">{{ r.area_reubicado or '—' }}</td>
+                    <td>{{ r.pcl or '—' }}</td>
+                    <td>{{ r.porcentaje or '—' }}</td>
+                    <td>
+                        {% if r.complejidad == 'BAJA' %}<span class="ce-badge ce-b-green">Baja</span>
+                        {% elif r.complejidad == 'MEDIA' %}<span class="ce-badge ce-b-amber">Media</span>
+                        {% elif r.complejidad == 'ALTA' %}<span class="ce-badge ce-b-red">Alta</span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>{{ r.sindicalizado or '—' }}</td>
+                    <td>{{ r.cierre_probable or '—' }}</td>
+                    <td class="ce-clip" title="{{ r.mesa_laboral or '' }}">{{ r.mesa_laboral or '—' }}</td>
+                </tr>
+                {% endfor %}
+                {% if not rows %}
+                <tr><td colspan="29" style="text-align:center; color:#94a3b8; padding:2rem">
+                    Aún no hay casos registrados. Usa <strong>Nuevo caso</strong> para agregar el primero.
+                </td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.ce-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1.1rem; }
+.ce-summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:.85rem; margin-bottom:1.25rem; }
+.ce-card { position:relative; display:flex; flex-direction:column; gap:.15rem; padding:.85rem 1.05rem; border-radius:14px;
+           background:#fff; border:1px solid #e5e7eb; box-shadow:0 1px 2px rgba(16,24,40,.05); cursor:pointer;
+           transition:transform .12s, box-shadow .12s, border-color .12s; }
+.ce-card:hover { transform:translateY(-2px); box-shadow:0 6px 16px rgba(16,24,40,.10); }
+.ce-card::before { content:""; position:absolute; left:0; top:12px; bottom:12px; width:5px; border-radius:0 4px 4px 0; background:#2D9E3F; }
+.ce-c-green::before { background:#16a34a; } .ce-c-amber::before { background:#f59e0b; } .ce-c-gray::before { background:#94a3b8; }
+.ce-num { font-size:1.6rem; font-weight:700; color:#0f172a; line-height:1.1; }
+.ce-lbl { font-size:.8rem; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.03em; }
+.ce-card.ce-sel { border-color:#2D9E3F; background:#f0fdf4; }
+
+.ce-toolbar { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; margin-bottom:1rem; padding:.7rem;
+              background:#f8fafc; border:1px solid #eef2f6; border-radius:14px; }
+.ce-search, .ce-filter { display:flex; align-items:center; gap:.4rem; height:40px; padding:0 .7rem;
+              background:#fff; border:1px solid #d9dee5; border-radius:10px; }
+.ce-search:focus-within, .ce-filter:focus-within { border-color:#2D9E3F; box-shadow:0 0 0 3px rgba(45,158,63,.12); }
+.ce-search .material-symbols-outlined, .ce-filter .material-symbols-outlined { font-size:19px; color:#94a3b8; }
+.ce-search input { border:0; outline:0; background:transparent; font-size:.9rem; min-width:230px; }
+.ce-filter select { border:0; outline:0; background:transparent; font-size:.9rem; cursor:pointer; appearance:none; -webkit-appearance:none; }
+.ce-info { margin-left:auto; font-size:.85rem; font-weight:600; color:#64748b; white-space:nowrap; }
+
+.ce-badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:.74rem; font-weight:600; line-height:1.5; }
+.ce-b-green { background:#dcfce7; color:#15803d; } .ce-b-amber { background:#fef3c7; color:#b45309; }
+.ce-b-red { background:#fee2e2; color:#b91c1c; } .ce-b-gray { background:#f1f5f9; color:#475569; }
+.ce-cont { background:#e0f2fe; color:#0369a1; }
+.ce-clip { max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ce-nowrap { white-space:nowrap; }
+.ce-table { min-width:3100px; border-collapse:separate; border-spacing:0; }
+.ce-table th, .ce-table td { font-size:.83rem; }
+.ce-table th { white-space:nowrap; }
+/* Columna Estado fija a la izquierda y Acciones fija a la derecha */
+.ce-table th.ce-sticky, .ce-table td.ce-sticky { position:sticky; left:0; z-index:2;
+    background:#fff; box-shadow:2px 0 4px -2px rgba(16,24,40,.18); }
+.ce-table thead th.ce-sticky { z-index:3; background:#f9fafb; }
+.ce-table th.ce-sticky-r, .ce-table td.ce-sticky-r { position:sticky; right:0; z-index:2;
+    background:#fff; box-shadow:-2px 0 4px -2px rgba(16,24,40,.18); }
+.ce-table thead th.ce-sticky-r { z-index:3; background:#f9fafb; }
+.ce-table tbody tr.ce-row { cursor:pointer; }
+.ce-table tbody tr:hover td { background:#f6faf6; }
+.ce-table tbody tr:hover td.ce-sticky, .ce-table tbody tr:hover td.ce-sticky-r { background:#f6faf6; }
+.ce-mini { font-size:.72rem; color:#94a3b8; margin-top:2px; }
+.ce-inactivo { color:#b91c1c; }
+.ce-del { color:#b91c1c; border-color:#fecaca; }
+tr.ce-hidden { display:none; }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var table = document.getElementById('ceTable');
+    if (!table || !table.tBodies[0]) return;
+    var input = document.getElementById('ceFilter');
+    var fEstado = document.getElementById('ceEstado');
+    var fCont = document.getElementById('ceConting');
+    var fComp = document.getElementById('ceComplej');
+    var info = document.getElementById('ceInfo');
+    var clear = document.getElementById('ceClear');
+    var rows = Array.prototype.slice.call(table.tBodies[0].querySelectorAll('tr[data-estado]'));
+    var cards = Array.prototype.slice.call(document.querySelectorAll('.ce-summary .ce-card'));
+
+    function apply() {
+        var q = (input.value || '').trim().toLowerCase();
+        var est = fEstado.value, con = fCont.value, com = fComp.value, vis = 0;
+        rows.forEach(function (tr) {
+            var ok = (!q || (tr.textContent || '').toLowerCase().indexOf(q) !== -1)
+                && (!est || tr.getAttribute('data-estado') === est)
+                && (!con || tr.getAttribute('data-conting') === con)
+                && (!com || tr.getAttribute('data-complej') === com);
+            tr.classList.toggle('ce-hidden', !ok);
+            if (ok) vis++;
+        });
+        if (info) info.textContent = vis + ' de ' + rows.length + ' casos';
+        cards.forEach(function (c) { c.classList.toggle('ce-sel', c.getAttribute('data-estado-filter') === fEstado.value); });
+    }
+    [input, fEstado, fCont, fComp].forEach(function (el) { if (el) { el.addEventListener('input', apply); el.addEventListener('change', apply); } });
+    if (clear) clear.addEventListener('click', function () { input.value=''; fEstado.value=''; fCont.value=''; fComp.value=''; apply(); });
+    cards.forEach(function (card) { card.addEventListener('click', function () {
+        var v = card.getAttribute('data-estado-filter') || '';
+        fEstado.value = (fEstado.value === v) ? '' : v; apply();
+    }); });
+
+    rows.forEach(function (tr) {
+        var href = tr.getAttribute('data-href');
+        if (href) tr.addEventListener('click', function () { window.location = href; });
+    });
+    apply();
+});
+</script>
+{% endblock %}

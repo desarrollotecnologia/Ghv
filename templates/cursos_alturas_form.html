@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card" style="max-width:820px">
+    <h2 style="margin-bottom:.35rem">{{ 'Editar curso de alturas' if curso else 'Nuevo curso de alturas' }}</h2>
+    <p class="text-muted" style="margin-bottom:1.25rem">
+        Solo aparecen operarios <strong>activos</strong> de WorkColbeef. El estado (vigente / por vencer / vencido)
+        se calcula automáticamente con la fecha de vencimiento.
+    </p>
+
+    <form method="post" action="{{ url_for('cursos_alturas_editar', id=curso.id) if curso else url_for('cursos_alturas_nueva') }}">
+        <input type="hidden" name="operario" id="ca_operario" value="{{ curso.operario or '' }}">
+
+        <div class="form-section">
+            <h3 class="form-section-title">Operario</h3>
+            <div class="form-grid">
+                <div class="form-group" style="grid-column:1/-1">
+                    <label>Seleccionar operario *</label>
+                    <select name="id_cedula" id="ca_select" class="form-input" required>
+                        <option value="">— Seleccionar —</option>
+                        {% for e in empleados %}
+                        <option value="{{ e.id_cedula }}"
+                                data-nombre="{{ e.apellidos_nombre }}"
+                                data-area="{{ e.area or '' }}"
+                                {{ 'selected' if curso and curso.id_cedula == e.id_cedula else '' }}>
+                            {{ e.apellidos_nombre }} — {{ e.id_cedula }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Área</label>
+                    <input type="text" name="area" id="ca_area" class="form-input" value="{{ curso.area or '' }}" placeholder="Ej. LINEA">
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3 class="form-section-title">Licencia / curso</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Fecha inicio</label>
+                    <input type="date" name="fecha_inicio" id="ca_inicio" class="form-input" value="{{ curso.fecha_inicio.strftime('%Y-%m-%d') if curso and curso.fecha_inicio else '' }}">
+                </div>
+                <div class="form-group">
+                    <label>Fecha fin (vencimiento) <span class="text-muted" style="font-weight:400">· 18 meses automáticos</span></label>
+                    <input type="date" id="ca_fin" class="form-input" readonly
+                           value="{{ curso.fecha_fin.strftime('%Y-%m-%d') if curso and curso.fecha_fin else '' }}"
+                           style="background:#f8fafc; cursor:not-allowed">
+                </div>
+                <div class="form-group">
+                    <label>Nivel de curso</label>
+                    <select name="nivel_curso" class="form-input">
+                        <option value="">— Seleccionar —</option>
+                        {% for n in niveles %}
+                        <option value="{{ n }}" {{ 'selected' if curso and curso.nivel_curso == n else '' }}>{{ n }}</option>
+                        {% endfor %}
+                        {% if curso and curso.nivel_curso and curso.nivel_curso not in niveles %}
+                        <option value="{{ curso.nivel_curso }}" selected>{{ curso.nivel_curso }}</option>
+                        {% endif %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Novedad</label>
+                    <select name="novedad" class="form-input">
+                        <option value="">— Seleccionar —</option>
+                        {% for nv in novedades %}
+                        <option value="{{ nv }}" {{ 'selected' if curso and curso.novedad == nv else '' }}>{{ nv }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" style="grid-column:1/-1">
+                    <label>Curso realizado por</label>
+                    <input type="text" name="curso" class="form-input" value="{{ curso.curso or '' }}" placeholder="Entidad que realizó el curso (texto libre)">
+                </div>
+            </div>
+        </div>
+
+        <div style="display:flex; gap:.6rem; margin-top:1rem">
+            <button type="submit" class="btn btn-primary">
+                <span class="material-symbols-outlined">save</span>
+                Guardar
+            </button>
+            <a href="{{ url_for('cursos_alturas_index') }}" class="btn btn-outline">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var sel = document.getElementById('ca_select');
+    var operario = document.getElementById('ca_operario');
+    var area = document.getElementById('ca_area');
+    if (!sel) return;
+    sel.addEventListener('change', function () {
+        var opt = sel.options[sel.selectedIndex];
+        if (!opt || !opt.value) { operario.value = ''; return; }
+        operario.value = opt.getAttribute('data-nombre') || '';
+        // Sólo autocompleta el área si el usuario aún no la escribió.
+        if (area && !area.value) area.value = opt.getAttribute('data-area') || '';
+    });
+
+    // Fecha fin = fecha inicio + 18 meses (solo visual; el servidor la recalcula al guardar).
+    var inicio = document.getElementById('ca_inicio');
+    var fin = document.getElementById('ca_fin');
+    function calcFin() {
+        if (!inicio || !fin || !inicio.value) { if (fin) fin.value = ''; return; }
+        var p = inicio.value.split('-');
+        var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
+        var day = d.getUTCDate();
+        d.setUTCMonth(d.getUTCMonth() + 18);
+        if (d.getUTCDate() < day) d.setUTCDate(0); // ajustar si el mes destino tiene menos días
+        fin.value = d.toISOString().slice(0, 10);
+    }
+    if (inicio) inicio.addEventListener('change', calcFin);
+});
+</script>
+{% endblock %}

@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+
+{% block page_actions %}
+<a href="{{ url_for('extintores_nuevo') }}" class="btn btn-primary btn-sm">
+    <span class="material-symbols-outlined">add</span>
+    Nuevo extintor
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="overflow-x:auto">
+    <p class="text-muted" style="margin-bottom:1rem">
+        Inventario de <strong>extintores y equipos de emergencia</strong>. SISO registra la clase, capacidad,
+        fecha de vencimiento, centro de costo (áreas de GH), ubicación y observaciones. El sistema calcula los
+        días restantes y avisa al jefe SISO cuando faltan {{ dias_aviso }} días o menos. Rol SISO.
+    </p>
+
+    <div class="ext-summary">
+        <div class="ext-card ext-c-total" data-estado-filter="">
+            <span class="ext-card-num">{{ rows|length }}</span>
+            <span class="ext-card-lbl">Extintores</span>
+        </div>
+        <div class="ext-card ext-c-vigente" data-estado-filter="VIGENTE">
+            <span class="ext-card-num">{{ conteo['VIGENTE'] }}</span>
+            <span class="ext-card-lbl">Vigente</span>
+        </div>
+        <div class="ext-card ext-c-porvencer" data-estado-filter="POR VENCER">
+            <span class="ext-card-num">{{ conteo['POR VENCER'] }}</span>
+            <span class="ext-card-lbl">Por vencer</span>
+        </div>
+        <div class="ext-card ext-c-vencido" data-estado-filter="VENCIDO">
+            <span class="ext-card-num">{{ conteo['VENCIDO'] }}</span>
+            <span class="ext-card-lbl">Vencido</span>
+        </div>
+    </div>
+
+    {% if rows %}
+    {% set centros = rows|map(attribute='centro_costo')|select|unique|list|sort %}
+    <div class="ext-toolbar">
+        <div class="ext-search">
+            <span class="material-symbols-outlined">search</span>
+            <input type="text" id="extFilter" placeholder="Buscar ubicación, capacidad..." autocomplete="off">
+        </div>
+        <div class="ext-filter">
+            <span class="material-symbols-outlined">flag</span>
+            <select id="extEstado">
+                <option value="">Estado: todos</option>
+                <option value="VIGENTE">Vigente</option>
+                <option value="POR VENCER">Por vencer</option>
+                <option value="VENCIDO">Vencido</option>
+                <option value="SIN FECHA">Sin fecha</option>
+            </select>
+        </div>
+        <div class="ext-filter">
+            <span class="material-symbols-outlined">fire_extinguisher</span>
+            <select id="extClase">
+                <option value="">Clase: todas</option>
+                <option value="MULTIPROPOSITO">Multipropósito</option>
+                <option value="AGUA A PRESION">Agua a presión</option>
+                <option value="SOLKAFLAM">Solkaflam</option>
+                <option value="CO2">CO2</option>
+            </select>
+        </div>
+        <div class="ext-filter">
+            <span class="material-symbols-outlined">account_tree</span>
+            <select id="extCentro">
+                <option value="">Centro de costo: todos</option>
+                {% for c in centros %}
+                <option value="{{ c }}">{{ c }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="button" id="extClear" class="btn btn-outline btn-sm ext-clear">
+            <span class="material-symbols-outlined">filter_alt_off</span> Limpiar
+        </button>
+        <span class="ext-info" id="extInfo">{{ rows|length }} registros</span>
+    </div>
+
+    <div class="table-wrapper">
+        <table class="data-table" id="extTable">
+            <thead>
+                <tr>
+                    <th>Clase</th>
+                    <th>Capacidad</th>
+                    <th>Centro de costo</th>
+                    <th>Área / Ubicación</th>
+                    <th>Vencimiento</th>
+                    <th style="text-align:center">Días</th>
+                    <th>Estado</th>
+                    <th>Observaciones</th>
+                    <th style="width:130px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr data-estado="{{ r.estado }}" data-clase="{{ (r.clase or '')|upper }}" data-centro="{{ r.centro_costo or '' }}">
+                    <td>{{ r.clase or '—' }}</td>
+                    <td>{{ r.capacidad or '—' }}</td>
+                    <td>{{ r.centro_costo or '—' }}</td>
+                    <td>{{ r.area_ubicacion or '—' }}</td>
+                    <td>{{ r.venc_txt or '—' }}</td>
+                    <td style="text-align:center">
+                        {% if r.dias_restantes is not none %}
+                            {{ r.dias_restantes if r.dias_restantes >= 0 else '(' ~ (-r.dias_restantes) ~ ' vencido)' }}
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>
+                        {% if r.estado == 'VIGENTE' %}
+                            <span class="ext-badge ext-vigente">Vigente</span>
+                        {% elif r.estado == 'POR VENCER' %}
+                            <span class="ext-badge ext-porvencer">Por vencer</span>
+                        {% elif r.estado == 'VENCIDO' %}
+                            <span class="ext-badge ext-vencido">Vencido</span>
+                        {% else %}
+                            <span class="ext-badge ext-sinfecha">Sin fecha</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ r.observaciones or '—' }}</td>
+                    <td style="text-align:right">
+                        <a href="{{ url_for('extintores_editar', id=r.id) }}" class="btn btn-outline btn-sm">Editar</a>
+                        <form method="post" action="{{ url_for('extintores_eliminar', id=r.id) }}" style="display:inline" onsubmit="return confirm('¿Eliminar este extintor?');">
+                            <button type="submit" class="btn btn-outline btn-sm" style="color:var(--danger)">Eliminar</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-muted">
+        No hay extintores registrados. Use <strong>Nuevo extintor</strong> para agregar uno.
+    </p>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.ext-summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.85rem; margin-bottom:1.25rem; }
+.ext-card { position:relative; display:flex; flex-direction:column; gap:.15rem; padding:.9rem 1.1rem; border-radius:14px;
+           background:#fff; border:1px solid #e5e7eb; box-shadow:0 1px 2px rgba(16,24,40,.05);
+           cursor:pointer; transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
+.ext-card:hover { transform:translateY(-2px); box-shadow:0 6px 16px rgba(16,24,40,.10); }
+.ext-card::before { content:""; position:absolute; left:0; top:12px; bottom:12px; width:5px; border-radius:0 4px 4px 0; background:#cbd5e1; }
+.ext-card-num { font-size:1.7rem; font-weight:700; line-height:1.1; color:#0f172a; }
+.ext-card-lbl { font-size:.82rem; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.03em; }
+.ext-c-total::before    { background:#2D9E3F; }
+.ext-c-vigente::before  { background:#16a34a; }
+.ext-c-porvencer::before{ background:#f59e0b; }
+.ext-c-vencido::before  { background:#ef4444; }
+.ext-c-vigente.ext-sel   { border-color:#16a34a; background:#f0fdf4; }
+.ext-c-porvencer.ext-sel { border-color:#f59e0b; background:#fffbeb; }
+.ext-c-vencido.ext-sel   { border-color:#ef4444; background:#fef2f2; }
+.ext-c-total.ext-sel     { border-color:#2D9E3F; background:#f0fdf4; }
+
+.ext-toolbar { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; margin-bottom:1.1rem;
+              padding:.75rem; background:#f8fafc; border:1px solid #eef2f6; border-radius:14px; }
+.ext-search, .ext-filter { display:flex; align-items:center; gap:.4rem; height:40px; padding:0 .7rem;
+              background:#fff; border:1px solid #d9dee5; border-radius:10px; transition:border-color .12s, box-shadow .12s; }
+.ext-search:focus-within, .ext-filter:focus-within { border-color:#2D9E3F; box-shadow:0 0 0 3px rgba(45,158,63,.12); }
+.ext-search .material-symbols-outlined, .ext-filter .material-symbols-outlined { font-size:19px; color:#94a3b8; }
+.ext-search input { border:0; outline:0; background:transparent; font-size:.9rem; min-width:200px; color:#0f172a; }
+.ext-filter select { border:0; outline:0; background:transparent; font-size:.9rem; color:#0f172a; cursor:pointer;
+              min-width:120px; appearance:none; -webkit-appearance:none; padding-right:.4rem; }
+.ext-clear { height:40px; display:inline-flex; align-items:center; gap:.25rem; }
+.ext-clear .material-symbols-outlined { font-size:18px; }
+.ext-info { margin-left:auto; font-size:.85rem; font-weight:600; color:#64748b; white-space:nowrap; }
+
+tr.ext-hidden { display:none; }
+.ext-badge { display:inline-block; padding:3px 11px; border-radius:999px; font-size:.76rem; font-weight:600; line-height:1.5; }
+.ext-vigente   { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
+.ext-porvencer { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
+.ext-vencido   { background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; }
+.ext-sinfecha  { background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var table = document.getElementById('extTable');
+    if (!table || !table.tBodies[0]) return;
+    var input = document.getElementById('extFilter');
+    var fEstado = document.getElementById('extEstado');
+    var fClase = document.getElementById('extClase');
+    var fCentro = document.getElementById('extCentro');
+    var info = document.getElementById('extInfo');
+    var clear = document.getElementById('extClear');
+    var rows = Array.prototype.slice.call(table.tBodies[0].querySelectorAll('tr'));
+    var cards = Array.prototype.slice.call(document.querySelectorAll('.ext-summary .ext-card'));
+
+    function apply() {
+        var q = (input.value || '').trim().toLowerCase();
+        var est = fEstado.value, cla = fClase.value, cen = fCentro.value;
+        var visibles = 0;
+        rows.forEach(function (tr) {
+            var ok = (!q || (tr.textContent || '').toLowerCase().indexOf(q) !== -1)
+                && (!est || tr.getAttribute('data-estado') === est)
+                && (!cla || tr.getAttribute('data-clase') === cla)
+                && (!cen || tr.getAttribute('data-centro') === cen);
+            tr.classList.toggle('ext-hidden', !ok);
+            if (ok) visibles++;
+        });
+        if (info) info.textContent = visibles + ' de ' + rows.length + ' registros';
+        cards.forEach(function (c) {
+            c.classList.toggle('ext-sel', c.getAttribute('data-estado-filter') === fEstado.value);
+        });
+    }
+
+    [input, fEstado, fClase, fCentro].forEach(function (el) {
+        if (!el) return;
+        el.addEventListener('input', apply);
+        el.addEventListener('change', apply);
+    });
+    if (clear) clear.addEventListener('click', function () {
+        input.value = ''; fEstado.value = ''; fClase.value = ''; fCentro.value = '';
+        apply();
+    });
+    cards.forEach(function (card) {
+        card.addEventListener('click', function () {
+            var val = card.getAttribute('data-estado-filter') || '';
+            fEstado.value = (fEstado.value === val) ? '' : val;
+            apply();
+        });
+    });
+
+    apply();
+});
+</script>
+{% endblock %}

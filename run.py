@@ -15,7 +15,7 @@ Para conocer la IP de esta maquina en red:
 
 import socket
 from waitress import serve
-from app import app
+from app import app, iniciar_scheduler_cursos_alturas
 
 HOST = "0.0.0.0"   # Acepta conexiones desde cualquier maquina en la red
 PORT = 5000
@@ -37,5 +37,8 @@ if __name__ == "__main__":
     print(f"  Red LAN:    http://{local_ip}:{PORT}")
     print("  Para detener el servidor: Ctrl+C")
     print("=" * 55)
+
+    # Detector automático de cursos de alturas próximos a vencer (avisa al jefe SISO).
+    iniciar_scheduler_cursos_alturas(intervalo_horas=12)
 
     serve(app, host=HOST, port=PORT, threads=8)

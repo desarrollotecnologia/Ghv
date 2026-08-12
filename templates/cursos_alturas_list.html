@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+
+{% block page_actions %}
+<a href="{{ url_for('cursos_alturas_nueva') }}" class="btn btn-primary btn-sm">
+    <span class="material-symbols-outlined">add</span>
+    Nuevo curso
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="overflow-x:auto">
+    <p class="text-muted" style="margin-bottom:1rem">
+        Control de licencias de <strong>trabajo en alturas y espacios confinados</strong>. SISO selecciona al operario
+        (solo personal activo) y registra manualmente la fecha de inicio y de vencimiento. El sistema calcula los días
+        restantes y avisa al jefe SISO cuando faltan {{ dias_aviso }} días o menos. Rol SISO.
+    </p>
+
+    <div class="ca-summary">
+        <div class="ca-card ca-c-total" data-estado-filter="">
+            <span class="ca-card-num">{{ rows|length }}</span>
+            <span class="ca-card-lbl">Registros</span>
+        </div>
+        <div class="ca-card ca-c-vigente" data-estado-filter="VIGENTE">
+            <span class="ca-card-num">{{ conteo['VIGENTE'] }}</span>
+            <span class="ca-card-lbl">Vigente</span>
+        </div>
+        <div class="ca-card ca-c-porvencer" data-estado-filter="POR VENCER">
+            <span class="ca-card-num">{{ conteo['POR VENCER'] }}</span>
+            <span class="ca-card-lbl">Por vencer</span>
+        </div>
+        <div class="ca-card ca-c-vencido" data-estado-filter="VENCIDO">
+            <span class="ca-card-num">{{ conteo['VENCIDO'] }}</span>
+            <span class="ca-card-lbl">Vencido</span>
+        </div>
+    </div>
+
+    {% if rows %}
+    {% set areas = rows|map(attribute='area')|select|unique|list|sort %}
+    <div class="ca-toolbar">
+        <div class="ca-search">
+            <span class="material-symbols-outlined">search</span>
+            <input type="text" id="caFilter" placeholder="Buscar operario o cédula..." autocomplete="off">
+        </div>
+        <div class="ca-filter">
+            <span class="material-symbols-outlined">flag</span>
+            <select id="caEstado">
+                <option value="">Estado: todos</option>
+                <option value="VIGENTE">Vigente</option>
+                <option value="POR VENCER">Por vencer</option>
+                <option value="VENCIDO">Vencido</option>
+                <option value="SIN FECHA">Sin fecha</option>
+            </select>
+        </div>
+        <div class="ca-filter">
+            <span class="material-symbols-outlined">workspace_premium</span>
+            <select id="caNivel">
+                <option value="">Nivel: todos</option>
+                <option value="REENTRENAMIENTO">Reentrenamiento</option>
+                <option value="TRABAJADOR AUTORIZADO">Trabajador autorizado</option>
+                <option value="COORDINADOR DE ALTURAS">Coordinador de alturas</option>
+            </select>
+        </div>
+        <div class="ca-filter">
+            <span class="material-symbols-outlined">check_circle</span>
+            <select id="caNovedad">
+                <option value="">Novedad: todas</option>
+                <option value="APTO">Apto</option>
+                <option value="PENDIENTE DE EXAMEN">Pendiente de examen</option>
+                <option value="NO APTO">No apto</option>
+            </select>
+        </div>
+        <div class="ca-filter">
+            <span class="material-symbols-outlined">apartment</span>
+            <select id="caArea">
+                <option value="">Área: todas</option>
+                {% for a in areas %}
+                <option value="{{ a }}">{{ a }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="button" id="caClear" class="btn btn-outline btn-sm ca-clear">
+            <span class="material-symbols-outlined">filter_alt_off</span> Limpiar
+        </button>
+        <span class="ca-info" id="caInfo">{{ rows|length }} registros</span>
+    </div>
+
+    <div class="table-wrapper">
+        <table class="data-table" id="caTable">
+            <thead>
+                <tr>
+                    <th>Operario</th>
+                    <th>Cédula</th>
+                    <th>Área</th>
+                    <th>Fecha inicio</th>
+                    <th>Fecha fin</th>
+                    <th style="text-align:center">Días</th>
+                    <th>Estado</th>
+                    <th>Nivel de curso</th>
+                    <th>Novedad</th>
+                    <th>Curso realizado por</th>
+                    <th style="width:130px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr data-estado="{{ r.estado }}" data-nivel="{{ r.nivel_curso or '' }}" data-novedad="{{ (r.novedad or '')|upper }}" data-area="{{ r.area or '' }}">
+                    <td>{{ r.operario or '—' }}</td>
+                    <td>{{ r.id_cedula or '—' }}</td>
+                    <td>{{ r.area or '—' }}</td>
+                    <td>{{ r.fecha_inicio.strftime('%d/%m/%Y') if r.fecha_inicio else '—' }}</td>
+                    <td>{{ r.fecha_fin.strftime('%d/%m/%Y') if r.fecha_fin else '—' }}</td>
+                    <td style="text-align:center">
+                        {% if r.dias_restantes is not none %}
+                            {{ r.dias_restantes if r.dias_restantes >= 0 else '(' ~ (-r.dias_restantes) ~ ' vencido)' }}
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>
+                        {% if r.estado == 'VIGENTE' %}
+                            <span class="ca-badge ca-vigente">Vigente</span>
+                        {% elif r.estado == 'POR VENCER' %}
+                            <span class="ca-badge ca-porvencer">Por vencer</span>
+                        {% elif r.estado == 'VENCIDO' %}
+                            <span class="ca-badge ca-vencido">Vencido</span>
+                        {% else %}
+                            <span class="ca-badge ca-sinfecha">Sin fecha</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ r.nivel_curso or '—' }}</td>
+                    <td>
+                        {% set _nv = (r.novedad or '')|upper %}
+                        {% if _nv == 'APTO' %}
+                            <span class="ca-badge ca-vigente">Apto</span>
+                        {% elif _nv == 'NO APTO' %}
+                            <span class="ca-badge ca-vencido">No apto</span>
+                        {% elif _nv == 'PENDIENTE DE EXAMEN' %}
+                            <span class="ca-badge ca-porvencer">Pendiente de examen</span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>{{ r.curso or '—' }}</td>
+                    <td style="text-align:right">
+                        <a href="{{ url_for('cursos_alturas_editar', id=r.id) }}" class="btn btn-outline btn-sm">Editar</a>
+                        <form method="post" action="{{ url_for('cursos_alturas_eliminar', id=r.id) }}" style="display:inline" onsubmit="return confirm('¿Eliminar este registro?');">
+                            <button type="submit" class="btn btn-outline btn-sm" style="color:var(--danger)">Eliminar</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-muted">
+        No hay cursos registrados. Use <strong>Nuevo curso</strong> para asignar un curso de alturas a un operario activo.
+    </p>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+/* Tarjetas resumen (semáforo) */
+.ca-summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.85rem; margin-bottom:1.25rem; }
+.ca-card { position:relative; display:flex; flex-direction:column; gap:.15rem; padding:.9rem 1.1rem; border-radius:14px;
+           background:#fff; border:1px solid #e5e7eb; box-shadow:0 1px 2px rgba(16,24,40,.05);
+           cursor:pointer; transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
+.ca-card:hover { transform:translateY(-2px); box-shadow:0 6px 16px rgba(16,24,40,.10); }
+.ca-card::before { content:""; position:absolute; left:0; top:12px; bottom:12px; width:5px; border-radius:0 4px 4px 0; background:#cbd5e1; }
+.ca-card-num { font-size:1.7rem; font-weight:700; line-height:1.1; color:#0f172a; }
+.ca-card-lbl { font-size:.82rem; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.03em; }
+.ca-c-total::before    { background:#2D9E3F; }
+.ca-c-vigente::before  { background:#16a34a; }
+.ca-c-porvencer::before{ background:#f59e0b; }
+.ca-c-vencido::before  { background:#ef4444; }
+.ca-c-vigente.ca-sel   { border-color:#16a34a; background:#f0fdf4; }
+.ca-c-porvencer.ca-sel { border-color:#f59e0b; background:#fffbeb; }
+.ca-c-vencido.ca-sel   { border-color:#ef4444; background:#fef2f2; }
+.ca-c-total.ca-sel     { border-color:#2D9E3F; background:#f0fdf4; }
+
+/* Barra de filtros */
+.ca-toolbar { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; margin-bottom:1.1rem;
+              padding:.75rem; background:#f8fafc; border:1px solid #eef2f6; border-radius:14px; }
+.ca-search, .ca-filter { display:flex; align-items:center; gap:.4rem; height:40px; padding:0 .7rem;
+              background:#fff; border:1px solid #d9dee5; border-radius:10px; transition:border-color .12s, box-shadow .12s; }
+.ca-search:focus-within, .ca-filter:focus-within { border-color:#2D9E3F; box-shadow:0 0 0 3px rgba(45,158,63,.12); }
+.ca-search .material-symbols-outlined, .ca-filter .material-symbols-outlined { font-size:19px; color:#94a3b8; }
+.ca-search input { border:0; outline:0; background:transparent; font-size:.9rem; min-width:220px; color:#0f172a; }
+.ca-filter select { border:0; outline:0; background:transparent; font-size:.9rem; color:#0f172a; cursor:pointer;
+              min-width:120px; appearance:none; -webkit-appearance:none; padding-right:.4rem; }
+.ca-clear { height:40px; display:inline-flex; align-items:center; gap:.25rem; }
+.ca-clear .material-symbols-outlined { font-size:18px; }
+.ca-info { margin-left:auto; font-size:.85rem; font-weight:600; color:#64748b; white-space:nowrap; }
+
+tr.ca-hidden { display:none; }
+.ca-badge { display:inline-block; padding:3px 11px; border-radius:999px; font-size:.76rem; font-weight:600; line-height:1.5; }
+.ca-vigente   { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
+.ca-porvencer { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
+.ca-vencido   { background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; }
+.ca-sinfecha  { background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var table = document.getElementById('caTable');
+    if (!table || !table.tBodies[0]) return;
+    var input = document.getElementById('caFilter');
+    var fEstado = document.getElementById('caEstado');
+    var fNivel = document.getElementById('caNivel');
+    var fNovedad = document.getElementById('caNovedad');
+    var fArea = document.getElementById('caArea');
+    var info = document.getElementById('caInfo');
+    var clear = document.getElementById('caClear');
+    var rows = Array.prototype.slice.call(table.tBodies[0].querySelectorAll('tr'));
+
+    function apply() {
+        var q = (input.value || '').trim().toLowerCase();
+        var est = fEstado.value, niv = fNivel.value, nov = fNovedad.value, are = fArea.value;
+        var visibles = 0;
+        rows.forEach(function (tr) {
+            var ok = (!q || (tr.textContent || '').toLowerCase().indexOf(q) !== -1)
+                && (!est || tr.getAttribute('data-estado') === est)
+                && (!niv || tr.getAttribute('data-nivel') === niv)
+                && (!nov || tr.getAttribute('data-novedad') === nov)
+                && (!are || tr.getAttribute('data-area') === are);
+            tr.classList.toggle('ca-hidden', !ok);
+            if (ok) visibles++;
+        });
+        if (info) info.textContent = visibles + ' de ' + rows.length + ' registros';
+        cards.forEach(function (c) {
+            c.classList.toggle('ca-sel', c.getAttribute('data-estado-filter') === fEstado.value);
+        });
+    }
+
+    [input, fEstado, fNivel, fNovedad, fArea].forEach(function (el) {
+        if (!el) return;
+        el.addEventListener('input', apply);
+        el.addEventListener('change', apply);
+    });
+    if (clear) clear.addEventListener('click', function () {
+        input.value = ''; fEstado.value = ''; fNivel.value = ''; fNovedad.value = ''; fArea.value = '';
+        apply();
+    });
+
+    // Filtro rápido: clic en las tarjetas de resumen.
+    var cards = Array.prototype.slice.call(document.querySelectorAll('.ca-summary .ca-card'));
+    cards.forEach(function (card) {
+        card.addEventListener('click', function () {
+            var val = card.getAttribute('data-estado-filter') || '';
+            fEstado.value = (fEstado.value === val) ? '' : val;
+            apply();
+        });
+    });
+
+    apply();
+});
+</script>
+{% endblock %}

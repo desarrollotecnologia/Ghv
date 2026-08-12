@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card" style="max-width:820px">
+    <h2 style="margin-bottom:.35rem">{{ 'Editar extintor' if extintor else 'Nuevo extintor' }}</h2>
+    <p class="text-muted" style="margin-bottom:1.25rem">
+        El estado (vigente / por vencer / vencido) se calcula con la fecha de vencimiento. El centro de costo
+        se toma de las áreas de Gestión Humana; el área/ubicación y las observaciones son de texto libre.
+    </p>
+
+    <form method="post" action="{{ url_for('extintores_editar', id=extintor.id) if extintor else url_for('extintores_nuevo') }}">
+        <div class="form-section">
+            <h3 class="form-section-title">Equipo</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Clase</label>
+                    <select name="clase" class="form-input">
+                        <option value="">— Seleccionar —</option>
+                        {% for c in clases %}
+                        <option value="{{ c }}" {{ 'selected' if extintor and (extintor.clase or '')|upper|trim == c else '' }}>{{ c }}</option>
+                        {% endfor %}
+                        {% if extintor and extintor.clase and (extintor.clase|upper|trim) not in clases %}
+                        <option value="{{ extintor.clase }}" selected>{{ extintor.clase }}</option>
+                        {% endif %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Capacidad</label>
+                    <input type="text" name="capacidad" class="form-input" value="{{ extintor.capacidad or '' }}" placeholder="Ej. 10 LIBRAS, 3700 gr">
+                </div>
+                <div class="form-group">
+                    <label>Vencimiento (mes / año)</label>
+                    <input type="month" name="fecha_vencimiento" class="form-input" value="{{ extintor.fecha_vencimiento.strftime('%Y-%m') if extintor and extintor.fecha_vencimiento else '' }}">
+                </div>
+                <div class="form-group">
+                    <label>Centro de costo</label>
+                    <select name="centro_costo" class="form-input">
+                        <option value="">— Seleccionar —</option>
+                        {% for c in centros_costo %}
+                        <option value="{{ c }}" {{ 'selected' if extintor and extintor.centro_costo == c else '' }}>{{ c }}</option>
+                        {% endfor %}
+                        {% if extintor and extintor.centro_costo and extintor.centro_costo not in centros_costo %}
+                        <option value="{{ extintor.centro_costo }}" selected>{{ extintor.centro_costo }}</option>
+                        {% endif %}
+                    </select>
+                </div>
+                <div class="form-group" style="grid-column:1/-1">
+                    <label>Área / Ubicación</label>
+                    <input type="text" name="area_ubicacion" class="form-input" value="{{ extintor.area_ubicacion or '' }}" placeholder="Ej. PARED ENTRADA OFICINA, CASINO...">
+                </div>
+                <div class="form-group" style="grid-column:1/-1">
+                    <label>Observaciones</label>
+                    <textarea name="observaciones" class="form-input" rows="3" placeholder="Texto libre (opcional)">{{ extintor.observaciones or '' }}</textarea>
+                </div>
+            </div>
+        </div>
+
+        <div style="display:flex; gap:.6rem; margin-top:1rem">
+            <button type="submit" class="btn btn-primary">
+                <span class="material-symbols-outlined">save</span>
+                Guardar
+            </button>
+            <a href="{{ url_for('extintores_index') }}" class="btn btn-outline">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

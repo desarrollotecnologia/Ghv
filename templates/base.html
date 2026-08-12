@@ -323,6 +323,36 @@
         </div>
         {% endif %}
 
+        {% if vm.cursos_alturas or vm.extintores or vm.emo or vm.control_estado %}
+        <div class="sidebar-section">
+            <span class="sidebar-label">Control</span>
+            {% if vm.cursos_alturas %}
+            <a href="{{ url_for('cursos_alturas_index') }}" class="nav-item {{ 'active' if active_page == 'Cursos de Alturas' else '' }}">
+                <span class="material-symbols-outlined">height</span>
+                <span class="nav-label">Control de alturas</span>
+            </a>
+            {% endif %}
+            {% if vm.extintores %}
+            <a href="{{ url_for('extintores_index') }}" class="nav-item {{ 'active' if active_page == 'Inventario extintores' else '' }}">
+                <span class="material-symbols-outlined">fire_extinguisher</span>
+                <span class="nav-label">Inventario extintores</span>
+            </a>
+            {% endif %}
+            {% if vm.emo %}
+            <a href="{{ url_for('emo_index') }}" class="nav-item {{ 'active' if active_page == 'EMO' else '' }}">
+                <span class="material-symbols-outlined">medical_services</span>
+                <span class="nav-label">EMO</span>
+            </a>
+            {% endif %}
+            {% if vm.control_estado %}
+            <a href="{{ url_for('control_estado_index') }}" class="nav-item {{ 'active' if active_page == 'Control de estado' else '' }}">
+                <span class="material-symbols-outlined">clinical_notes</span>
+                <span class="nav-label">Control de estado</span>
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
+
         {% if vm.eps or vm.fondos %}
         <div class="sidebar-section">
             <span class="sidebar-label">Beneficios</span>

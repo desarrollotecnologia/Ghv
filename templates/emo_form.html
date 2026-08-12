@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card" style="max-width:760px">
+    <h2 style="margin-bottom:.35rem">Control EMO</h2>
+    <p class="text-muted" style="margin-bottom:1.25rem">
+        Registra la fecha del último examen médico ocupacional. El vencimiento (1 año) y el estado se calculan solos.
+    </p>
+
+    <div class="emo-emp">
+        <div><span class="emo-emp-lbl">Nombre</span><span class="emo-emp-val">{{ emp.apellidos_nombre }}</span></div>
+        <div><span class="emo-emp-lbl">Documento</span><span class="emo-emp-val">{{ emp.id_cedula }}</span></div>
+        <div><span class="emo-emp-lbl">Cargo</span><span class="emo-emp-val">{{ emp.cargo or '—' }}</span></div>
+        <div><span class="emo-emp-lbl">Proceso</span><span class="emo-emp-val">{{ emp.proceso or '—' }}</span></div>
+    </div>
+
+    <form method="post" action="{{ url_for('emo_editar', id_cedula=emp.id_cedula) }}">
+        <div class="emo-panel">
+            <h3 class="emo-panel-title">Datos del control</h3>
+
+            <div class="emo-row">
+                <div class="emo-field">
+                    <label class="emo-label">Fecha del último control</label>
+                    <input type="date" name="fecha_ultimo_control" class="emo-input"
+                           value="{{ control.fecha_ultimo_control.strftime('%Y-%m-%d') if control and control.fecha_ultimo_control else '' }}">
+                </div>
+                <div class="emo-field">
+                    <label class="emo-label">Estado (automático)</label>
+                    <div class="emo-estado-box">
+                        {% if estado == 'VIGENTE' %}
+                            <span class="emo-badge emo-vigente">Vigente</span>
+                        {% elif estado == 'VENCIDA' %}
+                            <span class="emo-badge emo-vencida">Vencida</span>
+                        {% else %}
+                            <span class="emo-badge emo-sindato">Sin dato</span>
+                        {% endif %}
+                        {% if fecha_vencimiento %}
+                        <span class="text-muted">Vence {{ fecha_vencimiento.strftime('%d/%m/%Y') }}{% if dias is not none %} · {{ dias }} días{% endif %}</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <label class="emo-check">
+                <input type="checkbox" name="conforme" value="1" {{ 'checked' if control and control.conforme else '' }}>
+                <span>Todo OK — la persona recibió todo, firmó y está conforme</span>
+            </label>
+
+            <div class="emo-field">
+                <label class="emo-label">Observaciones</label>
+                <textarea name="observaciones" class="emo-input" rows="3" placeholder="Texto libre (opcional)">{{ control.observaciones if control and control.observaciones else '' }}</textarea>
+            </div>
+        </div>
+
+        <div class="emo-actions">
+            <button type="submit" class="btn btn-primary">
+                <span class="material-symbols-outlined">save</span>
+                Guardar
+            </button>
+            <a href="{{ url_for('emo_index') }}" class="btn btn-outline">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.emo-emp { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.75rem 1.5rem;
+           padding:1rem 1.1rem; margin-bottom:1.25rem; background:#f8fafc; border:1px solid #eef2f6; border-radius:12px; }
+.emo-emp-lbl { display:block; font-size:.72rem; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:.03em; }
+.emo-emp-val { display:block; font-size:.95rem; font-weight:600; color:#0f172a; }
+
+.emo-panel { border:1px solid #e5e7eb; border-radius:14px; padding:1.25rem 1.35rem; background:#fff; }
+.emo-panel-title { margin:0 0 1.1rem; font-size:1rem; font-weight:700; color:#15803d;
+                   padding-bottom:.6rem; border-bottom:1px solid #eef2f6; }
+.emo-row { display:grid; grid-template-columns:1fr 1fr; gap:1.1rem 1.4rem; margin-bottom:1.25rem; }
+@media (max-width:560px) { .emo-row { grid-template-columns:1fr; } }
+.emo-field { display:flex; flex-direction:column; gap:.4rem; margin-bottom:1.25rem; }
+.emo-field:last-child { margin-bottom:0; }
+.emo-row .emo-field { margin-bottom:0; }
+.emo-label { font-size:.72rem; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.03em; }
+.emo-input { width:100%; padding:.6rem .75rem; border:1px solid #d9dee5; border-radius:10px; font-size:.92rem;
+             color:#0f172a; background:#fff; box-sizing:border-box; transition:border-color .12s, box-shadow .12s; }
+.emo-input:focus { outline:0; border-color:#2D9E3F; box-shadow:0 0 0 3px rgba(45,158,63,.12); }
+textarea.emo-input { resize:vertical; min-height:76px; }
+.emo-estado-box { display:flex; align-items:center; flex-wrap:wrap; gap:.55rem; min-height:40px; }
+.emo-estado-box .text-muted { font-size:.85rem; }
+.emo-check { display:flex; align-items:center; gap:.6rem; cursor:pointer; font-weight:500; color:#334155;
+             padding:.75rem .9rem; margin-bottom:1.25rem; background:#f8fafc; border:1px solid #eef2f6; border-radius:10px; }
+.emo-check input { width:18px; height:18px; flex:0 0 auto; accent-color:#2D9E3F; }
+.emo-actions { display:flex; gap:.6rem; margin-top:1.25rem; }
+.emo-badge { display:inline-block; padding:3px 11px; border-radius:999px; font-size:.76rem; font-weight:600; }
+.emo-vigente { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
+.emo-vencida { background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; }
+.emo-sindato { background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; }
+</style>
+{% endblock %}
