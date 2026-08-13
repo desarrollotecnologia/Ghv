@@ -24,16 +24,30 @@
         <option value="{{ a }}" {{ 'selected' if filtro_anio == a else '' }}>{{ a }}</option>
         {% endfor %}
     </select>
-    {% if filtro_anio %}
-    <span class="incidencia-dash-filtro-badge">{{ filtro_anio }}</span>
-    <a href="{{ url_for('control_estado_dashboard') }}" class="btn btn-outline btn-sm">Quitar filtro</a>
+    <label for="filtroEmp" class="incidencia-dash-filtro-label">
+        <span class="material-symbols-outlined">badge</span>
+        Empleado
+    </label>
+    <select id="filtroEmp" class="incidencia-dash-filtro-select" onchange="ceDashboardFiltros()">
+        <option value="">Todos</option>
+        <option value="activo" {{ 'selected' if filtro_emp == 'activo' else '' }}>Activos</option>
+        <option value="inactivo" {{ 'selected' if filtro_emp == 'inactivo' else '' }}>Inactivos</option>
+    </select>
+    {% if filtro_anio or filtro_emp %}
+    {% if filtro_anio %}<span class="incidencia-dash-filtro-badge">{{ filtro_anio }}</span>{% endif %}
+    {% if filtro_emp %}<span class="incidencia-dash-filtro-badge">{{ filtro_emp|capitalize }}</span>{% endif %}
+    <a href="{{ url_for('control_estado_dashboard') }}" class="btn btn-outline btn-sm">Quitar filtros</a>
     {% endif %}
 </div>
 <script>
 function ceDashboardFiltros() {
     var base = "{{ url_for('control_estado_dashboard') }}";
+    var params = [];
     var anio = document.getElementById('filtroAnio').value;
-    window.location.href = anio ? base + '?anio=' + encodeURIComponent(anio) : base;
+    if (anio) params.push('anio=' + encodeURIComponent(anio));
+    var emp = document.getElementById('filtroEmp').value;
+    if (emp) params.push('emp=' + encodeURIComponent(emp));
+    window.location.href = params.length ? base + '?' + params.join('&') : base;
 }
 </script>
 

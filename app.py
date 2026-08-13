@@ -6629,6 +6629,10 @@ def control_estado_dashboard():
     except (ValueError, TypeError):
         filtro_anio = None
 
+    filtro_emp = request.args.get("emp", "").strip().lower()
+    if filtro_emp not in ("activo", "inactivo"):
+        filtro_emp = ""
+
     # Año del caso = fecha_inicio_rec, o fecha_estado como respaldo
     anio_expr = "YEAR(COALESCE(c.fecha_inicio_rec, c.fecha_estado))"
 
@@ -6647,6 +6651,11 @@ def control_estado_dashboard():
 
     if filtro_anio:
         rows = [r for r in rows if _anio_caso(r) == filtro_anio]
+
+    if filtro_emp:
+        def _es_activo(r):
+            return str(r.get("estado_empleado") or "").strip().upper() == "ACTIVO"
+        rows = [r for r in rows if (_es_activo(r) if filtro_emp == "activo" else not _es_activo(r))]
 
     def _agrupar(rows, key_fn, label_vacio="(sin dato)"):
         conteo = {}
@@ -6735,6 +6744,7 @@ def control_estado_dashboard():
         por_estado_rec=por_estado_rec, por_temp=por_temp,
         por_edad=por_edad, por_antiguedad=por_antiguedad,
         filtro_anio=filtro_anio, anios_disponibles=anios_disponibles,
+        filtro_emp=filtro_emp,
         active_page="Dashboard Control de estado",
     )
 
