@@ -34,7 +34,56 @@ from mail_utils import (
 )
 import tempfile
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-from cie10_data import cie10_lookup
+from cie10_data import cie10_lookup as _cie10_lookup_base
+
+
+def _cie10_lookup(code):
+    """Lookup CIE-10 enriquecido: usa la lista curada (agrupado propio) y completa la
+    descripción oficial desde la tabla cie10_catalogo (catálogo completo) cuando falte."""
+    res = _cie10_lookup_base(code)
+    if not res:
+        return None
+    if not res.get("descripcion"):
+        try:
+            row = query("SELECT descripcion FROM cie10_catalogo WHERE codigo = %s",
+                        (res["codigo"],), one=True)
+            if not row:  # probar la categoría de 3 caracteres (p.ej. S82 si vino S82.9)
+                row = query("SELECT descripcion FROM cie10_catalogo WHERE codigo = %s",
+                            (res["codigo"][:3],), one=True)
+            if row and row.get("descripcion"):
+                res["descripcion"] = row["descripcion"]
+                res["clasificacion"] = f"{res['codigo']} → {row['descripcion']}"
+        except Exception:
+            pass
+    return res
+
+
+def _cie10_lookup_multi(texto):
+    """Permite uno o varios códigos CIE-10 en un mismo campo (separados por coma,
+    punto y coma, salto de línea o espacio). Devuelve códigos, clasificación y
+    agrupados combinados sin duplicados."""
+    import re
+    if not texto:
+        return {"codigo": "", "clasificacion": "", "agrupado": ""}
+    tokens = [t for t in re.split(r"[,;\n]+|\s{2,}", str(texto)) if t.strip()]
+    if len(tokens) <= 1:  # un solo token puede traer espacios simples entre códigos
+        tokens = [t for t in re.split(r"[,;\n\s]+", str(texto)) if t.strip()]
+    codigos, clasifs, agrupados = [], [], []
+    for tok in tokens:
+        r = _cie10_lookup(tok)
+        if not r:
+            continue
+        if r["codigo"] not in codigos:
+            codigos.append(r["codigo"])
+            clasifs.append(r.get("clasificacion") or r["codigo"])
+            ag = r.get("agrupado")
+            if ag and ag not in agrupados:
+                agrupados.append(ag)
+    return {
+        "codigo": ", ".join(codigos),
+        "clasificacion": " ; ".join(clasifs),
+        "agrupado": " ; ".join(agrupados),
+    }
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -5424,6 +5473,13 @@ def incidencias_dashboard():
     )
 
 
+def _ensure_incidencia_columns():
+    """Agrega columnas que pudieran faltar en incidencia_at (deploys antiguos)."""
+    existentes = {c["Field"] for c in query("SHOW COLUMNS FROM incidencia_at")}
+    if "descripcion_causas" not in existentes:
+        execute("ALTER TABLE incidencia_at ADD COLUMN descripcion_causas TEXT NULL AFTER causas")
+
+
 def _incidencia_from_form():
     """Extrae dict de incidencia desde request.form."""
     def _d(k, default=None):
@@ -5487,6 +5543,7 @@ def _incidencia_from_form():
 @module_required("incidencias")
 def incidencias_nueva():
     """Alta de incidencia. Solo SISO."""
+    _ensure_incidencia_columns()
     if request.method == "POST":
         data = _incidencia_from_form()
         user = get_current_user()
@@ -5510,7 +5567,12 @@ def incidencias_nueva():
         )
         flash("Incidencia registrada correctamente.", "success")
         return redirect(url_for("incidencias_index"))
-    return render_template("incidencias_form.html", incidencia=None, active_page="Nueva incidencia")
+    siguiente = query(
+        "SELECT COALESCE(MAX(numero_registro), 0) + 1 AS n FROM incidencia_at", one=True
+    )
+    numero_sugerido = (siguiente or {}).get("n") or 1
+    return render_template("incidencias_form.html", incidencia=None,
+                           numero_sugerido=numero_sugerido, active_page="Nueva incidencia")
 
 
 @app.route("/incidencias/<int:id>/editar", methods=["GET", "POST"])
@@ -5518,6 +5580,7 @@ def incidencias_nueva():
 @module_required("incidencias")
 def incidencias_editar(id):
     """Editar incidencia. Solo SISO."""
+    _ensure_incidencia_columns()
     incidencia = query("SELECT * FROM incidencia_at WHERE id = %s", (id,), one=True)
     if not incidencia:
         flash("Incidencia no encontrada.", "error")
@@ -5595,6 +5658,51 @@ def incidencias_api_historial(cedula):
         return jsonify({"ok": True, "total": total, "nombre": nombre, "lista": lista})
     except Exception:
         return jsonify({"ok": False, "total": 0, "lista": []})
+
+
+@app.route("/incidencias/api/buscar-trabajador")
+@login_required
+@module_required("incidencias")
+def incidencias_api_buscar_trabajador():
+    """Busca empleados por nombre o cédula para autocompletar el formulario.
+
+    Query param q (>=2 chars). Devuelve hasta 15 coincidencias con los datos
+    que se cargan automáticamente en el formulario de incidencias.
+    """
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 2:
+        return jsonify({"ok": True, "items": []})
+    like = f"%{q}%"
+    rows = query(
+        "SELECT e.id_cedula, e.apellidos_nombre, e.sexo, e.fecha_ingreso, e.area, e.estado, "
+        "p.perfil_ocupacional AS cargo "
+        "FROM empleado e LEFT JOIN perfil_ocupacional p ON p.id_perfil = e.id_perfil_ocupacional "
+        "WHERE e.apellidos_nombre LIKE %s OR e.id_cedula LIKE %s "
+        "ORDER BY (e.estado <> 'ACTIVO'), e.apellidos_nombre LIMIT 15",
+        (like, like),
+    ) or []
+    from datetime import date
+    hoy = date.today()
+    items = []
+    for r in rows:
+        fi = _ce_parse_fecha(r.get("fecha_ingreso"))  # empleado.fecha_ingreso es texto dd/mm/yyyy
+        antig = None
+        if fi:
+            antig = (hoy.year - fi.year) * 12 + (hoy.month - fi.month)
+            if hoy.day < fi.day:
+                antig -= 1
+            antig = max(antig, 0)
+        items.append({
+            "cedula": r.get("id_cedula"),
+            "nombre": r.get("apellidos_nombre"),
+            "genero": r.get("sexo"),
+            "cargo": r.get("cargo"),
+            "area": r.get("area"),
+            "fecha_ingreso": fi.strftime("%Y-%m-%d") if fi else "",
+            "antiguedad_meses": antig,
+            "estado": r.get("estado"),
+        })
+    return jsonify({"ok": True, "items": items})
 
 
 @app.route("/incidencias/<int:id>/eliminar", methods=["POST"])
@@ -6388,19 +6496,40 @@ def _ensure_control_estado_table():
         execute("ALTER TABLE control_estado ADD COLUMN porcentaje VARCHAR(50) NULL AFTER pcl")
     if "estado_recomendacion" not in cols:
         execute("ALTER TABLE control_estado ADD COLUMN estado_recomendacion VARCHAR(20) NULL AFTER contingencia")
+    if "productivo" not in cols:
+        execute("ALTER TABLE control_estado ADD COLUMN productivo VARCHAR(3) NULL AFTER descripcion_rec")
+    # Ampliar columnas para admitir varios códigos CIE-10 en un mismo caso
+    for col, ancho in (("cie10_codigo", 200), ("clasificacion", 1000), ("agrupados", 1000)):
+        info = query(
+            "SELECT CHARACTER_MAXIMUM_LENGTH n FROM information_schema.columns "
+            "WHERE table_schema = DATABASE() AND table_name = 'control_estado' AND column_name = %s",
+            (col,), one=True,
+        )
+        if info and (info.get("n") or 0) < ancho:
+            execute(f"ALTER TABLE control_estado MODIFY COLUMN {col} VARCHAR({ancho}) NULL")
 
 
 def _ce_parse_temporalidad(texto):
-    """Extrae (unidad, cantidad) de una temporalidad tipo '3 MESES', '20 DÍAS', '2 SEMANAS'.
+    """Extrae (unidad, cantidad) de una temporalidad tipo '1 AÑO', '3 MESES', '20 DÍAS',
+    '2 SEMANAS'. Acepta números en dígitos ('1 AÑO') o escritos ('UN AÑO', 'DOS MESES').
     Devuelve None si es indefinida o no tiene una duración clara (p.ej. 'HASTA CONCEPTO...')."""
     import re
     if not texto:
         return None
-    m = re.search(r"(\d+)\s*(MES|SEMAN|D[IÍ]A)", str(texto).upper())
-    if not m:
-        return None
-    n = int(m.group(1))
-    u = m.group(2)
+    t = str(texto).upper()
+    palabras = {"UN": 1, "UNA": 1, "DOS": 2, "TRES": 3, "CUATRO": 4, "CINCO": 5, "SEIS": 6,
+                "SIETE": 7, "OCHO": 8, "NUEVE": 9, "DIEZ": 10, "ONCE": 11, "DOCE": 12}
+    unidad_re = r"(A[NÑ]O|MES|SEMAN|D[IÍ]A)"
+    m = re.search(r"(\d+)\s*" + unidad_re, t)
+    if m:
+        n, u = int(m.group(1)), m.group(2)
+    else:
+        m = re.search(r"\b(" + "|".join(palabras) + r")\s+" + unidad_re, t)
+        if not m:
+            return None
+        n, u = palabras[m.group(1)], m.group(2)
+    if u.startswith("A"):
+        return ("anios", n)
     if u.startswith("MES"):
         return ("meses", n)
     if u.startswith("SEMAN"):
@@ -6419,7 +6548,9 @@ def _ce_temporalidad_estado(inicio_rec, temporalidad, hoy=None):
     if not dur:
         return (inician, None, None, "INDEFINIDA")
     unidad, n = dur
-    if unidad == "meses":
+    if unidad == "anios":
+        terminan = _sumar_meses(inician, 12 * n)
+    elif unidad == "meses":
         terminan = _sumar_meses(inician, n)
     elif unidad == "semanas":
         terminan = inician + timedelta(days=7 * n)
@@ -6462,12 +6593,103 @@ def control_estado_index():
                            total=len(rows), active_page="Control de estado")
 
 
+@app.route("/control-estado/dashboard")
+@login_required
+@module_required("control_estado")
+def control_estado_dashboard():
+    """Dashboard de indicadores médico-laborales (Control de estado).
+
+    Basado en INDICADOR.xlsx: casos por tipo/contingencia, por área, por año y por
+    diagnóstico agrupado (CIE-10). Filtro opcional ?anio=YYYY sobre el año del caso
+    (fecha de inicio de recomendación, o fecha de estado si falta)."""
+    _ensure_control_estado_table()
+    try:
+        filtro_anio = request.args.get("anio", "").strip()
+        filtro_anio = int(filtro_anio) if filtro_anio.isdigit() and 2000 <= int(filtro_anio) <= 2100 else None
+    except (ValueError, TypeError):
+        filtro_anio = None
+
+    # Año del caso = fecha_inicio_rec, o fecha_estado como respaldo
+    anio_expr = "YEAR(COALESCE(c.fecha_inicio_rec, c.fecha_estado))"
+
+    rows = query(
+        "SELECT c.*, e.area, e.apellidos_nombre, e.estado AS estado_empleado "
+        "FROM control_estado c LEFT JOIN empleado e ON e.id_cedula = c.id_cedula"
+    ) or []
+
+    def _anio_caso(r):
+        d = _ce_parse_fecha(r.get("fecha_inicio_rec")) or _ce_parse_fecha(r.get("fecha_estado"))
+        return d.year if d else None
+
+    # Años disponibles (para el selector)
+    anios_disponibles = sorted({a for a in (_anio_caso(r) for r in rows) if a}, reverse=True)
+
+    if filtro_anio:
+        rows = [r for r in rows if _anio_caso(r) == filtro_anio]
+
+    def _agrupar(rows, key_fn, label_vacio="(sin dato)"):
+        conteo = {}
+        for r in rows:
+            k = key_fn(r)
+            k = (str(k).strip() if k not in (None, "") else label_vacio)
+            conteo[k] = conteo.get(k, 0) + 1
+        items = [{"k": k, "total": v} for k, v in conteo.items()]
+        items.sort(key=lambda x: x["total"], reverse=True)
+        return items
+
+    total = len(rows)
+    por_tipo = _agrupar(rows, lambda r: r.get("contingencia"), "(sin tipo)")
+    por_area = _agrupar(rows, lambda r: r.get("area"), "(sin área)")
+    por_dx = _agrupar(rows, lambda r: r.get("agrupados"), "(sin diagnóstico)")
+    por_estado = _agrupar(rows, lambda r: r.get("estado"), "(sin estado)")
+    por_complejidad = _agrupar(rows, lambda r: r.get("complejidad"), "(sin dato)")
+    por_estado_rec = _agrupar(rows, lambda r: r.get("estado_recomendacion"), "(sin dato)")
+
+    # Por año (tendencia) — siempre sobre todos los años, ignorando el filtro de año
+    rows_all = query(
+        "SELECT c.fecha_inicio_rec, c.fecha_estado FROM control_estado c"
+    ) or []
+    conteo_anio = {}
+    for r in rows_all:
+        a = _anio_caso(r)
+        if a:
+            conteo_anio[a] = conteo_anio.get(a, 0) + 1
+    por_anio = [{"k": a, "total": conteo_anio[a]} for a in sorted(conteo_anio)]
+
+    # Estado de la temporalidad (VIGENTE / VENCIDO / INDEFINIDA) calculado
+    conteo_temp = {}
+    for r in rows:
+        _ini, _ter, _dias, est = _ce_temporalidad_estado(r.get("fecha_inicio_rec"), r.get("temporalidad"))
+        if est:
+            conteo_temp[est] = conteo_temp.get(est, 0) + 1
+    por_temp = [{"k": k, "total": v} for k, v in sorted(conteo_temp.items(), key=lambda x: -x[1])]
+
+    # KPIs
+    kpis = {
+        "total": total,
+        "activos": sum(1 for r in rows if r.get("estado") == "ACTIVO"),
+        "cerradas": sum(1 for r in rows if r.get("estado") == "CERRADA"),
+        "incapacitados": sum(1 for r in rows if r.get("estado") == "INCAPACITADO"),
+        "rec_abiertas": sum(1 for r in rows if r.get("estado_recomendacion") == "ABIERTAS"),
+    }
+
+    return render_template(
+        "control_estado_dashboard.html",
+        total=total, kpis=kpis,
+        por_tipo=por_tipo, por_area=por_area, por_anio=por_anio, por_dx=por_dx,
+        por_estado=por_estado, por_complejidad=por_complejidad,
+        por_estado_rec=por_estado_rec, por_temp=por_temp,
+        filtro_anio=filtro_anio, anios_disponibles=anios_disponibles,
+        active_page="Dashboard Control de estado",
+    )
+
+
 @app.route("/control-estado/cie10")
 @login_required
 @module_required("control_estado")
 def control_estado_cie10():
     """Autocompletado CIE-10: devuelve descripción + agrupado para un código."""
-    res = cie10_lookup(request.args.get("codigo", ""))
+    res = _cie10_lookup_multi(request.args.get("codigo", ""))
     return jsonify(res or {})
 
 
@@ -6476,7 +6698,7 @@ def _ce_from_form(form):
         v = (form.get(k) or "").strip()
         return v or None
     codigo = _s("cie10_codigo")
-    look = cie10_lookup(codigo) if codigo else None
+    look = _cie10_lookup_multi(codigo) if codigo else None
     clasificacion = _s("clasificacion") or (look or {}).get("clasificacion")
     agrupados = _s("agrupados") or (look or {}).get("agrupado")
     return {
@@ -6493,6 +6715,7 @@ def _ce_from_form(form):
         "motivo_cierre": _s("motivo_cierre"),
         "temporalidad": _s("temporalidad"),
         "descripcion_rec": _s("descripcion_rec"),
+        "productivo": _s("productivo"),
         "seguimiento_productivo": _s("seguimiento_productivo"),
         "area_reubicado": _s("area_reubicado"),
         "pcl": _s("pcl"),

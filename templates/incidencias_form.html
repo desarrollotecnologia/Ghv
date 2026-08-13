@@ -8,8 +8,10 @@
             <h3 class="form-section-title">Datos del evento</h3>
             <div class="form-grid">
                 <div class="form-group">
-                    <label>No. registro</label>
-                    <input type="number" name="numero_registro" class="form-input" value="{{ incidencia.numero_registro or '' }}" min="0">
+                    <label>No. registro <span style="color:#9ca3af;font-weight:400">(automático)</span></label>
+                    <input type="number" name="numero_registro" class="form-input" readonly
+                           value="{{ incidencia.numero_registro if incidencia else numero_sugerido }}"
+                           style="background:#f3f4f6;cursor:not-allowed">
                 </div>
                 <div class="form-group">
                     <label>Mes</label>
@@ -17,11 +19,21 @@
                 </div>
                 <div class="form-group">
                     <label>Fecha del accidente</label>
-                    <input type="date" name="fecha_accidente" class="form-input" value="{{ incidencia.fecha_accidente.strftime('%Y-%m-%d') if incidencia and incidencia.fecha_accidente else '' }}">
+                    <input type="date" name="fecha_accidente" id="fecha_accidente_input" class="form-input" value="{{ incidencia.fecha_accidente.strftime('%Y-%m-%d') if incidencia and incidencia.fecha_accidente else '' }}">
                 </div>
                 <div class="form-group">
                     <label>Día de semana</label>
-                    <input type="text" name="dia_semana" class="form-input" value="{{ incidencia.dia_semana or '' }}" placeholder="Lunes, Martes...">
+                    {% set _dia = incidencia.dia_semana if incidencia else '' %}
+                    {% set _dias = ['LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES','SÁBADO','DOMINGO'] %}
+                    <select name="dia_semana" id="dia_semana_input" class="form-input">
+                        <option value="">— Seleccionar —</option>
+                        {% for d in _dias %}
+                        <option value="{{ d }}" {{ 'selected' if _dia and _dia|upper == d else '' }}>{{ d|capitalize }}</option>
+                        {% endfor %}
+                        {% if _dia and _dia|upper not in _dias %}
+                        <option value="{{ _dia }}" selected>{{ _dia }}</option>
+                        {% endif %}
+                    </select>
                 </div>
                 <div class="form-group">
                     <label>Hora de ocurrencia</label>
@@ -46,10 +58,16 @@
 
         <div class="form-section">
             <h3 class="form-section-title">Trabajador</h3>
+            <div class="form-group" style="grid-column:1/-1;position:relative">
+                <label>Buscar trabajador <span style="color:#9ca3af;font-weight:400">(por nombre o cédula, autocompleta los datos)</span></label>
+                <input type="text" id="buscar_trabajador" class="form-input" autocomplete="off"
+                       placeholder="Escribe el nombre o la cédula...">
+                <div id="buscar_resultados" class="buscar-resultados" style="display:none"></div>
+            </div>
             <div class="form-grid">
                 <div class="form-group" style="grid-column:1/-1">
                     <label>Nombre del trabajador</label>
-                    <input type="text" name="nombre_trabajador" class="form-input" value="{{ incidencia.nombre_trabajador or '' }}">
+                    <input type="text" name="nombre_trabajador" id="nombre_input" class="form-input" value="{{ incidencia.nombre_trabajador or '' }}">
                 </div>
                 <div class="form-group">
                     <label>Cédula</label>
@@ -61,27 +79,37 @@
                 </div>
                 <div class="form-group">
                     <label>Género</label>
-                    <input type="text" name="genero" class="form-input" value="{{ incidencia.genero or '' }}">
+                    <input type="text" name="genero" id="genero_input" class="form-input" value="{{ incidencia.genero or '' }}">
                 </div>
                 <div class="form-group">
                     <label>Cargo</label>
-                    <input type="text" name="cargo" class="form-input" value="{{ incidencia.cargo or '' }}">
+                    <input type="text" name="cargo" id="cargo_input" class="form-input" value="{{ incidencia.cargo or '' }}">
                 </div>
                 <div class="form-group">
                     <label>Fecha de ingreso</label>
-                    <input type="date" name="fecha_ingreso" class="form-input" value="{{ incidencia.fecha_ingreso.strftime('%Y-%m-%d') if incidencia and incidencia.fecha_ingreso else '' }}">
+                    <input type="date" name="fecha_ingreso" id="fecha_ingreso_input" class="form-input" value="{{ incidencia.fecha_ingreso.strftime('%Y-%m-%d') if incidencia and incidencia.fecha_ingreso else '' }}">
                 </div>
                 <div class="form-group">
                     <label>Antigüedad (meses)</label>
-                    <input type="number" name="antiguedad_meses" class="form-input" value="{{ incidencia.antiguedad_meses or '' }}" min="0">
+                    <input type="number" name="antiguedad_meses" id="antiguedad_input" class="form-input" value="{{ incidencia.antiguedad_meses or '' }}" min="0">
                 </div>
                 <div class="form-group" style="grid-column:1/-1">
                     <label>Área / Sección de ocurrencia</label>
-                    <input type="text" name="area_seccion_ocurrencia" class="form-input" value="{{ incidencia.area_seccion_ocurrencia or '' }}">
+                    <input type="text" name="area_seccion_ocurrencia" id="area_input" class="form-input" value="{{ incidencia.area_seccion_ocurrencia or '' }}">
                 </div>
                 <div class="form-group">
                     <label>Tipo de vinculación</label>
-                    <input type="text" name="tipo_vinculacion" class="form-input" value="{{ incidencia.tipo_vinculacion or '' }}">
+                    {% set _tv = incidencia.tipo_vinculacion if incidencia else '' %}
+                    {% set _tv_opts = ['TEMPORAL', 'DIRECTA'] %}
+                    <select name="tipo_vinculacion" class="form-input">
+                        <option value="">— Seleccionar —</option>
+                        {% for opt in _tv_opts %}
+                        <option value="{{ opt }}" {{ 'selected' if _tv and _tv|upper == opt else '' }}>{{ opt|capitalize }}</option>
+                        {% endfor %}
+                        {% if _tv and _tv|upper not in _tv_opts %}
+                        <option value="{{ _tv }}" selected>{{ _tv }}</option>
+                        {% endif %}
+                    </select>
                 </div>
                 <div class="form-group">
                     <label>Días incapacidad</label>
@@ -210,6 +238,14 @@
 .historial-box.danger{ background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; }
 .historial-box.info  { background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }
 .historial-list { margin:6px 0 0 24px; padding:0; list-style:disc; font-size:0.82rem; }
+
+.buscar-resultados { position:absolute; z-index:30; left:0; right:0; top:100%; margin-top:4px; background:#fff; border:1px solid #d1d5db; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12); max-height:280px; overflow-y:auto; }
+.buscar-item { padding:8px 12px; cursor:pointer; border-bottom:1px solid #f3f4f6; font-size:0.9rem; }
+.buscar-item:last-child { border-bottom:none; }
+.buscar-item:hover, .buscar-item.active { background:#f0fdf4; }
+.buscar-item .bi-nombre { font-weight:600; color:#111827; }
+.buscar-item .bi-meta { font-size:0.8rem; color:#6b7280; }
+.buscar-item .bi-inactivo { color:#b91c1c; font-weight:600; }
 </style>
 {% endblock %}
 
@@ -263,6 +299,81 @@
     });
     input.addEventListener('blur', consultar);
     if (input.value && input.value.trim()) consultar();
+})();
+
+// Autocompletar día de la semana a partir de la fecha del accidente
+(function() {
+    var fecha = document.getElementById('fecha_accidente_input');
+    var dia = document.getElementById('dia_semana_input');
+    if (!fecha || !dia) return;
+    var DIAS = ['DOMINGO','LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES','SÁBADO'];
+    fecha.addEventListener('change', function() {
+        if (!fecha.value) return;
+        var p = fecha.value.split('-');
+        var d = new Date(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2]));
+        var nombre = DIAS[d.getDay()];
+        for (var i = 0; i < dia.options.length; i++) {
+            if (dia.options[i].value === nombre) { dia.value = nombre; break; }
+        }
+    });
+})();
+
+// Buscador de trabajador -> autocompleta nombre, cédula, género, cargo, fecha ingreso, antigüedad y área
+(function() {
+    var q = document.getElementById('buscar_trabajador');
+    var box = document.getElementById('buscar_resultados');
+    if (!q || !box) return;
+    var timer = null, items = [], activeIdx = -1;
+
+    function setVal(id, v) { var el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); }
+
+    function fill(it) {
+        setVal('nombre_input', it.nombre);
+        setVal('cedula_input', it.cedula);
+        setVal('genero_input', it.genero);
+        setVal('cargo_input', it.cargo);
+        setVal('fecha_ingreso_input', it.fecha_ingreso);
+        setVal('antiguedad_input', it.antiguedad_meses);
+        setVal('area_input', it.area);
+        box.style.display = 'none';
+        q.value = it.nombre || '';
+        var ced = document.getElementById('cedula_input');
+        if (ced) ced.dispatchEvent(new Event('input'));  // dispara consulta de historial
+    }
+
+    function render() {
+        if (!items.length) { box.style.display = 'none'; return; }
+        box.innerHTML = items.map(function(it, i) {
+            var meta = [it.cedula, it.cargo, it.area].filter(Boolean).join(' · ');
+            var inact = it.estado && it.estado !== 'ACTIVO' ? ' <span class="bi-inactivo">(' + it.estado + ')</span>' : '';
+            return '<div class="buscar-item' + (i === activeIdx ? ' active' : '') + '" data-i="' + i + '">' +
+                   '<div class="bi-nombre">' + (it.nombre || '') + inact + '</div>' +
+                   '<div class="bi-meta">' + meta + '</div></div>';
+        }).join('');
+        box.style.display = 'block';
+        Array.prototype.forEach.call(box.querySelectorAll('.buscar-item'), function(el) {
+            el.addEventListener('mousedown', function(e) { e.preventDefault(); fill(items[parseInt(el.dataset.i)]); });
+        });
+    }
+
+    function buscar() {
+        var term = (q.value || '').trim();
+        if (term.length < 2) { box.style.display = 'none'; return; }
+        fetch("{{ url_for('incidencias_api_buscar_trabajador') }}?q=" + encodeURIComponent(term), { credentials: 'same-origin' })
+            .then(function(r) { return r.json(); })
+            .then(function(d) { items = (d && d.items) || []; activeIdx = -1; render(); })
+            .catch(function() { box.style.display = 'none'; });
+    }
+
+    q.addEventListener('input', function() { clearTimeout(timer); timer = setTimeout(buscar, 300); });
+    q.addEventListener('keydown', function(e) {
+        if (box.style.display === 'none') return;
+        if (e.key === 'ArrowDown') { activeIdx = Math.min(activeIdx + 1, items.length - 1); render(); e.preventDefault(); }
+        else if (e.key === 'ArrowUp') { activeIdx = Math.max(activeIdx - 1, 0); render(); e.preventDefault(); }
+        else if (e.key === 'Enter') { if (activeIdx >= 0 && items[activeIdx]) { fill(items[activeIdx]); e.preventDefault(); } }
+        else if (e.key === 'Escape') { box.style.display = 'none'; }
+    });
+    document.addEventListener('click', function(e) { if (!box.contains(e.target) && e.target !== q) box.style.display = 'none'; });
 })();
 </script>
 {% endblock %}

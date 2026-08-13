@@ -14,9 +14,14 @@
             Seguimiento de <strong>casos médico-laborales</strong>. SISO registra estado, diagnóstico (CIE-10),
             contingencia, recomendaciones y cierre de cada colaborador.
         </p>
-        <a href="{{ url_for('control_estado_nuevo') }}" class="btn btn-primary">
-            <span class="material-symbols-outlined">add</span> Nuevo caso
-        </a>
+        <div style="display:flex; gap:.5rem">
+            <a href="{{ url_for('control_estado_dashboard') }}" class="btn btn-outline">
+                <span class="material-symbols-outlined">bar_chart</span> Dashboard
+            </a>
+            <a href="{{ url_for('control_estado_nuevo') }}" class="btn btn-primary">
+                <span class="material-symbols-outlined">add</span> Nuevo caso
+            </a>
+        </div>
     </div>
 
     <div class="ce-summary">
@@ -92,7 +97,8 @@
                     <th style="text-align:center">Días rest.</th>
                     <th>Estado temporalidad</th>
                     <th>Descripción recomendaciones</th>
-                    <th>Seguimiento productivo</th>
+                    <th>Productivo</th>
+                    <th>Seguimiento</th>
                     <th>Área reubicado</th>
                     <th>PCL</th>
                     <th>%</th>
@@ -144,6 +150,7 @@
                         {% else %}—{% endif %}
                     </td>
                     <td class="ce-clip" title="{{ r.descripcion_rec or '' }}">{{ r.descripcion_rec or '—' }}</td>
+                    <td>{{ r.productivo or '—' }}</td>
                     <td class="ce-clip" title="{{ r.seguimiento_productivo or '' }}">{{ r.seguimiento_productivo or '—' }}</td>
                     <td class="ce-nowrap">{{ r.area_reubicado or '—' }}</td>
                     <td>{{ r.pcl or '—' }}</td>

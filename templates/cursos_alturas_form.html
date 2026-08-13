@@ -76,14 +76,24 @@
             </div>
         </div>
 
-        <div style="display:flex; gap:.6rem; margin-top:1rem">
+        <div style="display:flex; gap:.6rem; margin-top:1rem; align-items:center">
             <button type="submit" class="btn btn-primary">
                 <span class="material-symbols-outlined">save</span>
                 Guardar
             </button>
             <a href="{{ url_for('cursos_alturas_index') }}" class="btn btn-outline">Cancelar</a>
+            {% if curso %}
+            <button type="submit" form="ca_eliminar_form" class="btn btn-outline" style="color:var(--danger); margin-left:auto">
+                <span class="material-symbols-outlined">delete</span>
+                Eliminar
+            </button>
+            {% endif %}
         </div>
     </form>
+    {% if curso %}
+    <form id="ca_eliminar_form" method="post" action="{{ url_for('cursos_alturas_eliminar', id=curso.id) }}"
+          onsubmit="return confirm('¿Eliminar este registro de curso de alturas?');"></form>
+    {% endif %}
 </div>
 {% endblock %}
 

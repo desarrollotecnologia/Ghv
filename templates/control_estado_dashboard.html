@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block page_actions %}
+<a href="{{ url_for('control_estado_index') }}" class="btn btn-outline btn-sm">Listado</a>
+<a href="{{ url_for('control_estado_nuevo') }}" class="btn btn-primary btn-sm">Nuevo caso</a>
+{% endblock %}
+
+{% block content %}
+<header class="incidencia-dash-hero">
+    <div class="incidencia-dash-hero-inner">
+        <h1 class="incidencia-dash-hero-title">Indicadores médico-laborales</h1>
+        <p class="incidencia-dash-hero-sub">Casos de Control de estado por tipo, área, año y diagnóstico (CIE-10).</p>
+    </div>
+</header>
+
+<div class="incidencia-dash-filtro">
+    <label for="filtroAnio" class="incidencia-dash-filtro-label">
+        <span class="material-symbols-outlined">calendar_today</span>
+        Año del caso
+    </label>
+    <select id="filtroAnio" class="incidencia-dash-filtro-select" onchange="ceDashboardFiltros()">
+        <option value="">Todos los años</option>
+        {% for a in anios_disponibles %}
+        <option value="{{ a }}" {{ 'selected' if filtro_anio == a else '' }}>{{ a }}</option>
+        {% endfor %}
+    </select>
+    {% if filtro_anio %}
+    <span class="incidencia-dash-filtro-badge">{{ filtro_anio }}</span>
+    <a href="{{ url_for('control_estado_dashboard') }}" class="btn btn-outline btn-sm">Quitar filtro</a>
+    {% endif %}
+</div>
+<script>
+function ceDashboardFiltros() {
+    var base = "{{ url_for('control_estado_dashboard') }}";
+    var anio = document.getElementById('filtroAnio').value;
+    window.location.href = anio ? base + '?anio=' + encodeURIComponent(anio) : base;
+}
+</script>
+
+<div class="incidencia-kpi-row">
+    <div class="incidencia-kpi-card">
+        <div class="incidencia-kpi-icon"><span class="material-symbols-outlined">folder_shared</span></div>
+        <div class="incidencia-kpi-content">
+            <span class="incidencia-kpi-value">{{ kpis.total }}</span>
+            <span class="incidencia-kpi-label">Casos</span>
+        </div>
+    </div>
+    <div class="incidencia-kpi-card">
+        <div class="incidencia-kpi-icon"><span class="material-symbols-outlined">check_circle</span></div>
+        <div class="incidencia-kpi-content">
+            <span class="incidencia-kpi-value">{{ kpis.activos }}</span>
+            <span class="incidencia-kpi-label">Activos</span>
+        </div>
+    </div>
+    <div class="incidencia-kpi-card">
+        <div class="incidencia-kpi-icon"><span class="material-symbols-outlined">lock</span></div>
+        <div class="incidencia-kpi-content">
+            <span class="incidencia-kpi-value">{{ kpis.cerradas }}</span>
+            <span class="incidencia-kpi-label">Cerradas</span>
+        </div>
+    </div>
+    <div class="incidencia-kpi-card">
+        <div class="incidencia-kpi-icon"><span class="material-symbols-outlined">personal_injury</span></div>
+        <div class="incidencia-kpi-content">
+            <span class="incidencia-kpi-value">{{ kpis.incapacitados }}</span>
+            <span class="incidencia-kpi-label">Incapacitados</span>
+        </div>
+    </div>
+    <div class="incidencia-kpi-card">
+        <div class="incidencia-kpi-icon"><span class="material-symbols-outlined">assignment_late</span></div>
+        <div class="incidencia-kpi-content">
+            <span class="incidencia-kpi-value">{{ kpis.rec_abiertas }}</span>
+            <span class="incidencia-kpi-label">Recom. abiertas</span>
+        </div>
+    </div>
+</div>
+
+{% set section_class = 'incidencia-dash-section' %}
+{% set table_class = 'table table-sm incidencia-dash-table' %}
+
+{% macro tabla_pct(items, col) -%}
+<div class="table-wrapper table-scroll">
+    <table class="{{ table_class }}">
+        <thead><tr><th>{{ col }}</th><th style="text-align:right">Cantidad</th><th style="text-align:right">%</th></tr></thead>
+        <tbody>
+            {% set tot = items|sum(attribute='total') %}
+            {% for it in items %}
+            <tr><td>{{ it.k }}</td><td style="text-align:right">{{ it.total }}</td>
+                <td style="text-align:right">{{ ((it.total / tot * 100)|round(1)) if tot else 0 }}%</td></tr>
+            {% endfor %}
+            {% if items %}<tr style="font-weight:600"><td>TOTAL</td><td style="text-align:right">{{ tot }}</td><td style="text-align:right">100%</td></tr>{% endif %}
+        </tbody>
+    </table>
+</div>
+{%- endmacro %}
+
+{# ─── 1. TIPO / CONTINGENCIA ─── #}
+<section class="{{ section_class }}">
+    <h3 class="section-title"><span class="material-symbols-outlined">category</span> 1. Por tipo (contingencia)</h3>
+    <div class="dash-section-grid dash-section-grid-aside dash-section-grid-narrow">
+        {{ tabla_pct(por_tipo, 'Tipo') }}
+        <div class="chart-box chart-box-pie"><canvas id="chartTipo"></canvas></div>
+    </div>
+</section>
+
+{# ─── 2. ÁREAS ─── #}
+<section class="{{ section_class }}">
+    <h3 class="section-title"><span class="material-symbols-outlined">apartment</span> 2. Por área</h3>
+    <div class="dash-section-grid dash-section-grid-aside">
+        {{ tabla_pct(por_area, 'Área') }}
+        <div class="chart-box"><canvas id="chartArea"></canvas></div>
+    </div>
+</section>
+
+{# ─── 3. AÑO (tendencia) ─── #}
+<section class="{{ section_class }}">
+    <h3 class="section-title"><span class="material-symbols-outlined">trending_up</span> 3. Casos por año (histórico)</h3>
+    <div class="dash-section-grid dash-section-grid-aside">
+        <div class="table-wrapper table-scroll">
+            <table class="{{ table_class }}">
+                <thead><tr><th>Año</th><th style="text-align:right">Cantidad</th></tr></thead>
+                <tbody>
+                    {% for a in por_anio %}<tr><td>{{ a.k }}</td><td style="text-align:right">{{ a.total }}</td></tr>{% endfor %}
+                    {% if por_anio %}<tr style="font-weight:600"><td>TOTAL</td><td style="text-align:right">{{ por_anio|sum(attribute='total') }}</td></tr>{% endif %}
+                </tbody>
+            </table>
+        </div>
+        <div class="chart-box chart-box-tall"><canvas id="chartAnio"></canvas></div>
+    </div>
+</section>
+
+{# ─── 4. DIAGNÓSTICO AGRUPADO ─── #}
+<section class="{{ section_class }}">
+    <h3 class="section-title"><span class="material-symbols-outlined">clinical_notes</span> 4. Por diagnóstico agrupado (CIE-10)</h3>
+    <div class="dash-section-grid dash-section-grid-aside">
+        {{ tabla_pct(por_dx, 'Diagnóstico agrupado') }}
+        <div class="chart-box chart-box-tall"><canvas id="chartDx"></canvas></div>
+    </div>
+</section>
+
+{# ─── 5. ESTADO + COMPLEJIDAD ─── #}
+<section class="{{ section_class }}">
+    <h3 class="section-title"><span class="material-symbols-outlined">insights</span> 5. Estado y complejidad</h3>
+    <div class="dash-section-grid dash-section-grid-2">
+        <div class="dash-block">
+            <h4 class="dash-block-label">Por estado</h4>
+            <div class="chart-box chart-box-pie"><canvas id="chartEstado"></canvas></div>
+        </div>
+        <div class="dash-block">
+            <h4 class="dash-block-label">Por complejidad</h4>
+            <div class="chart-box chart-box-pie"><canvas id="chartComplejidad"></canvas></div>
+        </div>
+    </div>
+</section>
+
+{# ─── 6. RECOMENDACIONES + TEMPORALIDAD ─── #}
+<section class="{{ section_class }}">
+    <h3 class="section-title"><span class="material-symbols-outlined">event_available</span> 6. Recomendaciones y temporalidad</h3>
+    <div class="dash-section-grid dash-section-grid-2">
+        <div class="dash-block">
+            <h4 class="dash-block-label">Estado de la recomendación</h4>
+            <div class="chart-box chart-box-pie"><canvas id="chartRec"></canvas></div>
+        </div>
+        <div class="dash-block">
+            <h4 class="dash-block-label">Estado de la temporalidad</h4>
+            <div class="chart-box chart-box-pie"><canvas id="chartTemp"></canvas></div>
+        </div>
+    </div>
+</section>
+
+{% if not total %}
+<div class="incidencia-dash-empty">
+    <p class="text-muted">No hay casos registrados{{ ' para el año seleccionado' if filtro_anio else '' }}. Registra casos en Control de estado para ver los indicadores.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+    Chart.defaults.animation.duration = 500;
+    Chart.defaults.font.family = "'Inter', sans-serif";
+    var COLORS = ['#0b3518','#166534','#22c55e','#4ade80','#15803d','#14532d','#16a34a','#052e16','#86efac','#2D9E3F','#a7f3d0','#065f46'];
+
+    function makeBarH(id, labels, values, color) {
+        var ctx = document.getElementById(id);
+        if (!ctx || !labels.length) return;
+        var c = color || COLORS[1];
+        new Chart(ctx, {
+            type: 'bar',
+            data: { labels: labels, datasets: [{ data: values, backgroundColor: c, borderColor: c, borderWidth: 1 }] },
+            options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+                plugins: { legend: { display: false } },
+                scales: { x: { beginAtZero: true }, y: { ticks: { autoSkip: false } } } }
+        });
+    }
+    function makeLine(id, labels, values) {
+        var ctx = document.getElementById(id);
+        if (!ctx || !labels.length) return;
+        new Chart(ctx, {
+            type: 'line',
+            data: { labels: labels, datasets: [{ data: values, borderColor: '#166534',
+                backgroundColor: 'rgba(22,101,52,.1)', borderWidth: 2, fill: true, tension: .3,
+                pointRadius: 4, pointBackgroundColor: '#fff', pointBorderColor: '#166534', pointBorderWidth: 1 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                scales: { x: { ticks: { maxRotation: 45 } }, y: { beginAtZero: true } } }
+        });
+    }
+    function makeDoughnut(id, labels, values) {
+        var ctx = document.getElementById(id);
+        if (!ctx || !labels.length) return;
+        var colors = labels.map(function(_, i){ return COLORS[i % COLORS.length]; });
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: { labels: labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 2, borderColor: '#fff', hoverOffset: 8 }] },
+            options: { responsive: true, maintainAspectRatio: false, cutout: '55%',
+                plugins: { legend: { position: 'bottom' },
+                    tooltip: { callbacks: { label: function(c) {
+                        var t = c.dataset.data.reduce(function(a,b){ return a+b; }, 0);
+                        var p = t ? ((c.parsed / t) * 100).toFixed(1) : 0;
+                        return ' ' + c.parsed + ' (' + p + '%)';
+                    }}} } }
+        });
+    }
+
+    var tipoL = {{ (por_tipo|map(attribute='k')|list)|tojson }}, tipoV = {{ (por_tipo|map(attribute='total')|list)|tojson }};
+    var areaL = {{ (por_area|map(attribute='k')|list)|tojson }}, areaV = {{ (por_area|map(attribute='total')|list)|tojson }};
+    var anioL = {{ (por_anio|map(attribute='k')|list)|tojson }}, anioV = {{ (por_anio|map(attribute='total')|list)|tojson }};
+    var dxL = {{ (por_dx|map(attribute='k')|list)|tojson }}, dxV = {{ (por_dx|map(attribute='total')|list)|tojson }};
+    var estL = {{ (por_estado|map(attribute='k')|list)|tojson }}, estV = {{ (por_estado|map(attribute='total')|list)|tojson }};
+    var compL = {{ (por_complejidad|map(attribute='k')|list)|tojson }}, compV = {{ (por_complejidad|map(attribute='total')|list)|tojson }};
+    var recL = {{ (por_estado_rec|map(attribute='k')|list)|tojson }}, recV = {{ (por_estado_rec|map(attribute='total')|list)|tojson }};
+    var tempL = {{ (por_temp|map(attribute='k')|list)|tojson }}, tempV = {{ (por_temp|map(attribute='total')|list)|tojson }};
+
+    makeDoughnut('chartTipo', tipoL, tipoV);
+    makeBarH('chartArea', areaL, areaV, 'rgba(22,101,52,.85)');
+    makeLine('chartAnio', anioL, anioV);
+    makeBarH('chartDx', dxL, dxV, 'rgba(21,128,61,.85)');
+    makeDoughnut('chartEstado', estL, estV);
+    makeDoughnut('chartComplejidad', compL, compV);
+    makeDoughnut('chartRec', recL, recV);
+    makeDoughnut('chartTemp', tempL, tempV);
+})();
+</script>
+{% endblock %}

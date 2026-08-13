@@ -98,12 +98,11 @@
                     <th>Nivel de curso</th>
                     <th>Novedad</th>
                     <th>Curso realizado por</th>
-                    <th style="width:130px"></th>
                 </tr>
             </thead>
             <tbody>
                 {% for r in rows %}
-                <tr data-estado="{{ r.estado }}" data-nivel="{{ r.nivel_curso or '' }}" data-novedad="{{ (r.novedad or '')|upper }}" data-area="{{ r.area or '' }}">
+                <tr class="row-click" data-href="{{ url_for('cursos_alturas_editar', id=r.id) }}" data-estado="{{ r.estado }}" data-nivel="{{ r.nivel_curso or '' }}" data-novedad="{{ (r.novedad or '')|upper }}" data-area="{{ r.area or '' }}">
                     <td>{{ r.operario or '—' }}</td>
                     <td>{{ r.id_cedula or '—' }}</td>
                     <td>{{ r.area or '—' }}</td>
@@ -137,12 +136,6 @@
                         {% else %}—{% endif %}
                     </td>
                     <td>{{ r.curso or '—' }}</td>
-                    <td style="text-align:right">
-                        <a href="{{ url_for('cursos_alturas_editar', id=r.id) }}" class="btn btn-outline btn-sm">Editar</a>
-                        <form method="post" action="{{ url_for('cursos_alturas_eliminar', id=r.id) }}" style="display:inline" onsubmit="return confirm('¿Eliminar este registro?');">
-                            <button type="submit" class="btn btn-outline btn-sm" style="color:var(--danger)">Eliminar</button>
-                        </form>
-                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -191,6 +184,8 @@
 .ca-info { margin-left:auto; font-size:.85rem; font-weight:600; color:#64748b; white-space:nowrap; }
 
 tr.ca-hidden { display:none; }
+tr.row-click { cursor:pointer; }
+tr.row-click:hover td { background:#f0fdf4; }
 .ca-badge { display:inline-block; padding:3px 11px; border-radius:999px; font-size:.76rem; font-weight:600; line-height:1.5; }
 .ca-vigente   { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
 .ca-porvencer { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
@@ -250,6 +245,11 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     apply();
+
+    rows.forEach(function (tr) {
+        var href = tr.getAttribute('data-href');
+        if (href) tr.addEventListener('click', function () { window.location.href = href; });
+    });
 });
 </script>
 {% endblock %}

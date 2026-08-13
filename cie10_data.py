@@ -73,7 +73,7 @@ _CHAPTERS = [
     ("U", 0, 99, "CÓDIGOS PARA PROPÓSITOS ESPECIALES (U00 – U99)"),
 ]
 
-_CODE_RE = re.compile(r"^\s*([A-Za-z])\s*(\d{1,2})(?:\.(\d+))?")
+_CODE_RE = re.compile(r"^\s*([A-Za-z])\s*(\d{1,2})\.?(\d*)")
 
 
 def normalizar_codigo(code):
@@ -84,7 +84,7 @@ def normalizar_codigo(code):
     if not m:
         return None
     letra, num, dec = m.group(1).upper(), m.group(2), m.group(3)
-    return f"{letra}{int(num):02d}" + (f".{dec}" if dec else "")
+    return f"{letra}{int(num):02d}" + (f".{dec}" if dec else "")  # 'M545' -> 'M54.5', 'S82.2' -> 'S82.2'
 
 
 def cie10_chapter(code):

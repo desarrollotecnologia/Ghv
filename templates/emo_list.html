@@ -79,12 +79,11 @@
                     <th>Estado</th>
                     <th style="text-align:center">OK</th>
                     <th>Observaciones</th>
-                    <th style="width:90px"></th>
                 </tr>
             </thead>
             <tbody>
                 {% for r in rows %}
-                <tr data-estado="{{ r.estado }}" data-proceso="{{ r.proceso or '' }}" data-ok="{{ 1 if r.conforme else 0 }}">
+                <tr class="row-click" data-href="{{ url_for('emo_editar', id_cedula=r.id_cedula) }}" data-estado="{{ r.estado }}" data-proceso="{{ r.proceso or '' }}" data-ok="{{ 1 if r.conforme else 0 }}">
                     <td>{{ r.apellidos_nombre or '—' }}</td>
                     <td>{{ r.id_cedula }}</td>
                     <td>{{ r.cargo or '—' }}</td>
@@ -111,9 +110,6 @@
                         {% else %}—{% endif %}
                     </td>
                     <td>{{ r.observaciones or '—' }}</td>
-                    <td style="text-align:right">
-                        <a href="{{ url_for('emo_editar', id_cedula=r.id_cedula) }}" class="btn btn-outline btn-sm">Editar</a>
-                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -155,6 +151,8 @@
 .emo-info { margin-left:auto; font-size:.85rem; font-weight:600; color:#64748b; white-space:nowrap; }
 
 tr.emo-hidden { display:none; }
+tr.row-click { cursor:pointer; }
+tr.row-click:hover td { background:#f0fdf4; }
 .emo-badge { display:inline-block; padding:3px 11px; border-radius:999px; font-size:.76rem; font-weight:600; line-height:1.5; }
 .emo-vigente { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
 .emo-vencida { background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; }
@@ -209,6 +207,11 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     apply();
+
+    rows.forEach(function (tr) {
+        var href = tr.getAttribute('data-href');
+        if (href) tr.addEventListener('click', function () { window.location.href = href; });
+    });
 });
 </script>
 {% endblock %}

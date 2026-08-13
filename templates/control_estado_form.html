@@ -82,9 +82,9 @@
                     <textarea name="dx" class="ce-input" rows="2" placeholder="Descripción del diagnóstico">{{ row.dx if row and row.dx else '' }}</textarea>
                 </div>
                 <div class="ce-field">
-                    <label class="ce-label">Código CIE-10 <span class="ce-hint">(autocompleta)</span></label>
+                    <label class="ce-label">Código(s) CIE-10 <span class="ce-hint">(uno o varios, separados por coma)</span></label>
                     <div class="ce-code-row">
-                        <input type="text" name="cie10_codigo" id="ceCodigo" class="ce-input" placeholder="Ej. S82.2"
+                        <input type="text" name="cie10_codigo" id="ceCodigo" class="ce-input" placeholder="Ej. S82.2, M54.5"
                                value="{{ row.cie10_codigo if row and row.cie10_codigo else '' }}">
                         <button type="button" id="ceBuscar" class="btn btn-outline btn-sm">Buscar</button>
                     </div>
@@ -128,8 +128,17 @@
                     <label class="ce-label">Descripción de las recomendaciones</label>
                     <textarea name="descripcion_rec" class="ce-input" rows="3">{{ row.descripcion_rec if row and row.descripcion_rec else '' }}</textarea>
                 </div>
-                <div class="ce-field ce-col3">
-                    <label class="ce-label">Seguimiento productivo</label>
+                <div class="ce-field">
+                    <label class="ce-label">Productivo</label>
+                    <select name="productivo" class="ce-input">
+                        <option value="">—</option>
+                        {% for s in si_no %}
+                        <option value="{{ s }}" {{ 'selected' if row and row.productivo == s else '' }}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="ce-field ce-col2">
+                    <label class="ce-label">Seguimiento</label>
                     <textarea name="seguimiento_productivo" class="ce-input" rows="2">{{ row.seguimiento_productivo if row and row.seguimiento_productivo else '' }}</textarea>
                 </div>
                 <div class="ce-field">
@@ -139,8 +148,15 @@
                 </div>
                 <div class="ce-field">
                     <label class="ce-label">PCL</label>
-                    <input type="text" name="pcl" class="ce-input" placeholder="Pérdida de capacidad laboral"
-                           value="{{ row.pcl if row and row.pcl else '' }}">
+                    <select name="pcl" class="ce-input">
+                        <option value="">—</option>
+                        {% for s in si_no %}
+                        <option value="{{ s }}" {{ 'selected' if row and (row.pcl or '')|upper == s else '' }}>{{ s }}</option>
+                        {% endfor %}
+                        {% if row and row.pcl and (row.pcl or '')|upper not in si_no %}
+                        <option value="{{ row.pcl }}" selected>{{ row.pcl }}</option>
+                        {% endif %}
+                    </select>
                 </div>
                 <div class="ce-field">
                     <label class="ce-label">%</label>

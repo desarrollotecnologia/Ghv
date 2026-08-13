@@ -349,6 +349,10 @@
                 <span class="material-symbols-outlined">clinical_notes</span>
                 <span class="nav-label">Control de estado</span>
             </a>
+            <a href="{{ url_for('control_estado_dashboard') }}" class="nav-item {{ 'active' if active_page == 'Dashboard Control de estado' else '' }}">
+                <span class="material-symbols-outlined">bar_chart</span>
+                <span class="nav-label">Dashboard indicadores</span>
+            </a>
             {% endif %}
         </div>
         {% endif %}
