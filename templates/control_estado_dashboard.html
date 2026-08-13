@@ -168,6 +168,40 @@ function ceDashboardFiltros() {
     </div>
 </section>
 
+{# ─── 7. EDADES DEL PERSONAL ─── #}
+<section class="{{ section_class }}">
+    <h3 class="section-title"><span class="material-symbols-outlined">cake</span> 7. Estado de edades</h3>
+    <div class="dash-section-grid dash-section-grid-aside">
+        <div class="table-wrapper table-scroll">
+            <table class="{{ table_class }}">
+                <thead><tr><th>Estado de edades</th><th style="text-align:right">Cantidad</th></tr></thead>
+                <tbody>
+                    {% for e in por_edad %}<tr><td>{{ e.k }}</td><td style="text-align:right">{{ e.total }}</td></tr>{% endfor %}
+                    {% if por_edad %}<tr style="font-weight:600"><td>TOTAL</td><td style="text-align:right">{{ por_edad|sum(attribute='total') }}</td></tr>{% endif %}
+                </tbody>
+            </table>
+        </div>
+        <div class="chart-box chart-box-tall"><canvas id="chartEdad"></canvas></div>
+    </div>
+</section>
+
+{# ─── 8. ANTIGÜEDAD DEL PERSONAL ─── #}
+<section class="{{ section_class }}">
+    <h3 class="section-title"><span class="material-symbols-outlined">badge</span> 8. Antigüedad del personal</h3>
+    <div class="dash-section-grid dash-section-grid-aside">
+        <div class="table-wrapper table-scroll">
+            <table class="{{ table_class }}">
+                <thead><tr><th>Antigüedad del personal</th><th style="text-align:right">Cantidad</th></tr></thead>
+                <tbody>
+                    {% for a in por_antiguedad %}<tr><td>{{ a.k }}</td><td style="text-align:right">{{ a.total }}</td></tr>{% endfor %}
+                    {% if por_antiguedad %}<tr style="font-weight:600"><td>TOTAL</td><td style="text-align:right">{{ por_antiguedad|sum(attribute='total') }}</td></tr>{% endif %}
+                </tbody>
+            </table>
+        </div>
+        <div class="chart-box chart-box-tall"><canvas id="chartAntiguedad"></canvas></div>
+    </div>
+</section>
+
 {% if not total %}
 <div class="incidencia-dash-empty">
     <p class="text-muted">No hay casos registrados{{ ' para el año seleccionado' if filtro_anio else '' }}. Registra casos en Control de estado para ver los indicadores.</p>
@@ -232,6 +266,8 @@ function ceDashboardFiltros() {
     var compL = {{ (por_complejidad|map(attribute='k')|list)|tojson }}, compV = {{ (por_complejidad|map(attribute='total')|list)|tojson }};
     var recL = {{ (por_estado_rec|map(attribute='k')|list)|tojson }}, recV = {{ (por_estado_rec|map(attribute='total')|list)|tojson }};
     var tempL = {{ (por_temp|map(attribute='k')|list)|tojson }}, tempV = {{ (por_temp|map(attribute='total')|list)|tojson }};
+    var edadL = {{ (por_edad|map(attribute='k')|list)|tojson }}, edadV = {{ (por_edad|map(attribute='total')|list)|tojson }};
+    var antigL = {{ (por_antiguedad|map(attribute='k')|list)|tojson }}, antigV = {{ (por_antiguedad|map(attribute='total')|list)|tojson }};
 
     makeDoughnut('chartTipo', tipoL, tipoV);
     makeBarH('chartArea', areaL, areaV, 'rgba(22,101,52,.85)');
@@ -241,6 +277,8 @@ function ceDashboardFiltros() {
     makeDoughnut('chartComplejidad', compL, compV);
     makeDoughnut('chartRec', recL, recV);
     makeDoughnut('chartTemp', tempL, tempV);
+    makeLine('chartEdad', edadL, edadV);
+    makeLine('chartAntiguedad', antigL, antigV);
 })();
 </script>
 {% endblock %}

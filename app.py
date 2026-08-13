@@ -6561,6 +6561,23 @@ def _ce_temporalidad_estado(inicio_rec, temporalidad, hoy=None):
     return (inician, terminan, dias, ("VENCIDO" if dias < 0 else "VIGENTE"))
 
 
+def _ce_cargo_fallback(rows):
+    """Completa el cargo usando resolve_empleado_catalogos (mismo criterio que el resto
+    de módulos): perfil ocupacional y, si no hay, el cargo del usuario (jefes/SISO), etc."""
+    lst = rows if isinstance(rows, list) else [rows]
+    lst = [r for r in lst if isinstance(r, dict)]
+    if not lst:
+        return rows
+    try:
+        resolve_empleado_catalogos(lst)
+        for r in lst:
+            if not (str(r.get("cargo") or "").strip()):
+                r["cargo"] = r.get("perfil_ocupacional_nombre") or r.get("cargo")
+    except Exception:
+        pass
+    return rows
+
+
 def _ce_enriquecer(r):
     r["edad"] = _ce_anios(r.get("fecha_nacimiento"))
     r["antiguedad"] = _ce_anios(r.get("fecha_ingreso"))
@@ -6579,12 +6596,15 @@ def control_estado_index():
     _ensure_control_estado_table()
     rows = query(
         "SELECT c.*, e.apellidos_nombre, e.fecha_nacimiento, e.fecha_ingreso, "
-        "e.area, e.estado AS estado_empleado, p.perfil_ocupacional AS cargo "
+        "e.area, e.departamento, e.direccion_email, e.profesion, "
+        "e.id_perfil_ocupacional, e.estado AS estado_empleado, "
+        "p.perfil_ocupacional AS cargo "
         "FROM control_estado c "
         "LEFT JOIN empleado e ON e.id_cedula = c.id_cedula "
         "LEFT JOIN perfil_ocupacional p ON p.id_perfil = e.id_perfil_ocupacional "
         "ORDER BY (c.estado='CERRADA'), e.apellidos_nombre"
     ) or []
+    _ce_cargo_fallback(rows)
     conteo = {"ACTIVO": 0, "CERRADA": 0, "INCAPACITADO": 0}
     for r in rows:
         _ce_enriquecer(r)
@@ -6613,7 +6633,8 @@ def control_estado_dashboard():
     anio_expr = "YEAR(COALESCE(c.fecha_inicio_rec, c.fecha_estado))"
 
     rows = query(
-        "SELECT c.*, e.area, e.apellidos_nombre, e.estado AS estado_empleado "
+        "SELECT c.*, e.area, e.apellidos_nombre, e.estado AS estado_empleado, "
+        "e.fecha_nacimiento, e.fecha_ingreso "
         "FROM control_estado c LEFT JOIN empleado e ON e.id_cedula = c.id_cedula"
     ) or []
 
@@ -6656,6 +6677,39 @@ def control_estado_dashboard():
             conteo_anio[a] = conteo_anio.get(a, 0) + 1
     por_anio = [{"k": a, "total": conteo_anio[a]} for a in sorted(conteo_anio)]
 
+    # Estado de edades y antigüedad (rangos fijos, en orden, como el Excel INDICADOR)
+    edad_buckets = [
+        ("ENTRE 18 A 20 AÑOS", lambda x: 18 <= x <= 20),
+        ("ENTRE 21 A 30 AÑOS", lambda x: 21 <= x <= 30),
+        ("ENTRE 31 A 40 AÑOS", lambda x: 31 <= x <= 40),
+        ("ENTRE 41 A 50 AÑOS", lambda x: 41 <= x <= 50),
+        ("ENTRE 51 A 60 AÑOS", lambda x: 51 <= x <= 60),
+        ("MAYOR A 60 AÑOS", lambda x: x > 60),
+    ]
+    antig_buckets = [
+        ("MENOS DE UN AÑO", lambda x: x < 1),
+        ("ENTRE 2 A 3 AÑOS", lambda x: 1 <= x <= 3),
+        ("ENTRE 4 A 5 AÑOS", lambda x: 4 <= x <= 5),
+        ("MAYOR A 5 AÑOS", lambda x: x > 5),
+    ]
+
+    def _rangos(rows, valor_fn, buckets):
+        conteo = {lbl: 0 for lbl, _ in buckets}
+        for r in rows:
+            v = valor_fn(r)
+            if v is None:
+                continue
+            for lbl, test in buckets:
+                if test(v):
+                    conteo[lbl] += 1
+                    break
+        # Mantener orden fijo; ocultar "MAYOR A 60" si no hay ninguno
+        return [{"k": lbl, "total": conteo[lbl]} for lbl, _ in buckets
+                if not (lbl == "MAYOR A 60 AÑOS" and conteo[lbl] == 0)]
+
+    por_edad = _rangos(rows, lambda r: _ce_anios(r.get("fecha_nacimiento")), edad_buckets)
+    por_antiguedad = _rangos(rows, lambda r: _ce_anios(r.get("fecha_ingreso")), antig_buckets)
+
     # Estado de la temporalidad (VIGENTE / VENCIDO / INDEFINIDA) calculado
     conteo_temp = {}
     for r in rows:
@@ -6679,6 +6733,7 @@ def control_estado_dashboard():
         por_tipo=por_tipo, por_area=por_area, por_anio=por_anio, por_dx=por_dx,
         por_estado=por_estado, por_complejidad=por_complejidad,
         por_estado_rec=por_estado_rec, por_temp=por_temp,
+        por_edad=por_edad, por_antiguedad=por_antiguedad,
         filtro_anio=filtro_anio, anios_disponibles=anios_disponibles,
         active_page="Dashboard Control de estado",
     )
@@ -6778,11 +6833,13 @@ def control_estado_editar(id_cedula):
     row = query("SELECT * FROM control_estado WHERE id_cedula = %s", (id_cedula,), one=True)
     emp = query(
         "SELECT e.id_cedula, e.apellidos_nombre, e.fecha_nacimiento, e.fecha_ingreso, "
-        "e.area, p.perfil_ocupacional AS cargo "
+        "e.area, e.departamento, e.direccion_email, e.profesion, "
+        "e.id_perfil_ocupacional, p.perfil_ocupacional AS cargo "
         "FROM empleado e LEFT JOIN perfil_ocupacional p ON p.id_perfil = e.id_perfil_ocupacional "
         "WHERE e.id_cedula = %s", (id_cedula,), one=True,
     )
     if emp:
+        _ce_cargo_fallback(emp)
         _ce_enriquecer(emp)
     return render_template("control_estado_form.html", emp=emp, row=row, empleados=None,
                            estados=_CE_ESTADOS, estado_rec=_CE_ESTADO_REC, contingencias=_CE_CONTINGENCIAS,
