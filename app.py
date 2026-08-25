@@ -7982,6 +7982,7 @@ def retirar_empleado(id):
              tipo_retiro, motivo or None),
         )
         execute("UPDATE empleado SET estado = 'INACTIVO' WHERE id_cedula = %s", (id,))
+        execute("UPDATE hijo SET estado = 'INACTIVO' WHERE id_cedula = %s", (id,))
         _sincronizar_usuarios_empleado_por_estado(id, False)
         flash(f"Retiro registrado. Empleado {emp['apellidos_nombre']} marcado como INACTIVO", "success")
         return redirect(url_for("detalle_empleado", id=id))
