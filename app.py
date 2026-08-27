@@ -237,6 +237,42 @@ def execute(sql, params=None):
     return lid
 
 
+def cambiar_cedula_empleado(old, new):
+    """Renombra la cédula (PK de empleado) y la propaga a todas las tablas que la
+    referencian, en una sola transacción. Devuelve (ok, error)."""
+    old = str(old or "").strip()
+    new = str(new or "").strip()
+    if not new:
+        return False, "La cédula no puede estar vacía."
+    if new == old:
+        return True, None
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM empleado WHERE id_cedula = %s", (new,))
+        if cur.fetchone():
+            return False, f"Ya existe un empleado con la cédula {new}."
+        # Tablas que guardan id_cedula (según el esquema real), para no dejar huérfanos.
+        cur.execute(
+            "SELECT TABLE_NAME FROM information_schema.COLUMNS "
+            "WHERE TABLE_SCHEMA = %s AND COLUMN_NAME = 'id_cedula'",
+            (app.config["MYSQL_DATABASE"],),
+        )
+        tablas = [r[0] for r in cur.fetchall() if r[0] != "empleado"]
+        cur.execute("SET FOREIGN_KEY_CHECKS = 0")
+        cur.execute("UPDATE empleado SET id_cedula = %s WHERE id_cedula = %s", (new, old))
+        for t in tablas:
+            cur.execute(f"UPDATE `{t}` SET id_cedula = %s WHERE id_cedula = %s", (new, old))
+        cur.execute("SET FOREIGN_KEY_CHECKS = 1")
+        conn.commit()
+        return True, None
+    except Exception as e:
+        conn.rollback()
+        return False, f"No se pudo cambiar la cédula: {e}"
+    finally:
+        conn.close()
+
+
 # ── Auth helpers (carga desde BD: rol_permiso, rol_modulo) ───
 
 # Fallback si no existen tablas o están vacías
@@ -7841,6 +7877,13 @@ def editar_empleado(id):
         return redirect(url_for("personal_activo"))
 
     if request.method == "POST":
+        nueva_cedula = request.form.get("id_cedula", "").strip()
+        if nueva_cedula and nueva_cedula != id:
+            ok, err = cambiar_cedula_empleado(id, nueva_cedula)
+            if not ok:
+                flash(err, "error")
+                return redirect(url_for("editar_empleado", id=id))
+            id = nueva_cedula
         date_fields_no_future = {
             "fecha_expedicion": "Fecha de expedicion",
             "fecha_ingreso": "Fecha de ingreso",
