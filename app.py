@@ -6516,6 +6516,7 @@ def _ensure_control_estado_table():
         "descripcion_rec TEXT NULL, "
         "seguimiento_productivo TEXT NULL, "
         "area_reubicado VARCHAR(150) NULL, "
+        "tareas_asignadas TEXT NULL, "
         "pcl VARCHAR(50) NULL, "
         "porcentaje VARCHAR(50) NULL, "
         "complejidad VARCHAR(10) NULL, "
@@ -6534,6 +6535,8 @@ def _ensure_control_estado_table():
         execute("ALTER TABLE control_estado ADD COLUMN estado_recomendacion VARCHAR(20) NULL AFTER contingencia")
     if "productivo" not in cols:
         execute("ALTER TABLE control_estado ADD COLUMN productivo VARCHAR(3) NULL AFTER descripcion_rec")
+    if "tareas_asignadas" not in cols:
+        execute("ALTER TABLE control_estado ADD COLUMN tareas_asignadas TEXT NULL AFTER area_reubicado")
     # Ampliar columnas para admitir varios códigos CIE-10 en un mismo caso
     for col, ancho in (("cie10_codigo", 200), ("clasificacion", 1000), ("agrupados", 1000)):
         info = query(
@@ -6819,6 +6822,7 @@ def _ce_from_form(form):
         "productivo": _s("productivo"),
         "seguimiento_productivo": _s("seguimiento_productivo"),
         "area_reubicado": _s("area_reubicado"),
+        "tareas_asignadas": _s("tareas_asignadas"),
         "pcl": _s("pcl"),
         "porcentaje": _s("porcentaje"),
         "complejidad": _s("complejidad"),

@@ -146,6 +146,10 @@
                     <input type="text" name="area_reubicado" class="ce-input"
                            value="{{ row.area_reubicado if row and row.area_reubicado else '' }}">
                 </div>
+                <div class="ce-field ce-col2">
+                    <label class="ce-label">Tareas asignadas</label>
+                    <textarea name="tareas_asignadas" class="ce-input" rows="2">{{ row.tareas_asignadas if row and row.tareas_asignadas else '' }}</textarea>
+                </div>
                 <div class="ce-field">
                     <label class="ce-label">PCL</label>
                     <select name="pcl" class="ce-input">
