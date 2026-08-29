@@ -26,13 +26,35 @@
             <h3 class="ce-panel-title">Colaborador</h3>
             <div class="ce-field">
                 <label class="ce-label">Selecciona el colaborador (activos e inactivos sin caso)</label>
-                <select name="id_cedula" class="ce-input" required>
+                <input type="text" id="ceBuscarColab" class="ce-input" placeholder="Buscar por nombre o cédula…"
+                       autocomplete="off" oninput="ceFiltrarColab(this.value)" style="margin-bottom:8px;">
+                <select name="id_cedula" id="ceSelectColab" class="ce-input" required>
                     <option value="">— Selecciona —</option>
                     {% for e in empleados %}
                     <option value="{{ e.id_cedula }}">{{ e.apellidos_nombre }} · {{ e.id_cedula }}{{ ' · INACTIVO' if e.estado and e.estado != 'ACTIVO' else '' }}</option>
                     {% endfor %}
                 </select>
             </div>
+            <script>
+            function ceFiltrarColab(q) {
+                q = (q || '').trim().toLowerCase();
+                var sel = document.getElementById('ceSelectColab');
+                var visibles = 0;
+                for (var i = 0; i < sel.options.length; i++) {
+                    var o = sel.options[i];
+                    if (!o.value) continue;
+                    var match = o.text.toLowerCase().indexOf(q) !== -1;
+                    o.hidden = !match;
+                    if (match) visibles++;
+                }
+                if (sel.selectedIndex > 0 && sel.options[sel.selectedIndex].hidden) sel.selectedIndex = 0;
+                if (visibles === 1) {
+                    for (var j = 1; j < sel.options.length; j++) {
+                        if (!sel.options[j].hidden) { sel.selectedIndex = j; break; }
+                    }
+                }
+            }
+            </script>
         </div>
         {% endif %}
 
