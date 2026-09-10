@@ -639,6 +639,34 @@ def role_required(*allowed):
     return decorator
 
 
+# Módulos SST (Control): incidencias, cursos_alturas, extintores, emo, control_estado.
+# Todos los que ven el módulo pueden CONSULTAR; solo estos pueden MODIFICAR (además de
+# quien ya tenga nivel WRITE/ALL por rol).
+_SST_EDITORS = {"siso@colbeef.com", "aux.siso@colbeef.com"}
+
+
+def _can_edit_sst(user):
+    if not user:
+        return False
+    if get_role_permission(user.get("rol") or "") in ("WRITE", "ALL"):
+        return True
+    return _normalize_email(user.get("email")) in _SST_EDITORS
+
+
+def sst_write_required(f):
+    """Permite ver (GET) a cualquiera con el módulo, pero solo modifica (POST) quien
+    tenga nivel WRITE/ALL o esté autorizado como editor SST. El resto: solo lectura."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if request.method == "POST" and not _can_edit_sst(get_current_user()):
+            if _is_api_request():
+                return jsonify({"error": "Sin permisos"}), 403
+            flash("No tienes permisos para modificar (solo visualización).", "error")
+            return redirect(request.referrer or url_for("home"))
+        return f(*args, **kwargs)
+    return decorated
+
+
 def admin_only(f):
     """Solo el rol ADMIN (ej. tecnologia@colbeef.com) puede acceder. Coordinación y otros no."""
     @wraps(f)
@@ -787,6 +815,8 @@ _ROLE_MODULES = {
         "admin":        False,
         "catalogos":    False,
         "permisos":     False,  # GESTOR SST no ve Permisos (solo Incidencias SISO si aplica)
+        "incidencias":  True,   # Accidentes/incidentes (ver; modificar solo editor SST)
+        "incidencias_dashboard": True,
         "cursos_alturas": True, # Control de cursos de trabajo en alturas
         "extintores":   True,   # Inventario de extintores / equipos de emergencia
         "emo":          True,   # Exámenes médicos ocupacionales
@@ -5577,6 +5607,7 @@ def _incidencia_from_form():
 @app.route("/incidencias/nueva", methods=["GET", "POST"])
 @login_required
 @module_required("incidencias")
+@sst_write_required
 def incidencias_nueva():
     """Alta de incidencia. Solo SISO."""
     _ensure_incidencia_columns()
@@ -5614,6 +5645,7 @@ def incidencias_nueva():
 @app.route("/incidencias/<int:id>/editar", methods=["GET", "POST"])
 @login_required
 @module_required("incidencias")
+@sst_write_required
 def incidencias_editar(id):
     """Editar incidencia. Solo SISO."""
     _ensure_incidencia_columns()
@@ -5744,6 +5776,7 @@ def incidencias_api_buscar_trabajador():
 @app.route("/incidencias/<int:id>/eliminar", methods=["POST"])
 @login_required
 @module_required("incidencias")
+@sst_write_required
 def incidencias_eliminar(id):
     """Eliminar incidencia. Solo SISO."""
     incidencia = query("SELECT id FROM incidencia_at WHERE id = %s", (id,), one=True)
@@ -6050,6 +6083,7 @@ def _curso_altura_from_form():
 @app.route("/cursos-alturas/nueva", methods=["GET", "POST"])
 @login_required
 @module_required("cursos_alturas")
+@sst_write_required
 def cursos_alturas_nueva():
     """Alta de curso de alturas. SISO selecciona a la persona (solo activos)."""
     _ensure_curso_altura_table()
@@ -6081,6 +6115,7 @@ def cursos_alturas_nueva():
 @app.route("/cursos-alturas/<int:id>/editar", methods=["GET", "POST"])
 @login_required
 @module_required("cursos_alturas")
+@sst_write_required
 def cursos_alturas_editar(id):
     _ensure_curso_altura_table()
     curso = query("SELECT * FROM curso_altura WHERE id = %s", (id,), one=True)
@@ -6113,6 +6148,7 @@ def cursos_alturas_editar(id):
 @app.route("/cursos-alturas/<int:id>/eliminar", methods=["POST"])
 @login_required
 @module_required("cursos_alturas")
+@sst_write_required
 def cursos_alturas_eliminar(id):
     execute("DELETE FROM curso_altura WHERE id = %s", (id,))
     flash("Curso de alturas eliminado.", "success")
@@ -6293,6 +6329,7 @@ def _extintor_from_form():
 @app.route("/extintores/nuevo", methods=["GET", "POST"])
 @login_required
 @module_required("extintores")
+@sst_write_required
 def extintores_nuevo():
     _ensure_extintor_table()
     if request.method == "POST":
@@ -6319,6 +6356,7 @@ def extintores_nuevo():
 @app.route("/extintores/<int:id>/editar", methods=["GET", "POST"])
 @login_required
 @module_required("extintores")
+@sst_write_required
 def extintores_editar(id):
     _ensure_extintor_table()
     extintor = query("SELECT * FROM extintor_inventario WHERE id = %s", (id,), one=True)
@@ -6348,6 +6386,7 @@ def extintores_editar(id):
 @app.route("/extintores/<int:id>/eliminar", methods=["POST"])
 @login_required
 @module_required("extintores")
+@sst_write_required
 def extintores_eliminar(id):
     execute("DELETE FROM extintor_inventario WHERE id = %s", (id,))
     flash("Extintor eliminado.", "success")
@@ -6415,6 +6454,7 @@ def emo_index():
 @app.route("/emo/<path:id_cedula>/editar", methods=["GET", "POST"])
 @login_required
 @module_required("emo")
+@sst_write_required
 def emo_editar(id_cedula):
     from datetime import date
     _ensure_emo_table()
@@ -6850,6 +6890,7 @@ def _ce_upsert(id_cedula, datos):
 @app.route("/control-estado/nuevo", methods=["GET", "POST"])
 @login_required
 @module_required("control_estado")
+@sst_write_required
 def control_estado_nuevo():
     _ensure_control_estado_table()
     if request.method == "POST":
@@ -6874,6 +6915,7 @@ def control_estado_nuevo():
 @app.route("/control-estado/<path:id_cedula>/editar", methods=["GET", "POST"])
 @login_required
 @module_required("control_estado")
+@sst_write_required
 def control_estado_editar(id_cedula):
     _ensure_control_estado_table()
     if request.method == "POST":
@@ -6900,6 +6942,7 @@ def control_estado_editar(id_cedula):
 @app.route("/control-estado/<path:id_cedula>/eliminar", methods=["POST"])
 @login_required
 @module_required("control_estado")
+@sst_write_required
 def control_estado_eliminar(id_cedula):
     execute("DELETE FROM control_estado WHERE id_cedula = %s", (id_cedula,))
     flash("Caso eliminado.", "success")
